@@ -1,12 +1,18 @@
-'use client'
-import style from './soundFileTitleBar.module.css'
+"use client";
+import style from "./soundFileTitleBar.module.css";
+import classNames from "classnames/bind";
+
+const cls = classNames.bind(style);
+
 interface _prop {
-    soundFile: string
+    soundFile: string;
+    isSelected?: boolean;
 }
+
 export default function SoundFileTitleBar(prop: _prop) {
     return (
-        <div>
-            <span>{prop.soundFile}</span>
+        <div className={cls("box", prop.isSelected ? "on-focus" : "off-focus")}>
+            <span className={cls("title-text")}>{prop.soundFile}</span>
         </div>
-    )
+    );
 }

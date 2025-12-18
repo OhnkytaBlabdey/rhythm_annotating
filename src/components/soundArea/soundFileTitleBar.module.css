@@ -1,0 +1,22 @@
+.on-focus {
+    background-color: #3b82f6;
+    color: white;
+}
+
+.off-focus {
+    background-color: #e5e7eb;
+    color: #6b7280;
+}
+
+.box {
+    border-color: #d1d5db;
+    border-width: 1px;
+    text-align: center;
+    padding: 12px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.title-text {
+    font-weight: 500;
+}
