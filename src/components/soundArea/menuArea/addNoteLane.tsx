@@ -1,5 +1,5 @@
 "use client";
-import { notelane } from "@/interface/notelane";
+import { notelane } from "@/interface/soundLane/noteLane/notelane";
 import { useState } from "react";
 import Image from "next/image";
 import style from "./addNoteLane.module.css";

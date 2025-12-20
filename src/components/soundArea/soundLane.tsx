@@ -3,7 +3,7 @@ import "./soundLane.module.css";
 import { useState } from "react";
 import SoundFileTitleBar from "./soundFileTitleBar";
 import { NoteLane } from "./noteArea/noteLane";
-import { notelane } from "@/interface/notelane";
+import { notelane } from "@/interface/soundLane/noteLane/notelane";
 import SoundMenu from "./menuArea/soundMenu";
 
 interface _prop {

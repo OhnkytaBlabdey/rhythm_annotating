@@ -1,4 +1,4 @@
-import { measure } from "./measure";
+import { measure } from "./measure/measure";
 
 export interface notelane {
     measures: Array<measure>;
