@@ -1,6 +1,5 @@
 "use client";
 import { notelane } from "@/interface/soundLane/noteLane/notelane";
-import { useState } from "react";
 import Image from "next/image";
 import style from "./addNoteLane.module.css";
 import classNames from "classnames/bind";
@@ -29,7 +28,7 @@ function AddNoteLane(prop: _prop) {
                 className={cls("icon-button")}
             >
                 <Image
-                    src="/favicon.ico"
+                    src="/assets/icons/newNoteLane.png"
                     alt="Add Note Lane"
                     width={24}
                     height={24}

@@ -6,12 +6,12 @@ const cls = classNames.bind(style);
 
 interface _prop {
     soundFile: string;
-    isSelected?: boolean;
+    isActive?: boolean;
 }
 
 export default function SoundFileTitleBar(prop: _prop) {
     return (
-        <div className={cls("box", prop.isSelected ? "on-focus" : "off-focus")}>
+        <div className={cls("box", prop.isActive ? "on-focus" : "off-focus")}>
             <span className={cls("title-text")}>{prop.soundFile}</span>
         </div>
     );
