@@ -12,12 +12,24 @@ function AddSound(prop: _prop) {
         const file = e.target.files?.[0];
         if (file) {
             const fileName = file.name;
-            prop.setSoundLanes([
-                ...prop.refSoundLanes,
-                defaultSoundLane(fileName),
-            ]);
+            const reader = new FileReader();
+
+            reader.onload = (event) => {
+                const arrayBuffer = event.target?.result as ArrayBuffer;
+                prop.setSoundLanes([
+                    ...prop.refSoundLanes,
+                    defaultSoundLane(fileName, arrayBuffer),
+                ]);
+            };
+
+            reader.onerror = () => {
+                console.error("文件读取失败");
+            };
+
+            // 读取为 ArrayBuffer（适合音频处理）
+            reader.readAsArrayBuffer(file);
         }
-        // 重置input，这样如果选择相同文件也能触发onChange
+
         if (fileInputRef.current) {
             fileInputRef.current.value = "";
         }

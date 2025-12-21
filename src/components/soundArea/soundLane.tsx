@@ -59,6 +59,7 @@ export default function SoundLane(prop: _prop) {
                     <WaveLane
                         mediaFilePath={prop.soundFile}
                         waveLane={prop.refSoundLane.waveLane}
+                        arrayBuffer={prop.refSoundLane.audioBuffer}
                         key={`${prop.index}-wave`}
                         timeRange={prop.timeRange}
                     />
