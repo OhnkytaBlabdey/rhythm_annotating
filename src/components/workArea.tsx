@@ -28,6 +28,7 @@ export default function WorkArea() {
             timeMultiplier: newm,
         });
     }
+
     return (
         <div className="WorkArea">
             <div className="flex flex-col">
