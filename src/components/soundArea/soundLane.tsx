@@ -9,13 +9,12 @@ import { soundlane } from "@/interface/soundLane/soundlane";
 interface _prop {
     index: number;
     soundFile: string;
+    timeRange: [number, number];
     refSoundLane: soundlane;
     setSoundLane: (i: number, l: soundlane) => void;
 }
 
 export default function SoundLane(prop: _prop) {
-    //TODO 只有点在其他地方才更新选中状态，否则不更新
-    //看情况，如果其他轨激活，这个轨有可能要取消激活
     function handleClickToActivate() {
         const updatedSoundLane = {
             ...prop.refSoundLane,
@@ -37,11 +36,14 @@ export default function SoundLane(prop: _prop) {
             className="SoundLane flex flex-col h-full cursor-pointer"
             onClick={handleClickToActivate}
         >
-            <div>
+            <div className="w-auto">
                 <SoundFileTitleBar
                     soundFile={prop.soundFile}
                     isActive={prop.refSoundLane.isActive || false}
                 />
+                <div>
+                    {prop.timeRange[0]} - {prop.timeRange[1].toFixed(4)} second
+                </div>
             </div>
             <div className="flex flex-1">
                 <div className="w-auto" onClick={(e) => e.stopPropagation()}>

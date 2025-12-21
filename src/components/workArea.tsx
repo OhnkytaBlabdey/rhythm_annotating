@@ -22,6 +22,12 @@ export default function WorkArea() {
             soundLanes: newlanes,
         });
     }
+    function setTimeMultiplier(newm: number) {
+        setProject({
+            ...objProject,
+            timeMultiplier: newm,
+        });
+    }
     return (
         <div className="WorkArea">
             <div className="flex flex-col">
@@ -31,6 +37,8 @@ export default function WorkArea() {
                         <WorkMenu
                             setSoundLanes={setSoundLanes}
                             refSoundLanes={objProject.soundLanes}
+                            refTimeMultiplier={objProject.timeMultiplier}
+                            setTimeMultiplier={setTimeMultiplier}
                         />
                     </div>
                 </div>
@@ -45,6 +53,11 @@ export default function WorkArea() {
                                     soundFile={lane.mediaFilePath}
                                     refSoundLane={lane}
                                     setSoundLane={setIndexSoundLane}
+                                    timeRange={[
+                                        objProject.currentTime,
+                                        objProject.currentTime +
+                                            objProject.timeMultiplier * 5.0,
+                                    ]}
                                 />
                             ))}
                         </div>

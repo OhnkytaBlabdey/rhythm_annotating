@@ -10,10 +10,12 @@ interface _prop {
 function SoundMenu(prop: _prop) {
     return (
         <div>
-            <AddNoteLane
-                refNoteLanes={prop.refNoteLanes}
-                setNoteLanes={prop.setNoteLanes}
-            ></AddNoteLane>
+            <div className="flex flex-col">
+                <AddNoteLane
+                    refNoteLanes={prop.refNoteLanes}
+                    setNoteLanes={prop.setNoteLanes}
+                />
+            </div>
         </div>
     );
 }

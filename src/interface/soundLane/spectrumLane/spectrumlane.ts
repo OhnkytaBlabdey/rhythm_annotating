@@ -1,14 +1,10 @@
 export interface spectrumlane {
-    mediaFilePath: string;
-    timeMultiplier: number;
     paletteSchema: string;
     isFolded: boolean;
 }
-export function defaultSpectrumLane(file: string) {
+export function defaultSpectrumLane() {
     return {
         isFolded: false,
-        mediaFilePath: file,
         paletteSchema: "default",
-        timeMultiplier: 1,
     } as spectrumlane;
 }
