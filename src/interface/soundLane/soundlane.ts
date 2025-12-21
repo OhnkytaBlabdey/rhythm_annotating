@@ -1,6 +1,6 @@
-import { notelane } from "./noteLane/notelane";
-import { spectrumlane } from "./spectrumLane/spectrumlane";
-import { wavelane } from "./waveLane/wavelane";
+import { defaultNoteLane, notelane } from "./noteLane/notelane";
+import { defaultSpectrumLane, spectrumlane } from "./spectrumLane/spectrumlane";
+import { defaultWaveLane, wavelane } from "./waveLane/wavelane";
 
 export interface soundlane {
     mediaFilePath: string;
@@ -10,4 +10,15 @@ export interface soundlane {
     noteLanes: notelane[];
     waveLane: wavelane;
     spectrumLane: spectrumlane;
+}
+export function defaultSoundLane(file: string) {
+    return {
+        isActive: false,
+        isPlayComplete: false,
+        mediaFilePath: file,
+        noteLanes: [defaultNoteLane()],
+        offset: 0,
+        spectrumLane: defaultSpectrumLane(file),
+        waveLane: defaultWaveLane(file),
+    } as soundlane;
 }

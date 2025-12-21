@@ -6,19 +6,17 @@ import { measure } from "@/interface/soundLane/noteLane/measure/measure";
 const cls = classNames.bind(style);
 
 interface _prop {
-    bpm: number;
-    flagNoBeat: boolean;
+    refMeasure: measure;
+    i: number;
+    setMeasure: (_: measure) => void;
 }
 export function Measure(prop: _prop) {
-    const [objmeasure, setmeasure] = useState<measure>({
-        noBeat: prop.flagNoBeat,
-        bpm: prop.flagNoBeat ? 0 : prop.bpm,
-        notes: [],
-    });
     return (
         <div className="Measure">
             <div className={cls("inactive")}>
-                <span>{objmeasure.noBeat ? "无节拍" : objmeasure.bpm}</span>
+                <span>
+                    {prop.refMeasure.noBeat ? "无节拍" : prop.refMeasure.bpm}
+                </span>
             </div>
         </div>
     );

@@ -1,4 +1,4 @@
-import { soundlane } from "./soundLane/soundlane";
+import { defaultSoundLane, soundlane } from "./soundLane/soundlane";
 
 export interface project {
     currentTime: number;
@@ -6,4 +6,13 @@ export interface project {
     isPlaying: boolean;
     playSpeed: number; //播放倍速
     soundLanes: soundlane[];
+}
+export function defaultProject() {
+    return {
+        currentTime: 0,
+        duration: 0,
+        isPlaying: false,
+        playSpeed: 1,
+        soundLanes: [defaultSoundLane("example.mp3")],
+    } as project;
 }

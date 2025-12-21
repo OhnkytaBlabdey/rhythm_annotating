@@ -9,7 +9,7 @@ import { soundlane } from "@/interface/soundLane/soundlane";
 interface _prop {
     index: number;
     soundFile: string;
-    soundLaneData: soundlane;
+    refSoundLane: soundlane;
     setSoundLane: (i: number, l: soundlane) => void;
 }
 
@@ -18,15 +18,15 @@ export default function SoundLane(prop: _prop) {
     //看情况，如果其他轨激活，这个轨有可能要取消激活
     function handleClickToActivate() {
         const updatedSoundLane = {
-            ...prop.soundLaneData,
-            isActive: true,
+            ...prop.refSoundLane,
+            isActive: !prop.refSoundLane.isActive,
         };
         prop.setSoundLane(prop.index, updatedSoundLane);
     }
 
     function setNoteLanes(newNoteLanes: notelane[]) {
         const updatedSoundLane = {
-            ...prop.soundLaneData,
+            ...prop.refSoundLane,
             noteLanes: newNoteLanes,
         };
         prop.setSoundLane(prop.index, updatedSoundLane);
@@ -40,19 +40,29 @@ export default function SoundLane(prop: _prop) {
             <div>
                 <SoundFileTitleBar
                     soundFile={prop.soundFile}
-                    isActive={prop.soundLaneData.isActive || false}
+                    isActive={prop.refSoundLane.isActive || false}
                 />
             </div>
             <div className="flex flex-1">
                 <div className="w-auto" onClick={(e) => e.stopPropagation()}>
                     <SoundMenu
-                        refNoteLanes={prop.soundLaneData.noteLanes}
+                        refNoteLanes={prop.refSoundLane.noteLanes}
                         setNoteLanes={setNoteLanes}
                     ></SoundMenu>
                 </div>
                 <div className="flex-1 overflow-auto">
-                    {prop.soundLaneData.noteLanes.map((lane, index) => (
-                        <NoteLane key={`${prop.index}-${index}`} />
+                    {prop.refSoundLane.noteLanes.map((lane, index) => (
+                        <NoteLane
+                            key={`${prop.index}-${index}`}
+                            Key={`${prop.index}-${index}`}
+                            index={index}
+                            refNoteLane={lane}
+                            setNoteLane={(newlane) => {
+                                const newlanes = prop.refSoundLane.noteLanes;
+                                newlanes[index] = newlane;
+                                setNoteLanes(newlanes);
+                            }}
+                        />
                     ))}
                 </div>
             </div>

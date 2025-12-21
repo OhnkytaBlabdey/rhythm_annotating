@@ -1,5 +1,8 @@
 "use client";
-import { notelane } from "@/interface/soundLane/noteLane/notelane";
+import {
+    defaultNoteLane,
+    notelane,
+} from "@/interface/soundLane/noteLane/notelane";
 import Image from "next/image";
 import style from "./addNoteLane.module.css";
 import classNames from "classnames/bind";
@@ -11,13 +14,7 @@ interface _prop {
 
 function AddNoteLane(prop: _prop) {
     const handleAddNoteLane = () => {
-        prop.setNoteLanes([
-            ...prop.refNoteLanes,
-            {
-                measures: [],
-                startTime: 0,
-            },
-        ]);
+        prop.setNoteLanes([...prop.refNoteLanes, defaultNoteLane()]);
     };
 
     return (
@@ -25,7 +22,7 @@ function AddNoteLane(prop: _prop) {
             <button
                 onClick={handleAddNoteLane}
                 title="Click to AddNoteLane"
-                className={cls("icon-button")}
+                className={`${cls("icon-button")} flex items-center gap-2`}
             >
                 <Image
                     src="/assets/icons/newNoteLane.png"
@@ -33,6 +30,7 @@ function AddNoteLane(prop: _prop) {
                     width={24}
                     height={24}
                 />
+                <span>添加记谱</span>
             </button>
         </div>
     );
