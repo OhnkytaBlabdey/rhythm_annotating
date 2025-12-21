@@ -154,9 +154,11 @@ function WaveLane(p: _p) {
                 console.error("音频解码失败:", error);
             }
         );
-    }, [p.arrayBuffer]);
+    }, [p.arrayBuffer, p.timeRange, p.waveLane.amplitudeMultiplier]);
 
     // 当时间范围或幅度改变时重新绘制
+    const amplitudeMultiplier = p.waveLane.amplitudeMultiplier;
+
     useEffect(() => {
         if (!canvasRef.current || !audioBufferRef.current) return;
 
@@ -167,9 +169,9 @@ function WaveLane(p: _p) {
             ctx,
             audioBufferRef.current,
             p.timeRange,
-            p.waveLane.amplitudeMultiplier
+            amplitudeMultiplier
         );
-    }, [p.timeRange[0], p.timeRange[1], p.waveLane.amplitudeMultiplier]);
+    }, [p.timeRange, amplitudeMultiplier]);
 
     return (
         <div>
