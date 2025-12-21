@@ -6,6 +6,7 @@ interface _p {
     timeRange: [number, number];
     mediaFilePath: string;
     waveLane: wavelane;
+    setWaveLane: (_: wavelane) => void;
     arrayBuffer?: ArrayBuffer;
 }
 //TODO 如果新的更新事件来了，丢弃未算完的，直接更新到最新
@@ -173,11 +174,22 @@ function WaveLane(p: _p) {
             amplitudeMultiplier
         );
     }, [p.timeRange, amplitudeMultiplier]);
+    function setAmplitudeMultiplier(newampmulti: number) {
+        p.setWaveLane({
+            ...p.waveLane,
+            amplitudeMultiplier: newampmulti,
+        });
+    }
 
     return (
         <div>
             <div className="flex gap-2">
-                <WaveMenu />
+                <div className="flex" onClick={(e) => e.stopPropagation()}>
+                    <WaveMenu
+                        refAmplitudeMultiplier={p.waveLane.amplitudeMultiplier}
+                        setAmplitudeMultiplier={setAmplitudeMultiplier}
+                    />
+                </div>
                 <div className="text-sm text-gray-600">
                     WaveLane {t_left.toFixed(4)} - {t_right.toFixed(4)} s
                 </div>

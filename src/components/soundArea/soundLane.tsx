@@ -6,6 +6,7 @@ import { notelane } from "@/interface/soundLane/noteLane/notelane";
 import SoundMenu from "./menuArea/soundMenu";
 import { soundlane } from "@/interface/soundLane/soundlane";
 import WaveLane from "./waveArea/waveLane";
+import { wavelane } from "@/interface/soundLane/waveLane/wavelane";
 
 interface _prop {
     index: number;
@@ -28,6 +29,13 @@ export default function SoundLane(prop: _prop) {
         const updatedSoundLane = {
             ...prop.refSoundLane,
             noteLanes: newNoteLanes,
+        };
+        prop.setSoundLane(prop.index, updatedSoundLane);
+    }
+    function setWaveLane(newwavelane: wavelane) {
+        const updatedSoundLane = {
+            ...prop.refSoundLane,
+            waveLane: newwavelane,
         };
         prop.setSoundLane(prop.index, updatedSoundLane);
     }
@@ -59,6 +67,7 @@ export default function SoundLane(prop: _prop) {
                     <WaveLane
                         mediaFilePath={prop.soundFile}
                         waveLane={prop.refSoundLane.waveLane}
+                        setWaveLane={setWaveLane}
                         arrayBuffer={prop.refSoundLane.audioBuffer}
                         key={`${prop.index}-wave`}
                         timeRange={prop.timeRange}
