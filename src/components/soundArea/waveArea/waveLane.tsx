@@ -1,5 +1,6 @@
 import { wavelane } from "@/interface/soundLane/waveLane/wavelane";
 import React, { useEffect, useRef } from "react";
+import WaveMenu from "./menuArea/waveMenu";
 
 interface _p {
     timeRange: [number, number];
@@ -7,7 +8,7 @@ interface _p {
     waveLane: wavelane;
     arrayBuffer?: ArrayBuffer;
 }
-
+//TODO 如果新的更新事件来了，丢弃未算完的，直接更新到最新
 function WaveLane(p: _p) {
     const [t_left, t_right] = p.timeRange;
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -175,19 +176,22 @@ function WaveLane(p: _p) {
 
     return (
         <div>
-            <div className="text-sm text-gray-600">
-                WaveLane {t_left.toFixed(4)} - {t_right.toFixed(4)} s
+            <div className="flex gap-2">
+                <WaveMenu />
+                <div className="text-sm text-gray-600">
+                    WaveLane {t_left.toFixed(4)} - {t_right.toFixed(4)} s
+                </div>
+                <canvas
+                    ref={canvasRef}
+                    width={800}
+                    height={100}
+                    style={{
+                        border: "1px solid #ccc",
+                        width: "100%",
+                        height: "auto",
+                    }}
+                />
             </div>
-            <canvas
-                ref={canvasRef}
-                width={800}
-                height={100}
-                style={{
-                    border: "1px solid #ccc",
-                    width: "100%",
-                    height: "auto",
-                }}
-            />
         </div>
     );
 }
