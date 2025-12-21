@@ -5,6 +5,7 @@ import { NoteLane } from "./noteArea/noteLane";
 import { notelane } from "@/interface/soundLane/noteLane/notelane";
 import SoundMenu from "./menuArea/soundMenu";
 import { soundlane } from "@/interface/soundLane/soundlane";
+import WaveLane from "./waveArea/waveLane";
 
 interface _prop {
     index: number;
@@ -42,7 +43,8 @@ export default function SoundLane(prop: _prop) {
                     isActive={prop.refSoundLane.isActive || false}
                 />
                 <div>
-                    {prop.timeRange[0]} - {prop.timeRange[1].toFixed(4)} second
+                    {prop.timeRange[0].toFixed(4)} -{" "}
+                    {prop.timeRange[1].toFixed(4)} second
                 </div>
             </div>
             <div className="flex flex-1">
@@ -53,6 +55,15 @@ export default function SoundLane(prop: _prop) {
                     ></SoundMenu>
                 </div>
                 <div className="flex-1 overflow-auto">
+                    {/* wave */}
+                    <WaveLane
+                        mediaFilePath={prop.soundFile}
+                        waveLane={prop.refSoundLane.waveLane}
+                        key={`${prop.index}-wave`}
+                        timeRange={prop.timeRange}
+                    />
+                    {/* spectrum */}
+                    {/* notes */}
                     {prop.refSoundLane.noteLanes.map((lane, index) => (
                         <NoteLane
                             key={`${prop.index}-${index}`}
