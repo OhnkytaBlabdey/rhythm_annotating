@@ -12,22 +12,56 @@ interface _p {
 
 interface WaveformCache {
     audioBuffer: AudioBuffer;
+    mixedData: Float32Array; // 已混合的单通道数据
+    sampleRate: number;
+}
+
+/**
+ * 多通道混合为单通道（初始化阶段一次性执行）
+ */
+function mixDownToMono(audioBuffer: AudioBuffer): Float32Array {
+    const channelCount = audioBuffer.numberOfChannels;
+    const length = audioBuffer.length;
+
+    if (channelCount === 1) {
+        // 拷贝，避免直接引用 AudioBuffer 内部数据
+        return audioBuffer.getChannelData(0).slice();
+    }
+
+    const mixed = new Float32Array(length);
+
+    for (let c = 0; c < channelCount; c++) {
+        const channelData = audioBuffer.getChannelData(c);
+        for (let i = 0; i < length; i++) {
+            mixed[i] += channelData[i];
+        }
+    }
+
+    const inv = 1 / channelCount;
+    for (let i = 0; i < length; i++) {
+        mixed[i] *= inv;
+    }
+
+    return mixed;
 }
 
 function WaveLane(p: _p) {
     const [t_left, t_right] = p.timeRange;
-    const CANVAS_PHYSICAL_WIDTH = 800; // 固定canvas物理宽度
+    const CANVAS_PHYSICAL_WIDTH = 800;
     const CANVAS_HEIGHT = 100;
+
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
-    const audioBufferRef = useRef<AudioBuffer | null>(null);
     const waveformCacheRef = useRef<WaveformCache | null>(null);
     const [isCacheReady, setIsCacheReady] = useState(false);
 
-    // 根据显示范围从AudioBuffer实时采样并绘制波形
+    /**
+     * 使用缓存的单通道数据实时绘制波形
+     */
     const drawWaveform = (
         ctx: CanvasRenderingContext2D,
-        audioBuffer: AudioBuffer,
+        mixedData: Float32Array,
+        sampleRate: number,
         timeRange: [number, number],
         amplitudeMultiplier: number
     ) => {
@@ -36,43 +70,21 @@ function WaveLane(p: _p) {
         const height = canvas.height;
         const [t_left, t_right] = timeRange;
 
-        // 清空画布
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, width, height);
 
-        const sampleRate = audioBuffer.sampleRate;
-        const channelCount = audioBuffer.numberOfChannels;
-        let audioData = audioBuffer.getChannelData(0);
-
-        // 混合多通道
-        if (channelCount > 1) {
-            audioData = new Float32Array(audioBuffer.length);
-            for (let c = 0; c < channelCount; c++) {
-                const channelData = audioBuffer.getChannelData(c);
-                for (let i = 0; i < audioBuffer.length; i++) {
-                    audioData[i] += channelData[i];
-                }
-            }
-            for (let i = 0; i < audioData.length; i++) {
-                audioData[i] /= channelCount;
-            }
-        }
-
-        // 计算采样范围
         const startSample = Math.max(0, Math.floor(t_left * sampleRate));
         const endSample = Math.min(
-            audioBuffer.length,
+            mixedData.length,
             Math.ceil(t_right * sampleRate)
         );
-        const rangeLength = endSample - startSample;
 
+        const rangeLength = endSample - startSample;
         if (rangeLength <= 0) return;
 
-        // 计算每个像素对应的采样数
         const samplesPerPixel = Math.max(1, Math.floor(rangeLength / width));
         const centerY = height / 2;
 
-        // 绘制波形
         ctx.strokeStyle = "#0066cc";
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -84,15 +96,14 @@ function WaveLane(p: _p) {
             let minVal = 0;
             let maxVal = 0;
 
-            // 采样范围内的最大/最小值
             for (
                 let j = 0;
                 j < samplesPerPixel && sampleIndex + j < endSample;
                 j++
             ) {
-                const sample = audioData[sampleIndex + j];
-                minVal = Math.min(minVal, sample);
-                maxVal = Math.max(maxVal, sample);
+                const v = mixedData[sampleIndex + j];
+                if (v < minVal) minVal = v;
+                if (v > maxVal) maxVal = v;
             }
 
             const y1 = centerY - maxVal * (height / 2) * amplitudeMultiplier;
@@ -108,7 +119,6 @@ function WaveLane(p: _p) {
 
         ctx.stroke();
 
-        // 绘制中线
         ctx.strokeStyle = "#cccccc";
         ctx.lineWidth = 0.5;
         ctx.beginPath();
@@ -117,7 +127,9 @@ function WaveLane(p: _p) {
         ctx.stroke();
     };
 
-    // 解码音频并保存引用
+    /**
+     * 解码音频并初始化缓存（只做一次重计算）
+     */
     useEffect(() => {
         if (!p.arrayBuffer) return;
 
@@ -132,16 +144,19 @@ function WaveLane(p: _p) {
             audioContextRef.current = new AudioContextConstructor();
         }
 
-        // setIsCacheReady(false);
         const arrayBufferCopy = p.arrayBuffer.slice(0);
 
         audioContextRef.current.decodeAudioData(
             arrayBufferCopy,
             (audioBuffer) => {
-                audioBufferRef.current = audioBuffer;
+                const mixedData = mixDownToMono(audioBuffer);
+
                 waveformCacheRef.current = {
-                    audioBuffer: audioBuffer,
+                    audioBuffer,
+                    mixedData,
+                    sampleRate: audioBuffer.sampleRate,
                 };
+
                 setIsCacheReady(true);
             },
             (error) => {
@@ -151,21 +166,20 @@ function WaveLane(p: _p) {
         );
     }, [p.arrayBuffer]);
 
-    // 初始化canvas物理尺寸（仅执行一次）
+    /**
+     * 初始化 canvas 物理尺寸
+     */
     useEffect(() => {
         if (!canvasRef.current) return;
         canvasRef.current.width = CANVAS_PHYSICAL_WIDTH;
         canvasRef.current.height = CANVAS_HEIGHT;
     }, []);
 
-    // 根据时间范围和幅度实时绘制波形
+    /**
+     * 时间范围 / 幅度变化时实时重绘
+     */
     useEffect(() => {
-        if (
-            !canvasRef.current ||
-            !audioBufferRef.current ||
-            !waveformCacheRef.current ||
-            !isCacheReady
-        )
+        if (!canvasRef.current || !waveformCacheRef.current || !isCacheReady)
             return;
 
         const ctx = canvasRef.current.getContext("2d");
@@ -173,11 +187,13 @@ function WaveLane(p: _p) {
 
         drawWaveform(
             ctx,
-            waveformCacheRef.current.audioBuffer,
+            waveformCacheRef.current.mixedData,
+            waveformCacheRef.current.sampleRate,
             p.timeRange,
             p.waveLane.amplitudeMultiplier
         );
     }, [p.timeRange, p.waveLane.amplitudeMultiplier, isCacheReady]);
+
     function setAmplitudeMultiplier(newampmulti: number) {
         p.setWaveLane({
             ...p.waveLane,
