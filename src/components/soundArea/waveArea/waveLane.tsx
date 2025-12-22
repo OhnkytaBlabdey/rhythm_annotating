@@ -1,5 +1,5 @@
 import { wavelane } from "@/interface/soundLane/waveLane/wavelane";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useMemo, useState } from "react";
 import WaveMenu from "./menuArea/waveMenu";
 
 interface _p {
@@ -9,13 +9,23 @@ interface _p {
     setWaveLane: (_: wavelane) => void;
     arrayBuffer?: ArrayBuffer;
 }
-//TODO 如果新的更新事件来了，丢弃未算完的，直接更新到最新
+
+interface WaveformCache {
+    audioBuffer: AudioBuffer;
+}
+
 function WaveLane(p: _p) {
     const [t_left, t_right] = p.timeRange;
+    const CANVAS_PHYSICAL_WIDTH = 800; // 固定canvas物理宽度
+    const CANVAS_HEIGHT = 100;
+    const TARGET_PIXELS_PER_SECOND = 1000; // 目标分辨率：每秒1000像素
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const audioBufferRef = useRef<AudioBuffer | null>(null);
+    const waveformCacheRef = useRef<WaveformCache | null>(null);
+    const [isCacheReady, setIsCacheReady] = useState(false);
 
+    // 根据显示范围从AudioBuffer实时采样并绘制波形
     const drawWaveform = (
         ctx: CanvasRenderingContext2D,
         audioBuffer: AudioBuffer,
@@ -26,18 +36,17 @@ function WaveLane(p: _p) {
         const width = canvas.width;
         const height = canvas.height;
         const [t_left, t_right] = timeRange;
-        const sampleRate = audioBuffer.sampleRate;
 
         // 清空画布
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, width, height);
 
-        // 获取单声道数据（如果是立体声，混合左右声道）
+        const sampleRate = audioBuffer.sampleRate;
         const channelCount = audioBuffer.numberOfChannels;
         let audioData = audioBuffer.getChannelData(0);
 
+        // 混合多通道
         if (channelCount > 1) {
-            // 如果是立体声，混合所有声道
             audioData = new Float32Array(audioBuffer.length);
             for (let c = 0; c < channelCount; c++) {
                 const channelData = audioBuffer.getChannelData(c);
@@ -45,41 +54,38 @@ function WaveLane(p: _p) {
                     audioData[i] += channelData[i];
                 }
             }
-            // 归一化
             for (let i = 0; i < audioData.length; i++) {
                 audioData[i] /= channelCount;
             }
         }
 
-        // 计算起始和结束样本索引
+        // 计算采样范围
         const startSample = Math.max(0, Math.floor(t_left * sampleRate));
         const endSample = Math.min(
             audioBuffer.length,
-            Math.floor(t_right * sampleRate)
+            Math.ceil(t_right * sampleRate)
         );
-        const totalSamples = endSample - startSample;
+        const rangeLength = endSample - startSample;
 
-        if (totalSamples <= 0) return;
+        if (rangeLength <= 0) return;
+
+        // 计算每个像素对应的采样数
+        const samplesPerPixel = Math.max(1, Math.floor(rangeLength / width));
+        const centerY = height / 2;
 
         // 绘制波形
         ctx.strokeStyle = "#0066cc";
         ctx.lineWidth = 1;
         ctx.beginPath();
 
-        const centerY = height / 2;
-
-        // 为了性能，可能需要跳过一些样本进行绘制
-        const samplesPerPixel = Math.max(1, Math.floor(totalSamples / width));
-
         for (let i = 0; i < width; i++) {
             const sampleIndex = startSample + i * samplesPerPixel;
+            if (sampleIndex >= endSample) break;
 
-            if (sampleIndex >= audioBuffer.length) break;
-
-            // 计算该像素对应的最大和最小幅度
             let minVal = 0;
             let maxVal = 0;
 
+            // 采样范围内的最大/最小值
             for (
                 let j = 0;
                 j < samplesPerPixel && sampleIndex + j < endSample;
@@ -90,13 +96,8 @@ function WaveLane(p: _p) {
                 maxVal = Math.max(maxVal, sample);
             }
 
-            // 应用幅度系数
-            minVal *= amplitudeMultiplier;
-            maxVal *= amplitudeMultiplier;
-
-            // 绘制垂直线
-            const y1 = centerY - maxVal * (height / 2);
-            const y2 = centerY - minVal * (height / 2);
+            const y1 = centerY - maxVal * (height / 2) * amplitudeMultiplier;
+            const y2 = centerY - minVal * (height / 2) * amplitudeMultiplier;
 
             if (i === 0) {
                 ctx.moveTo(i, y1);
@@ -117,7 +118,7 @@ function WaveLane(p: _p) {
         ctx.stroke();
     };
 
-    // 解码音频
+    // 解码音频并保存引用
     useEffect(() => {
         if (!p.arrayBuffer) return;
 
@@ -132,48 +133,51 @@ function WaveLane(p: _p) {
             audioContextRef.current = new AudioContextConstructor();
         }
 
-        // Clone the ArrayBuffer to avoid detached buffer issues
+        setIsCacheReady(false);
         const arrayBufferCopy = p.arrayBuffer.slice(0);
 
         audioContextRef.current.decodeAudioData(
             arrayBufferCopy,
             (audioBuffer) => {
                 audioBufferRef.current = audioBuffer;
-                // 解码完成后立即绘制
-                if (canvasRef.current) {
-                    const ctx = canvasRef.current.getContext("2d");
-                    if (ctx) {
-                        drawWaveform(
-                            ctx,
-                            audioBuffer,
-                            p.timeRange,
-                            p.waveLane.amplitudeMultiplier
-                        );
-                    }
-                }
+                waveformCacheRef.current = {
+                    audioBuffer: audioBuffer,
+                };
+                setIsCacheReady(true);
             },
             (error) => {
                 console.error("音频解码失败:", error);
             }
         );
-    }, [p.arrayBuffer, p.timeRange, p.waveLane.amplitudeMultiplier]);
+    }, [p.arrayBuffer]);
 
-    // 当时间范围或幅度改变时重新绘制
-    const amplitudeMultiplier = p.waveLane.amplitudeMultiplier;
-
+    // 初始化canvas物理尺寸（仅执行一次）
     useEffect(() => {
-        if (!canvasRef.current || !audioBufferRef.current) return;
+        if (!canvasRef.current) return;
+        canvasRef.current.width = CANVAS_PHYSICAL_WIDTH;
+        canvasRef.current.height = CANVAS_HEIGHT;
+    }, []);
+
+    // 根据时间范围和幅度实时绘制波形
+    useEffect(() => {
+        if (
+            !canvasRef.current ||
+            !audioBufferRef.current ||
+            !waveformCacheRef.current ||
+            !isCacheReady
+        )
+            return;
 
         const ctx = canvasRef.current.getContext("2d");
         if (!ctx) return;
 
         drawWaveform(
             ctx,
-            audioBufferRef.current,
+            waveformCacheRef.current.audioBuffer,
             p.timeRange,
-            amplitudeMultiplier
+            p.waveLane.amplitudeMultiplier
         );
-    }, [p.timeRange, amplitudeMultiplier]);
+    }, [p.timeRange, p.waveLane.amplitudeMultiplier, isCacheReady]);
     function setAmplitudeMultiplier(newampmulti: number) {
         p.setWaveLane({
             ...p.waveLane,
@@ -195,8 +199,8 @@ function WaveLane(p: _p) {
                 </div>
                 <canvas
                     ref={canvasRef}
-                    width={800}
-                    height={100}
+                    width={CANVAS_PHYSICAL_WIDTH}
+                    height={CANVAS_HEIGHT}
                     style={{
                         border: "1px solid #ccc",
                         width: "100%",

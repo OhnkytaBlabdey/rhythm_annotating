@@ -62,7 +62,7 @@ export default function SoundLane(prop: _prop) {
                         setNoteLanes={setNoteLanes}
                     ></SoundMenu>
                 </div>
-                <div className="flex-1 overflow-auto">
+                <div className="flex-1 overflow-hidden">
                     {/* wave */}
                     <WaveLane
                         mediaFilePath={prop.soundFile}
