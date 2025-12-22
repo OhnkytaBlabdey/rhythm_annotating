@@ -11,6 +11,7 @@ import SpectrumLane from "./spectrumArea/spectrumLane";
 import { spectrumlane } from "@/interface/soundLane/spectrumLane/spectrumlane";
 import WaveMenu from "./waveArea/menuArea/waveMenu";
 import SpectrumMenu from "./spectrumArea/menuArea/spectrumMenu";
+import NoteMenu from "./noteArea/menuArea/noteMenu";
 
 interface _prop {
     index: number;
@@ -100,6 +101,7 @@ export default function SoundLane(prop: _prop) {
                             });
                         }}
                     />
+                    <NoteMenu />
                 </div>
                 <div className="flex-1">
                     {/* <div className="time-axis-container"> */}

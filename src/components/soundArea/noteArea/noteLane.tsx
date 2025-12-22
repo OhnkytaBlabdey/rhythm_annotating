@@ -12,23 +12,25 @@ interface _prop {
 export function NoteLane(prop: _prop) {
     return (
         <div className="NoteLane">
-            <NoteMenu />
-            {/* measures */}
-            {prop.refNoteLane.measures.map((m, index) => (
-                <Measure
-                    refMeasure={m}
-                    key={`${prop.Key}-${index}`}
-                    setMeasure={(newm: measure) => {
-                        const newms = prop.refNoteLane.measures;
-                        newms[index] = newm;
-                        prop.setNoteLane({
-                            ...prop.refNoteLane,
-                            measures: newms,
-                        });
-                    }}
-                    i={index}
-                />
-            ))}
+            <div className="flex">
+                {/* <NoteMenu /> */}
+                {/* measures */}
+                {prop.refNoteLane.measures.map((m, index) => (
+                    <Measure
+                        refMeasure={m}
+                        key={`${prop.Key}-${index}`}
+                        setMeasure={(newm: measure) => {
+                            const newms = prop.refNoteLane.measures;
+                            newms[index] = newm;
+                            prop.setNoteLane({
+                                ...prop.refNoteLane,
+                                measures: newms,
+                            });
+                        }}
+                        i={index}
+                    />
+                ))}
+            </div>
         </div>
     );
 }
