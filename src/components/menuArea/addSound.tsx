@@ -56,7 +56,7 @@ function AddSound(prop: _prop) {
                 <Image
                     src="/assets/icons/newSoundLane.png"
                     alt="Add Sound Lane"
-                    width={24}
+                    width={36}
                     height={24}
                 />
                 <span>添加音频</span>

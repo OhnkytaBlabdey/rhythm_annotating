@@ -22,7 +22,7 @@ function TimeScale(p: _p) {
                     <Image
                         src="/assets/icons/zoomIn.png"
                         alt="放大时间视图"
-                        width={24}
+                        width={48}
                         height={24}
                     />
                 </button>
@@ -34,7 +34,7 @@ function TimeScale(p: _p) {
                     <Image
                         src="/assets/icons/zoomOut.png"
                         alt="缩小时间视图"
-                        width={24}
+                        width={48}
                         height={24}
                     />
                 </button>
