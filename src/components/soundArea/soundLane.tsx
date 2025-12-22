@@ -8,6 +8,7 @@ import { soundlane } from "@/interface/soundLane/soundlane";
 import WaveLane from "./waveArea/waveLane";
 import { wavelane } from "@/interface/soundLane/waveLane/wavelane";
 import SpectrumLane from "./spectrumArea/spectrumLane";
+import { spectrumlane } from "@/interface/soundLane/spectrumLane/spectrumlane";
 
 interface _prop {
     index: number;
@@ -37,6 +38,13 @@ export default function SoundLane(prop: _prop) {
         const updatedSoundLane = {
             ...prop.refSoundLane,
             waveLane: newwavelane,
+        };
+        prop.setSoundLane(prop.index, updatedSoundLane);
+    }
+    function setSpectrumLane(newspectrumlane: spectrumlane) {
+        const updatedSoundLane = {
+            ...prop.refSoundLane,
+            spectrumLane: newspectrumlane,
         };
         prop.setSoundLane(prop.index, updatedSoundLane);
     }
@@ -74,7 +82,14 @@ export default function SoundLane(prop: _prop) {
                         timeRange={prop.timeRange}
                     />
                     {/* spectrum */}
-                    <SpectrumLane />
+                    <SpectrumLane
+                        mediaFilePath={prop.soundFile}
+                        spectrumLane={prop.refSoundLane.spectrumLane}
+                        setSpectrumLane={setSpectrumLane}
+                        arrayBuffer={prop.refSoundLane.audioBuffer}
+                        key={`${prop.index}-spectrum`}
+                        timeRange={prop.timeRange}
+                    />
                     {/* notes */}
                     {prop.refSoundLane.noteLanes.map((lane, index) => (
                         <NoteLane
