@@ -11,7 +11,7 @@ export function defaultMeasure() {
         noBeat: false,
         bpm: 60,
         notes: [],
-        currentDivide: 1,
+        currentDivide: 4,
         currentNum: 0,
     } as measure;
 }

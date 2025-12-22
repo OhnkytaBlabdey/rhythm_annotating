@@ -2,6 +2,7 @@
 import { notelane } from "@/interface/soundLane/noteLane/notelane";
 import { Measure } from "./measureArea/measure";
 import { measure } from "@/interface/soundLane/noteLane/measure/measure";
+import NoteMenu from "./menuArea/noteMenu";
 interface _prop {
     index: number;
     Key: string;
@@ -11,6 +12,7 @@ interface _prop {
 export function NoteLane(prop: _prop) {
     return (
         <div className="NoteLane">
+            <NoteMenu />
             {/* measures */}
             {prop.refNoteLane.measures.map((m, index) => (
                 <Measure
