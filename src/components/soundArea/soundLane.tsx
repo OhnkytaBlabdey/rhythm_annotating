@@ -83,8 +83,23 @@ export default function SoundLane(prop: _prop) {
                             prop.refSoundLane.waveLane.amplitudeMultiplier
                         }
                         setAmplitudeMultiplier={setAmplitudeMultiplier}
+                        refIsFold={prop.refSoundLane.waveLane.isFolded}
+                        setIsFold={(fold: boolean) => {
+                            setWaveLane({
+                                ...prop.refSoundLane.waveLane,
+                                isFolded: fold,
+                            });
+                        }}
                     />
-                    <SpectrumMenu />
+                    <SpectrumMenu
+                        refIsFold={prop.refSoundLane.spectrumLane.isFolded}
+                        setIsFold={(fold: boolean) => {
+                            setSpectrumLane({
+                                ...prop.refSoundLane.spectrumLane,
+                                isFolded: fold,
+                            });
+                        }}
+                    />
                 </div>
                 <div className="flex-1">
                     {/* <div className="time-axis-container"> */}

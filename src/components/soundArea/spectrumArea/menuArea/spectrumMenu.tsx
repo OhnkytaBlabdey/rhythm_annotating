@@ -1,10 +1,19 @@
 import React from "react";
-
-function SpectrumMenu() {
+import FoldSpectrum from "./foldSpectrum";
+interface _p {
+    refIsFold: boolean;
+    setIsFold: (_: boolean) => void;
+}
+function SpectrumMenu(p: _p) {
     return (
         <div>
             <div className="flex flex-col">
-                <div>SpectrumMenu</div>
+                <div>
+                    <FoldSpectrum
+                        setIsFold={p.setIsFold}
+                        refIsFold={p.refIsFold}
+                    />
+                </div>
             </div>
         </div>
     );

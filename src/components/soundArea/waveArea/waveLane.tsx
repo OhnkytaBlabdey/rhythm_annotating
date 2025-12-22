@@ -196,25 +196,18 @@ function WaveLane(p: _p) {
     return (
         <div>
             <div className="flex gap-2">
-                {/* <div className="flex" onClick={(e) => e.stopPropagation()}>
-                    <WaveMenu
-                        refAmplitudeMultiplier={p.waveLane.amplitudeMultiplier}
-                        setAmplitudeMultiplier={setAmplitudeMultiplier}
+                {!p.waveLane.isFolded && (
+                    <canvas
+                        ref={canvasRef}
+                        width={CANVAS_PHYSICAL_WIDTH}
+                        height={CANVAS_HEIGHT}
+                        style={{
+                            border: "1px solid #ccc",
+                            width: "100%",
+                            height: "auto",
+                        }}
                     />
-                </div> */}
-                {/* <div className="text-sm text-gray-600">
-                    WaveLane {t_left.toFixed(4)} - {t_right.toFixed(4)} s
-                </div> */}
-                <canvas
-                    ref={canvasRef}
-                    width={CANVAS_PHYSICAL_WIDTH}
-                    height={CANVAS_HEIGHT}
-                    style={{
-                        border: "1px solid #ccc",
-                        width: "100%",
-                        height: "auto",
-                    }}
-                />
+                )}
             </div>
         </div>
     );

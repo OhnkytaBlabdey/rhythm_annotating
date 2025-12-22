@@ -1,5 +1,8 @@
 import Image from "next/image";
 import React from "react";
+import style from "./waveMenu.module.css";
+import classNames from "classnames/bind";
+const cls = classNames.bind(style);
 interface _p {
     refAmplitudeMultiplier: number;
     setAmplitudeMultiplier: (_: number) => void;
@@ -17,7 +20,7 @@ function AmplitudeScale(p: _p) {
                 <button
                     onClick={handleAmpUp}
                     title="Amplitude Up"
-                    className={`flex items-center gap-2`}
+                    className={`flex items-center gap-2 ${cls("button")}`}
                 >
                     <Image
                         src="/assets/icons/ampUp.png"
@@ -25,11 +28,12 @@ function AmplitudeScale(p: _p) {
                         width={24}
                         height={24}
                     />
+                    <span>放大振幅</span>
                 </button>
                 <button
                     onClick={handleAmpDown}
                     title="Amplitude Down"
-                    className={`flex items-center gap-2`}
+                    className={`flex items-center gap-2 ${cls("button")}`}
                 >
                     <Image
                         src="/assets/icons/ampDown.png"
@@ -37,6 +41,7 @@ function AmplitudeScale(p: _p) {
                         width={24}
                         height={24}
                     />
+                    <span>缩小振幅</span>
                 </button>
             </div>
         </div>
