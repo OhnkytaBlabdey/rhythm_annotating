@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { spectrumlane } from "@/interface/soundLane/spectrumLane/spectrumlane";
-import SpectrumMenu from "./menuArea/spectrumMenu";
+import SpectrumMenu from "../soundMenu/spectrumMenu/spectrumMenu";
 
 interface _p {
     timeRange: [number, number];

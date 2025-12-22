@@ -1,5 +1,8 @@
 import Image from "next/image";
 import React from "react";
+import style from "./waveMenu.module.css";
+import classNames from "classnames/bind";
+const cls = classNames.bind(style);
 interface _p {
     refIsFold: boolean;
     setIsFold: (_: boolean) => void;
@@ -14,7 +17,7 @@ function FoldWave(p: _p) {
                 <button
                     onClick={handleFold}
                     title="Amplitude Fold"
-                    className={`flex items-center gap-2`}
+                    className={`flex items-center gap-2 ${cls("button")}`}
                 >
                     <Image
                         src={

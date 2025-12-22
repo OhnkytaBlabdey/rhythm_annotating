@@ -3,15 +3,15 @@ import "./soundLane.module.css";
 import SoundFileTitleBar from "./soundFileTitleBar";
 import { NoteLane } from "./noteArea/noteLane";
 import { notelane } from "@/interface/soundLane/noteLane/notelane";
-import SoundMenu from "./menuArea/soundMenu";
+import SoundMenu from "./soundMenu/soundMenu";
 import { soundlane } from "@/interface/soundLane/soundlane";
 import WaveLane from "./waveArea/waveLane";
 import { wavelane } from "@/interface/soundLane/waveLane/wavelane";
 import SpectrumLane from "./spectrumArea/spectrumLane";
 import { spectrumlane } from "@/interface/soundLane/spectrumLane/spectrumlane";
-import WaveMenu from "./waveArea/menuArea/waveMenu";
-import SpectrumMenu from "./spectrumArea/menuArea/spectrumMenu";
-import NoteMenu from "./noteArea/menuArea/noteMenu";
+import WaveMenu from "./soundMenu/waveMenu/waveMenu";
+import SpectrumMenu from "./soundMenu/spectrumMenu/spectrumMenu";
+import NoteMenu from "./soundMenu/noteMenu/noteMenu";
 
 interface _prop {
     index: number;

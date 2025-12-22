@@ -2,7 +2,7 @@
 import { notelane } from "@/interface/soundLane/noteLane/notelane";
 import { Measure } from "./measureArea/measure";
 import { measure } from "@/interface/soundLane/noteLane/measure/measure";
-import NoteMenu from "./menuArea/noteMenu";
+import NoteMenu from "../soundMenu/noteMenu/noteMenu";
 interface _prop {
     index: number;
     Key: string;
