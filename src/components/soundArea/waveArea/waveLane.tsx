@@ -1,5 +1,5 @@
 import { wavelane } from "@/interface/soundLane/waveLane/wavelane";
-import React, { useEffect, useRef, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import WaveMenu from "./menuArea/waveMenu";
 
 interface _p {
@@ -18,7 +18,6 @@ function WaveLane(p: _p) {
     const [t_left, t_right] = p.timeRange;
     const CANVAS_PHYSICAL_WIDTH = 800; // 固定canvas物理宽度
     const CANVAS_HEIGHT = 100;
-    const TARGET_PIXELS_PER_SECOND = 1000; // 目标分辨率：每秒1000像素
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const audioBufferRef = useRef<AudioBuffer | null>(null);
@@ -133,7 +132,7 @@ function WaveLane(p: _p) {
             audioContextRef.current = new AudioContextConstructor();
         }
 
-        setIsCacheReady(false);
+        // setIsCacheReady(false);
         const arrayBufferCopy = p.arrayBuffer.slice(0);
 
         audioContextRef.current.decodeAudioData(
@@ -147,6 +146,7 @@ function WaveLane(p: _p) {
             },
             (error) => {
                 console.error("音频解码失败:", error);
+                setIsCacheReady(false);
             }
         );
     }, [p.arrayBuffer]);

@@ -7,6 +7,7 @@ import SoundMenu from "./menuArea/soundMenu";
 import { soundlane } from "@/interface/soundLane/soundlane";
 import WaveLane from "./waveArea/waveLane";
 import { wavelane } from "@/interface/soundLane/waveLane/wavelane";
+import SpectrumLane from "./spectrumArea/spectrumLane";
 
 interface _prop {
     index: number;
@@ -73,6 +74,7 @@ export default function SoundLane(prop: _prop) {
                         timeRange={prop.timeRange}
                     />
                     {/* spectrum */}
+                    <SpectrumLane />
                     {/* notes */}
                     {prop.refSoundLane.noteLanes.map((lane, index) => (
                         <NoteLane
