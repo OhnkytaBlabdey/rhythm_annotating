@@ -9,6 +9,8 @@ import WaveLane from "./waveArea/waveLane";
 import { wavelane } from "@/interface/soundLane/waveLane/wavelane";
 import SpectrumLane from "./spectrumArea/spectrumLane";
 import { spectrumlane } from "@/interface/soundLane/spectrumLane/spectrumlane";
+import WaveMenu from "./waveArea/menuArea/waveMenu";
+import SpectrumMenu from "./spectrumArea/menuArea/spectrumMenu";
 
 interface _prop {
     index: number;
@@ -48,6 +50,12 @@ export default function SoundLane(prop: _prop) {
         };
         prop.setSoundLane(prop.index, updatedSoundLane);
     }
+    function setAmplitudeMultiplier(newampmulti: number) {
+        setWaveLane({
+            ...prop.refSoundLane.waveLane,
+            amplitudeMultiplier: newampmulti,
+        });
+    }
 
     return (
         <div
@@ -69,9 +77,17 @@ export default function SoundLane(prop: _prop) {
                     <SoundMenu
                         refNoteLanes={prop.refSoundLane.noteLanes}
                         setNoteLanes={setNoteLanes}
-                    ></SoundMenu>
+                    />
+                    <WaveMenu
+                        refAmplitudeMultiplier={
+                            prop.refSoundLane.waveLane.amplitudeMultiplier
+                        }
+                        setAmplitudeMultiplier={setAmplitudeMultiplier}
+                    />
+                    <SpectrumMenu />
                 </div>
-                <div className="flex-1 overflow-hidden">
+                <div className="flex-1">
+                    {/* <div className="time-axis-container"> */}
                     {/* wave */}
                     <WaveLane
                         mediaFilePath={prop.soundFile}
@@ -104,6 +120,7 @@ export default function SoundLane(prop: _prop) {
                             }}
                         />
                     ))}
+                    {/* </div> */}
                 </div>
             </div>
         </div>

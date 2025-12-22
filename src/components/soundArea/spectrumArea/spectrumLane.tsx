@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { spectrumlane } from "@/interface/soundLane/spectrumLane/spectrumlane";
+import SpectrumMenu from "./menuArea/spectrumMenu";
 
 interface _p {
     timeRange: [number, number];
@@ -118,7 +119,7 @@ function dbToColor(db: number): string {
 
 function SpectrumLane(p: _p) {
     const CANVAS_WIDTH = 800;
-    const CANVAS_HEIGHT = 200;
+    const CANVAS_HEIGHT = 100;
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
@@ -225,20 +226,25 @@ function SpectrumLane(p: _p) {
 
     return (
         <div>
-            <div className="text-sm text-gray-600">
-                Spectrogram {p.timeRange[0].toFixed(4)} –{" "}
-                {p.timeRange[1].toFixed(4)} s
+            <div className="flex gap-2">
+                {/* <div className="flex" onClick={(e) => e.stopPropagation()}>
+                    <SpectrumMenu />
+                </div> */}
+                {/* <div className="text-sm text-gray-600">
+                    Spectrogram {p.timeRange[0].toFixed(4)} –{" "}
+                    {p.timeRange[1].toFixed(4)} s
+                </div> */}
+                <canvas
+                    ref={canvasRef}
+                    width={CANVAS_WIDTH}
+                    height={CANVAS_HEIGHT}
+                    style={{
+                        border: "1px solid #ccc",
+                        width: "100%",
+                        height: "auto",
+                    }}
+                />
             </div>
-            <canvas
-                ref={canvasRef}
-                width={CANVAS_WIDTH}
-                height={CANVAS_HEIGHT}
-                style={{
-                    border: "1px solid #ccc",
-                    width: "100%",
-                    height: "auto",
-                }}
-            />
         </div>
     );
 }

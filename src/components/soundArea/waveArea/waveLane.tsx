@@ -1,6 +1,5 @@
 import { wavelane } from "@/interface/soundLane/waveLane/wavelane";
 import { useEffect, useRef, useState } from "react";
-import WaveMenu from "./menuArea/waveMenu";
 
 interface _p {
     timeRange: [number, number];
@@ -194,25 +193,18 @@ function WaveLane(p: _p) {
         );
     }, [p.timeRange, p.waveLane.amplitudeMultiplier, isCacheReady]);
 
-    function setAmplitudeMultiplier(newampmulti: number) {
-        p.setWaveLane({
-            ...p.waveLane,
-            amplitudeMultiplier: newampmulti,
-        });
-    }
-
     return (
         <div>
             <div className="flex gap-2">
-                <div className="flex" onClick={(e) => e.stopPropagation()}>
+                {/* <div className="flex" onClick={(e) => e.stopPropagation()}>
                     <WaveMenu
                         refAmplitudeMultiplier={p.waveLane.amplitudeMultiplier}
                         setAmplitudeMultiplier={setAmplitudeMultiplier}
                     />
-                </div>
-                <div className="text-sm text-gray-600">
+                </div> */}
+                {/* <div className="text-sm text-gray-600">
                     WaveLane {t_left.toFixed(4)} - {t_right.toFixed(4)} s
-                </div>
+                </div> */}
                 <canvas
                     ref={canvasRef}
                     width={CANVAS_PHYSICAL_WIDTH}
