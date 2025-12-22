@@ -4,6 +4,8 @@ import React, { useRef } from "react";
 interface _prop {
     refSoundLanes: soundlane[];
     setSoundLanes: (a: soundlane[]) => void;
+    refDuration: number;
+    setDuration: (_: number) => void;
 }
 function AddSound(prop: _prop) {
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -15,6 +17,7 @@ function AddSound(prop: _prop) {
             const reader = new FileReader();
 
             reader.onload = (event) => {
+                prop.setDuration(114514); //TODO ?
                 const arrayBuffer = event.target?.result as ArrayBuffer;
                 prop.setSoundLanes([
                     ...prop.refSoundLanes,

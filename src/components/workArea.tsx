@@ -28,6 +28,18 @@ export default function WorkArea() {
             timeMultiplier: newm,
         });
     }
+    function setCurrentTime(newt: number) {
+        setProject({
+            ...objProject,
+            currentTime: newt,
+        });
+    }
+    function setDuration(newduration: number) {
+        setProject({
+            ...objProject,
+            duration: newduration,
+        });
+    }
 
     return (
         <div className="WorkArea">
@@ -40,6 +52,10 @@ export default function WorkArea() {
                             refSoundLanes={objProject.soundLanes}
                             refTimeMultiplier={objProject.timeMultiplier}
                             setTimeMultiplier={setTimeMultiplier}
+                            refCurrentTime={objProject.currentTime}
+                            setCurrentTime={setCurrentTime}
+                            refDuration={objProject.duration}
+                            setDuration={setDuration}
                         />
                     </div>
                 </div>
