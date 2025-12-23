@@ -8,16 +8,10 @@ interface _prop {
     Key: string;
     refNoteLane: notelane;
     setNoteLane: (_: notelane) => void;
+    timeRange: [number, number];
 }
 export function NoteLane(prop: _prop) {
-    // function handleActivate() {
-    //     prop.setNoteLane({
-    //         ...prop.refNoteLane,
-    //         isActive: true,
-    //     });
-    // }
     return (
-        // <div className="NoteLane" onClick={handleActivate}>
         <div className="NoteLane">
             <div className="flex-col">
                 {/* <NoteMenu /> */}
@@ -34,21 +28,63 @@ export function NoteLane(prop: _prop) {
                 </div>
                 {/* measures */}
                 <div className="flex items-center">
-                    {prop.refNoteLane.measures.map((m, index) => (
-                        <Measure
-                            refMeasure={m}
-                            key={`${prop.Key}-${index}`}
-                            setMeasure={(newm: measure) => {
-                                const newms = prop.refNoteLane.measures;
-                                newms[index] = newm;
-                                prop.setNoteLane({
-                                    ...prop.refNoteLane,
-                                    measures: newms,
-                                });
-                            }}
-                            i={index}
-                        />
-                    ))}
+                    {(() => {
+                        const res = [];
+                        let t = 0;
+                        for (
+                            let index = 0;
+                            index < prop.refNoteLane.measures.length;
+                            index++
+                        ) {
+                            const m = prop.refNoteLane.measures[index];
+                            const tPost =
+                                t +
+                                (m.noBeat
+                                    ? (m.lasted as number)
+                                    : 60 / (m.bpm as number));
+                            if (
+                                tPost > prop.timeRange[0] &&
+                                t < prop.timeRange[1]
+                            ) {
+                                if (
+                                    t < prop.timeRange[0] &&
+                                    tPost <= prop.timeRange[1]
+                                ) {
+                                    //剪去左侧
+                                } else if (
+                                    tPost > prop.timeRange[1] &&
+                                    t >= prop.timeRange[0]
+                                ) {
+                                    // 剪去右侧
+                                } else if (
+                                    t < prop.timeRange[0] &&
+                                    tPost > prop.timeRange[1]
+                                ) {
+                                    // 剪去左右侧
+                                } else {
+                                    //完全在区间里
+                                    res.push(
+                                        <Measure
+                                            refMeasure={m}
+                                            key={`${prop.Key}-${index}`}
+                                            setMeasure={(newm: measure) => {
+                                                const newms =
+                                                    prop.refNoteLane.measures;
+                                                newms[index] = newm;
+                                                prop.setNoteLane({
+                                                    ...prop.refNoteLane,
+                                                    measures: newms,
+                                                });
+                                            }}
+                                            i={index}
+                                        />
+                                    );
+                                }
+                            }
+                            t = tPost;
+                        }
+                        return res;
+                    })()}
                 </div>
             </div>
         </div>

@@ -19,6 +19,7 @@ export function Measure(prop: _prop) {
                 <div className={`flex gap-4 ${cls("meta-border")}`}>
                     {/* bpm */}
                     <div className="flex items-center">
+                        <span>#{prop.i}</span>
                         <Image
                             src="/assets/icons/bpm.png"
                             alt="BPM"

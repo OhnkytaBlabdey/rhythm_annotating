@@ -130,6 +130,7 @@ export default function SoundLane(prop: _prop) {
                             key={`${prop.index}-${index}`}
                             Key={`${prop.index}-${index}`}
                             index={index}
+                            timeRange={prop.timeRange}
                             refNoteLane={lane}
                             setNoteLane={(newlane) => {
                                 const newlanes = prop.refSoundLane.noteLanes;
