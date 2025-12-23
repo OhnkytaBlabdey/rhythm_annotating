@@ -8,7 +8,7 @@ interface _p {
     refTimeMultiplier: number;
     setTimeMultiplier: (_: number) => void;
     refCurrentTime: number;
-    refDuration: number;
+    Duration: number;
     //音频绘制需要对比本音频的duration，但整体时间需要用整体的持续时长。这里是整体时间。
     setCurrentTime: (_: number) => void;
 }
@@ -24,7 +24,13 @@ function TimeScale(p: _p) {
         p.setCurrentTime(res >= 0 ? res : 0);
     }
     function handleTimeAdd() {
-        const res = p.refCurrentTime + p.refTimeMultiplier * (5 / 4);
+        let res = p.refCurrentTime + p.refTimeMultiplier * (5 / 4);
+        if (res < p.Duration - p.refTimeMultiplier) {
+            res = p.Duration - p.refTimeMultiplier;
+            if (res < 0) {
+                res = 0;
+            }
+        }
         p.setCurrentTime(res);
         // 超过持续时间？
         // 不满一个屏

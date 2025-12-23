@@ -29,7 +29,7 @@ function WorkMenu(prop: _prop) {
                     setTimeMultiplier={prop.setTimeMultiplier}
                     refCurrentTime={prop.refCurrentTime}
                     setCurrentTime={prop.setCurrentTime}
-                    refDuration={prop.Duration}
+                    Duration={prop.Duration}
                 />
             </div>
         </div>

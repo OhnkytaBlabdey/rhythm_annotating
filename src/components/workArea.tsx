@@ -48,15 +48,10 @@ export default function WorkArea() {
                             setTimeMultiplier={setTimeMultiplier}
                             refCurrentTime={objProject.currentTime}
                             setCurrentTime={setCurrentTime}
-                            Duration={
-                                objProject.soundLanes.length > 0
-                                    ? Math.max(
-                                          ...objProject.soundLanes.map(
-                                              (lane) => lane.duration
-                                          )
-                                      )
-                                    : 1
-                            }
+                            Duration={objProject.soundLanes.reduce(
+                                (max, lane) => Math.max(max, lane.duration),
+                                0
+                            )}
                         />
                     </div>
                 </div>
