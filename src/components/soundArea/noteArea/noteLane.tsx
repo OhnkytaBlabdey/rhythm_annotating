@@ -43,7 +43,7 @@ export function NoteLane(prop: _prop) {
                         const res: JSX.Element[] = [];
                         let t = 0;
                         const [rangeStart, rangeEnd] = prop.timeRange;
-                        const RANGE_WIDTH = 1200;
+                        const RANGE_WIDTH = 1218;
                         const totalRange = Math.max(
                             1e-6,
                             rangeEnd - rangeStart
