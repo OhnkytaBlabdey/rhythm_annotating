@@ -1,5 +1,6 @@
 import {
     defaultMeasure,
+    generateId,
     measure,
 } from "@/interface/soundLane/noteLane/measure/measure";
 import Image from "next/image";
@@ -10,7 +11,6 @@ const cls = classNames.bind(style);
 interface _p {
     refMeasures: measure[];
     setMeasures: (_: measure[]) => void;
-    refBPM: number;
 }
 function AddLinearMeasure(p: _p) {
     function handleAddMeasure() {
@@ -21,9 +21,10 @@ function AddLinearMeasure(p: _p) {
                 : ({
                       noBeat: last.noBeat,
                       notes: [],
-                      bpm: p.refBPM,
-                      currentDivide: 4,
+                      bpm: last.bpm,
+                      currentDivide: last.currentDivide,
                       currentNum: 0,
+                      id: generateId(),
                   } as measure);
         p.setMeasures([...p.refMeasures, newm]);
     }

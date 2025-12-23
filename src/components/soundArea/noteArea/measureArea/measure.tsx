@@ -10,9 +10,32 @@ interface _prop {
     refMeasure: measure;
     i: number;
     setMeasure: (_: measure) => void;
+    delMeasure: (id: string) => void;
 }
 export function Measure(prop: _prop) {
-    const inputRef = useRef<HTMLInputElement>(null);
+    const inputRefDivide = useRef<HTMLInputElement>(null);
+    const inputRefBPM = useRef<HTMLInputElement>(null);
+    function setBPM(newb: number) {
+        prop.setMeasure({
+            ...prop.refMeasure,
+            bpm: newb,
+        });
+    }
+    function updateDivide() {
+        inputRefDivide.current?.blur();
+        if (inputRefDivide.current != null) {
+            const val = Number(inputRefDivide.current.value);
+            if (val >= 1) {
+                prop.setMeasure({
+                    ...prop.refMeasure,
+                    currentDivide: val,
+                    currentNum: 0,
+                });
+            } else {
+                inputRefDivide.current.innerHTML = "1";
+            }
+        }
+    }
     return (
         <div className="w-full h-full">
             <div
@@ -21,7 +44,7 @@ export function Measure(prop: _prop) {
             >
                 {/* 状态 */}
                 <div
-                    className={`flex gap-4 ${cls("meta-border")}`}
+                    className={`flex gap-1 ${cls("meta-border")}`}
                     onClick={(e) => e.stopPropagation()}
                 >
                     <div className="flex items-center">
@@ -32,34 +55,75 @@ export function Measure(prop: _prop) {
                             width={24}
                             height={24}
                         />
-                        <span>
-                            {prop.refMeasure.noBeat
-                                ? "无节拍"
-                                : prop.refMeasure.bpm}
-                        </span>
-                    </div>
-                    <div
-                        className="flex items-center"
-                        onClick={() => {
-                            inputRef.current?.blur();
-                        }}
-                    >
-                        <span>
+                        <div>
+                            {!prop.refMeasure.noBeat && (
+                                <input
+                                    ref={inputRefBPM}
+                                    onClick={() => {
+                                        if (inputRefBPM.current != null) {
+                                            const val = Number(
+                                                inputRefBPM.current.value
+                                            );
+                                            if (val >= 1) {
+                                                setBPM(val);
+                                            } else {
+                                                inputRefBPM.current.innerHTML =
+                                                    "1";
+                                            }
+                                            inputRefBPM.current?.blur();
+                                        }
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (
+                                            inputRefBPM.current != null &&
+                                            e.key === "Enter"
+                                        ) {
+                                            setBPM(
+                                                Number(
+                                                    inputRefBPM.current.value
+                                                )
+                                            );
+                                            inputRefBPM.current?.blur();
+                                        }
+                                    }}
+                                    defaultValue={prop.refMeasure.bpm}
+                                    style={{
+                                        width: "65px",
+                                    }}
+                                    type="number"
+                                />
+                            )}
+                            {prop.refMeasure.noBeat && <span>无节拍</span>}
+                        </div>
+                        {/* divide */}
+                        <div onClick={updateDivide}>
                             /
                             <input
-                                ref={inputRef}
+                                ref={inputRefDivide}
                                 type="number"
                                 defaultValue={prop.refMeasure.currentDivide}
                                 style={{
-                                    maxWidth: "20%",
+                                    width: "35px",
                                 }}
                                 onKeyDown={(e) => {
                                     if (e.key === "Enter") {
-                                        inputRef.current?.blur();
+                                        updateDivide();
                                     }
                                 }}
                             />
-                        </span>
+                        </div>
+                        {/* delete */}
+                        <div>
+                            <Image
+                                src="/assets/icons/deleteMeasure.png"
+                                alt="Delete"
+                                width={24}
+                                height={24}
+                                onClick={() => {
+                                    prop.delMeasure(prop.refMeasure.id);
+                                }}
+                            />
+                        </div>
                     </div>
                 </div>
             </div>

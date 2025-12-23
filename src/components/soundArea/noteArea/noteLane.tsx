@@ -12,6 +12,13 @@ interface _prop {
     timeRange: [number, number];
 }
 export function NoteLane(prop: _prop) {
+    function delMeasure(id: string) {
+        const newms = prop.refNoteLane.measures.filter((m) => m.id !== id);
+        prop.setNoteLane({
+            ...prop.refNoteLane,
+            measures: newms,
+        });
+    }
     return (
         <div className="NoteLane">
             <div className="flex flex-col">
@@ -66,7 +73,7 @@ export function NoteLane(prop: _prop) {
                                 // outer wrapper：绝对定位，宽度等于完整拍宽（这样左右部分会被父容器裁掉）
                                 res.push(
                                     <div
-                                        key={`${prop.Key}-${index}`}
+                                        key={`${prop.Key}-${m.id}`}
                                         className="absolute top-0 left-0"
                                         style={{
                                             left: leftPx, // 可以为负或超出 1200，父容器 overflow:hidden 会裁掉
@@ -96,6 +103,7 @@ export function NoteLane(prop: _prop) {
                                                         measures: newms,
                                                     });
                                                 }}
+                                                delMeasure={delMeasure}
                                             />
                                         </div>
                                     </div>

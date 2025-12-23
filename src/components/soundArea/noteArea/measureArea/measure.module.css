@@ -9,6 +9,7 @@
     /* width: 60px; */
     /* 宽度随bpm而变 */
     height: 100px;
+    /* margin: 1px; */
 }
 .meta-border {
     border: 1px solid #bbb;
