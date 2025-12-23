@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import style from "./measure.module.css";
 import classNames from "classnames/bind";
 import { measure } from "@/interface/soundLane/noteLane/measure/measure";
@@ -12,6 +12,7 @@ interface _prop {
     setMeasure: (_: measure) => void;
 }
 export function Measure(prop: _prop) {
+    const inputRef = useRef<HTMLInputElement>(null);
     return (
         <div className="w-full h-full">
             <div
@@ -19,7 +20,10 @@ export function Measure(prop: _prop) {
                 style={{ width: "100%", height: "100%" }}
             >
                 {/* 状态 */}
-                <div className={`flex gap-4 ${cls("meta-border")}`}>
+                <div
+                    className={`flex gap-4 ${cls("meta-border")}`}
+                    onClick={(e) => e.stopPropagation()}
+                >
                     <div className="flex items-center">
                         <span>#{prop.i}</span>
                         <Image
@@ -34,8 +38,28 @@ export function Measure(prop: _prop) {
                                 : prop.refMeasure.bpm}
                         </span>
                     </div>
-                    <div className="flex items-center">
-                        <span>/{prop.refMeasure.currentDivide}</span>
+                    <div
+                        className="flex items-center"
+                        onClick={() => {
+                            inputRef.current?.blur();
+                        }}
+                    >
+                        <span>
+                            /
+                            <input
+                                ref={inputRef}
+                                type="number"
+                                defaultValue={prop.refMeasure.currentDivide}
+                                style={{
+                                    maxWidth: "20%",
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                        inputRef.current?.blur();
+                                    }
+                                }}
+                            />
+                        </span>
                     </div>
                 </div>
             </div>
