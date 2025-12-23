@@ -11,8 +11,6 @@ import SpectrumLane from "./spectrumArea/spectrumLane";
 import { spectrumlane } from "@/interface/soundLane/spectrumLane/spectrumlane";
 import WaveMenu from "./soundMenu/waveMenu/waveMenu";
 import SpectrumMenu from "./soundMenu/spectrumMenu/spectrumMenu";
-import NoteMenu from "./soundMenu/noteMenu/noteMenu";
-import { measure } from "@/interface/soundLane/noteLane/measure/measure";
 
 interface _prop {
     index: number;
@@ -104,14 +102,6 @@ export default function SoundLane(prop: _prop) {
                                 isFolded: fold,
                             });
                         }}
-                    />
-                    <NoteMenu
-                        refMeasures={
-                            prop.refSoundLane.noteLanes.find(
-                                (lane) => lane.isActive
-                            )?.measures ?? []
-                        }
-                        setMeasures={(newmss: measure[]) => {}}
                     />
                 </div>
                 <div className="flex-1">
