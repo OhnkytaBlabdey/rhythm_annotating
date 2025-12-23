@@ -25,10 +25,9 @@ function TimeScale(p: _p) {
     }
     function handleTimeAdd() {
         let res = p.refCurrentTime + p.refTimeMultiplier * (5 / 4);
-        if (res < p.Duration - p.refTimeMultiplier) {
-            res = p.Duration - p.refTimeMultiplier;
-            if (res < 0) {
-                res = 0;
+        if (res > p.Duration - p.refTimeMultiplier) {
+            if (p.Duration - p.refTimeMultiplier > 0) {
+                res = p.Duration - p.refTimeMultiplier;
             }
         }
         p.setCurrentTime(res);

@@ -12,6 +12,7 @@ import { spectrumlane } from "@/interface/soundLane/spectrumLane/spectrumlane";
 import WaveMenu from "./soundMenu/waveMenu/waveMenu";
 import SpectrumMenu from "./soundMenu/spectrumMenu/spectrumMenu";
 import NoteMenu from "./soundMenu/noteMenu/noteMenu";
+import { measure } from "@/interface/soundLane/noteLane/measure/measure";
 
 interface _prop {
     index: number;
@@ -57,6 +58,9 @@ export default function SoundLane(prop: _prop) {
             amplitudeMultiplier: newampmulti,
         });
     }
+    // const activeNotelane = prop.refSoundLane.noteLanes.filter(
+    //     (lane) => lane.isActive
+    // )[0];
 
     return (
         <div
@@ -101,7 +105,14 @@ export default function SoundLane(prop: _prop) {
                             });
                         }}
                     />
-                    <NoteMenu />
+                    <NoteMenu
+                        refMeasures={
+                            prop.refSoundLane.noteLanes.find(
+                                (lane) => lane.isActive
+                            )?.measures ?? []
+                        }
+                        setMeasures={(newmss: measure[]) => {}}
+                    />
                 </div>
                 <div className="flex-1">
                     {/* <div className="time-axis-container"> */}

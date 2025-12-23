@@ -10,8 +10,14 @@ interface _prop {
     setNoteLane: (_: notelane) => void;
 }
 export function NoteLane(prop: _prop) {
+    function handleActivate() {
+        prop.setNoteLane({
+            ...prop.refNoteLane,
+            isActive: true,
+        });
+    }
     return (
-        <div className="NoteLane">
+        <div className="NoteLane" onClick={handleActivate}>
             <div className="flex">
                 {/* <NoteMenu /> */}
                 {/* measures */}

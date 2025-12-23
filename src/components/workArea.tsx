@@ -69,7 +69,7 @@ export default function WorkArea() {
                                     timeRange={[
                                         objProject.currentTime,
                                         objProject.currentTime +
-                                            objProject.timeMultiplier * 5.0,
+                                            objProject.timeMultiplier * 2.0,
                                     ]}
                                 />
                             ))}
