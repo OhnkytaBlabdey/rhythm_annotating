@@ -13,11 +13,13 @@ interface _prop {
 }
 export function Measure(prop: _prop) {
     return (
-        <div className="Measure">
-            <div className={cls("border")}>
+        <div className="w-full h-full">
+            <div
+                className={cls("border")}
+                style={{ width: "100%", height: "100%" }}
+            >
                 {/* 状态 */}
                 <div className={`flex gap-4 ${cls("meta-border")}`}>
-                    {/* bpm */}
                     <div className="flex items-center">
                         <span>#{prop.i}</span>
                         <Image
@@ -32,7 +34,6 @@ export function Measure(prop: _prop) {
                                 : prop.refMeasure.bpm}
                         </span>
                     </div>
-                    {/* 刻度分母 */}
                     <div className="flex items-center">
                         <span>/{prop.refMeasure.currentDivide}</span>
                     </div>

@@ -104,7 +104,7 @@ export default function SoundLane(prop: _prop) {
                         }}
                     />
                 </div>
-                <div className="flex-1">
+                <div className="">
                     {/* <div className="time-axis-container"> */}
                     {/* wave */}
                     <WaveLane

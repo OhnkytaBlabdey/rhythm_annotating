@@ -118,7 +118,7 @@ function dbToColor(db: number): string {
 }
 
 function SpectrumLane(p: _p) {
-    const CANVAS_WIDTH = 800;
+    const CANVAS_WIDTH = 1200;
     const CANVAS_HEIGHT = 100;
 
     const canvasRef = useRef<HTMLCanvasElement>(null);

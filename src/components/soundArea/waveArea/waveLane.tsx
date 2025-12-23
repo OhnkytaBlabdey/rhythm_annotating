@@ -46,7 +46,7 @@ function mixDownToMono(audioBuffer: AudioBuffer): Float32Array {
 
 function WaveLane(p: _p) {
     const [t_left, t_right] = p.timeRange;
-    const CANVAS_PHYSICAL_WIDTH = 800;
+    const CANVAS_PHYSICAL_WIDTH = 1200;
     const CANVAS_HEIGHT = 100;
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
