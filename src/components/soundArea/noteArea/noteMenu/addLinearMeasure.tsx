@@ -10,6 +10,7 @@ const cls = classNames.bind(style);
 interface _p {
     refMeasures: measure[];
     setMeasures: (_: measure[]) => void;
+    refBPM: number;
 }
 function AddLinearMeasure(p: _p) {
     function handleAddMeasure() {
@@ -20,7 +21,7 @@ function AddLinearMeasure(p: _p) {
                 : ({
                       noBeat: last.noBeat,
                       notes: [],
-                      bpm: last.bpm,
+                      bpm: p.refBPM,
                       currentDivide: 4,
                       currentNum: 0,
                   } as measure);

@@ -4,7 +4,7 @@ export interface wavelane {
 }
 export function defaultWaveLane() {
     return {
-        amplitudeMultiplier: 1,
+        amplitudeMultiplier: 5,
         isFolded: false,
     } as wavelane;
 }
