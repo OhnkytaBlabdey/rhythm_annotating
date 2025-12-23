@@ -10,8 +10,7 @@ interface _prop {
     setTimeMultiplier: (_: number) => void;
     refCurrentTime: number;
     setCurrentTime: (_: number) => void;
-    refDuration: number;
-    setDuration: (_: number) => void;
+    Duration: number;
 }
 function WorkMenu(prop: _prop) {
     return (
@@ -20,8 +19,6 @@ function WorkMenu(prop: _prop) {
                 <AddSound
                     refSoundLanes={prop.refSoundLanes}
                     setSoundLanes={prop.setSoundLanes}
-                    refDuration={prop.refDuration}
-                    setDuration={prop.setDuration}
                 />
                 <DeleteActiveSound
                     refSoundLanes={prop.refSoundLanes}
@@ -32,7 +29,7 @@ function WorkMenu(prop: _prop) {
                     setTimeMultiplier={prop.setTimeMultiplier}
                     refCurrentTime={prop.refCurrentTime}
                     setCurrentTime={prop.setCurrentTime}
-                    refDuration={prop.refDuration}
+                    refDuration={prop.Duration}
                 />
             </div>
         </div>

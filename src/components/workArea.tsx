@@ -34,12 +34,6 @@ export default function WorkArea() {
             currentTime: newt,
         });
     }
-    function setDuration(newduration: number) {
-        setProject({
-            ...objProject,
-            duration: newduration,
-        });
-    }
 
     return (
         <div className="WorkArea">
@@ -54,8 +48,15 @@ export default function WorkArea() {
                             setTimeMultiplier={setTimeMultiplier}
                             refCurrentTime={objProject.currentTime}
                             setCurrentTime={setCurrentTime}
-                            refDuration={objProject.duration}
-                            setDuration={setDuration}
+                            Duration={
+                                objProject.soundLanes.length > 0
+                                    ? Math.max(
+                                          ...objProject.soundLanes.map(
+                                              (lane) => lane.duration
+                                          )
+                                      )
+                                    : 1
+                            }
                         />
                     </div>
                 </div>

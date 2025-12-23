@@ -1,38 +1,52 @@
 import { defaultSoundLane, soundlane } from "@/interface/soundLane/soundlane";
 import Image from "next/image";
 import React, { useRef } from "react";
+
 interface _prop {
     refSoundLanes: soundlane[];
     setSoundLanes: (a: soundlane[]) => void;
-    refDuration: number;
-    setDuration: (_: number) => void;
 }
+
 function AddSound(prop: _prop) {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) {
-            const fileName = file.name;
-            const reader = new FileReader();
+        if (!file) return;
 
-            reader.onload = (event) => {
-                prop.setDuration(114514); //TODO ?
+        const fileName = file.name;
+        const reader = new FileReader();
+
+        reader.onload = async (event) => {
+            try {
                 const arrayBuffer = event.target?.result as ArrayBuffer;
+
+                // 使用 Web Audio API 解码音频以获取时长
+                const audioContext = new AudioContext();
+                const audioBuffer = await audioContext.decodeAudioData(
+                    arrayBuffer.slice(0)
+                );
+
+                const duration = audioBuffer.duration; // 秒
+
                 prop.setSoundLanes([
                     ...prop.refSoundLanes,
-                    defaultSoundLane(fileName, arrayBuffer),
+                    defaultSoundLane(fileName, arrayBuffer, duration),
                 ]);
-            };
 
-            reader.onerror = () => {
-                console.error("文件读取失败");
-            };
+                audioContext.close();
+            } catch (error) {
+                console.error("音频解析失败", error);
+            }
+        };
 
-            // 读取为 ArrayBuffer（适合音频处理）
-            reader.readAsArrayBuffer(file);
-        }
+        reader.onerror = () => {
+            console.error("文件读取失败");
+        };
 
+        reader.readAsArrayBuffer(file);
+
+        // 允许重复选择同一个文件
         if (fileInputRef.current) {
             fileInputRef.current.value = "";
         }
