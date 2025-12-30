@@ -34,6 +34,12 @@ export default function WorkArea() {
             currentTime: newt,
         });
     }
+    function setIsPlaying(p: boolean) {
+        setProject({
+            ...objProject,
+            isPlaying: p,
+        });
+    }
 
     return (
         <div className="WorkArea">
@@ -48,6 +54,8 @@ export default function WorkArea() {
                             setTimeMultiplier={setTimeMultiplier}
                             refCurrentTime={objProject.currentTime}
                             setCurrentTime={setCurrentTime}
+                            isPlaying={objProject.isPlaying}
+                            setIsPlaying={setIsPlaying}
                             Duration={objProject.soundLanes.reduce(
                                 (max, lane) => Math.max(max, lane.duration),
                                 0

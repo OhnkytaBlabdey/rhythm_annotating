@@ -10,6 +10,8 @@ interface _prop {
     setTimeMultiplier: (_: number) => void;
     refCurrentTime: number;
     setCurrentTime: (_: number) => void;
+    isPlaying: boolean;
+    setIsPlaying: (_: boolean) => void;
     Duration: number;
 }
 function WorkMenu(prop: _prop) {
