@@ -3,6 +3,8 @@ import AddSound from "./addSound";
 import { soundlane } from "@/interface/soundLane/soundlane";
 import TimeScale from "./adjustTimeScale";
 import DeleteActiveSound from "./removeActiveSound";
+import PlaySelected from "./playSelectedSound";
+import PauseSelected from "./pauseSelectedSound";
 interface _prop {
     refSoundLanes: soundlane[];
     setSoundLanes: (a: soundlane[]) => void;
@@ -32,6 +34,19 @@ function WorkMenu(prop: _prop) {
                     refCurrentTime={prop.refCurrentTime}
                     setCurrentTime={prop.setCurrentTime}
                     Duration={prop.Duration}
+                />
+                <PlaySelected
+                    refCurrentTime={prop.refCurrentTime}
+                    refIsPlaying={prop.isPlaying}
+                    refSoundLanes={prop.refSoundLanes}
+                    setCurrentTime={prop.setCurrentTime}
+                    setIsPlaying={prop.setIsPlaying}
+                    // key={}
+                />
+                <PauseSelected
+                    refIsPlaying={prop.isPlaying}
+                    setIsPlaying={prop.setIsPlaying}
+                    // key={}
                 />
             </div>
         </div>

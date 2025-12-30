@@ -5,6 +5,7 @@ import { defaultWaveLane, wavelane } from "./waveLane/wavelane";
 export interface soundlane {
     mediaFilePath: string;
     audioBuffer?: ArrayBuffer;
+    decodedBuffer?: AudioBuffer;
     isActive: boolean;
     duration: number;
     isPlayComplete: boolean; //多个音频不一样长，记录本轨道是否播放完成。
