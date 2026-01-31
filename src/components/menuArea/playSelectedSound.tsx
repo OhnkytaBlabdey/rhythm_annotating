@@ -1,6 +1,7 @@
 // PlaySelected.tsx
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useCallback } from "react";
 interface _p {
+    refCurrentTime: number;
     setCurrentTime: (_: number) => void;
     refIsPlaying: boolean;
     setIsPlaying: (_: boolean) => void;
@@ -8,45 +9,85 @@ interface _p {
 function PlaySelected(prop: _p) {
     const rafRef = useRef<number | null>(null);
     const startTime = useRef<number | null>(null);
+    const isPlayingRef = useRef(prop.refIsPlaying);
+
+    // 同步 refIsPlaying 到 ref，使 tick 能获得最新值
+    useEffect(() => {
+        isPlayingRef.current = prop.refIsPlaying;
+    }, [prop.refIsPlaying]);
+
     function stopAll() {
         console.log("stop playing");
     }
     function playAll() {
         console.log("playing");
     }
-    // useEffect(() => {
-    //     if (all flags) {
-    //         stopAll();
-    //         if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    //         if (startTime.current) startTime.current = null;
-    //     }
-    // }, [flags]);
-    // 当所有音频的播放结束flag都成立时，停止播放。
 
-    // 当点下暂停按钮时，停止播放。
-    // 当点下播放按钮时，该快照渲染的仍然是不播放状态，此时不暂停。
-    // 所以不能将（IsPlaying）作为停止播放条件，它只应该影响UI
-    function tick(timestemp: number) {
-        if (!startTime.current) {
-            startTime.current = timestemp;
-            console.log("started at" + startTime.current);
+    const tick = useCallback(
+        (timestamp: number) => {
+            // 检查当前播放状态，如果停止则退出
+            if (!isPlayingRef.current) {
+                startTime.current = null;
+                return;
+            }
+
+            if (!startTime.current) {
+                startTime.current = timestamp;
+                console.log("started at " + startTime.current);
+            }
+            prop.setCurrentTime(
+                prop.refCurrentTime + (timestamp - startTime.current) / 1000,
+            );
+            rafRef.current = requestAnimationFrame(tick);
+        },
+        [prop],
+    );
+
+    // 监听播放状态变化
+    useEffect(() => {
+        if (prop.refIsPlaying && !rafRef.current) {
+            // 开始播放
+            playAll();
+            rafRef.current = requestAnimationFrame(tick);
+        } else if (!prop.refIsPlaying && rafRef.current) {
+            // 停止播放
+            stopAll();
+            if (rafRef.current) {
+                cancelAnimationFrame(rafRef.current);
+                rafRef.current = null;
+            }
+            startTime.current = null;
         }
-        prop.setCurrentTime((timestemp - startTime.current) / 1000);
-        rafRef.current = requestAnimationFrame((t) => tick(t));
-        //这里如果不获得即时的状态，如何打断播放？
-    }
+    }, [prop.refIsPlaying, tick]);
+
+    // 组件卸载时清理资源
     useEffect(() => {
         return () => {
             if (rafRef.current) cancelAnimationFrame(rafRef.current);
-            if (startTime.current) startTime.current = null;
-            console.log("effect 销毁");
+            startTime.current = null;
+            console.log("component unmounted");
         };
     }, []);
+
     function onPlay() {
         prop.setIsPlaying(true);
-        playAll();
-        rafRef.current = requestAnimationFrame(tick);
     }
-    return <button onClick={onPlay}>Play</button>;
+
+    function onPause() {
+        prop.setIsPlaying(false);
+    }
+
+    function onStop() {
+        prop.setIsPlaying(false);
+        prop.setCurrentTime(0);
+    }
+
+    return (
+        <>
+            <button onClick={onPlay}>Play</button>
+            <button onClick={onPause}>Pause</button>
+            <button onClick={onStop}>Stop</button>
+        </>
+    );
 }
 export default PlaySelected;
