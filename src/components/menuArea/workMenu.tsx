@@ -36,9 +36,9 @@ function WorkMenu(prop: _prop) {
                     Duration={prop.Duration}
                 />
                 <PlaySelected
-                    refCurrentTime={prop.refCurrentTime}
+                    // refCurrentTime={prop.refCurrentTime}
                     refIsPlaying={prop.isPlaying}
-                    refSoundLanes={prop.refSoundLanes}
+                    // refSoundLanes={prop.refSoundLanes}
                     setCurrentTime={prop.setCurrentTime}
                     setIsPlaying={prop.setIsPlaying}
                     // key={}

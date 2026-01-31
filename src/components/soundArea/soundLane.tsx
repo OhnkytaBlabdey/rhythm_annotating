@@ -75,7 +75,7 @@ export default function SoundLane(prop: _prop) {
                     {prop.timeRange[1].toFixed(4)} second
                 </div>
             </div>
-            <div className="flex flex-1">
+            {/* <div className="flex flex-1">
                 <div className="w-auto" onClick={(e) => e.stopPropagation()}>
                     <SoundMenu
                         refNoteLanes={prop.refSoundLane.noteLanes}
@@ -105,8 +105,6 @@ export default function SoundLane(prop: _prop) {
                     />
                 </div>
                 <div className="">
-                    {/* <div className="time-axis-container"> */}
-                    {/* wave */}
                     <WaveLane
                         mediaFilePath={prop.soundFile}
                         waveLane={prop.refSoundLane.waveLane}
@@ -115,7 +113,6 @@ export default function SoundLane(prop: _prop) {
                         key={`${prop.index}-wave`}
                         timeRange={prop.timeRange}
                     />
-                    {/* spectrum */}
                     <SpectrumLane
                         mediaFilePath={prop.soundFile}
                         spectrumLane={prop.refSoundLane.spectrumLane}
@@ -124,7 +121,6 @@ export default function SoundLane(prop: _prop) {
                         key={`${prop.index}-spectrum`}
                         timeRange={prop.timeRange}
                     />
-                    {/* notes */}
                     {prop.refSoundLane.noteLanes.map((lane, index) => (
                         <NoteLane
                             key={`${prop.index}-${index}`}
@@ -139,9 +135,8 @@ export default function SoundLane(prop: _prop) {
                             }}
                         />
                     ))}
-                    {/* </div> */}
                 </div>
-            </div>
+            </div> */}
         </div>
     );
 }

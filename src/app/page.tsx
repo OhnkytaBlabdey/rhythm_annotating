@@ -1,6 +1,10 @@
 "use client";
 import WorkArea from "@/components/workArea";
-import { useState } from "react";
+import { StrictMode } from "react";
 export default function Home() {
-    return <WorkArea />;
+    return (
+        <StrictMode>
+            <WorkArea />
+        </StrictMode>
+    );
 }
