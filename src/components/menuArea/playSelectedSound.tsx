@@ -148,8 +148,12 @@ function PlaySelected(prop: _p) {
             const offsets = audios.map(() => 0);
             playAll(audioBuffers, offsets, prop.refCurrentTime, () => {
                 console.log("All audios completed");
+            }).then(() => {
+                // 等待 playAll 完成后，再启动 tick
+                if (isPlayingRef.current && !rafRef.current) {
+                    rafRef.current = requestAnimationFrame(tick);
+                }
             });
-            rafRef.current = requestAnimationFrame(tick);
         } else if (!prop.refIsPlaying && rafRef.current) {
             // 停止播放
             stopAll();
