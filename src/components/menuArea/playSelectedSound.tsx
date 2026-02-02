@@ -18,6 +18,7 @@ function PlaySelected(prop: _p) {
     const sourcesRef = useRef<AudioBufferSourceNode[]>([]);
     const maxDurationRef = useRef<number>(0);
     const onCompleteRef = useRef<(() => void) | null>(null);
+    const initialTimeRef = useRef<number>(0);
 
     // 同步 refIsPlaying 到 ref，使 tick 能获得最新值
     useEffect(() => {
@@ -57,35 +58,48 @@ function PlaySelected(prop: _p) {
 
         stopAll();
         onCompleteRef.current = onComplete || null;
+        initialTimeRef.current = currentTime;
 
-        let maxDuration = 0;
+        // 先创建所有的解码 Promise
+        const decodedSources: {
+            source: AudioBufferSourceNode;
+            decoded: AudioBuffer;
+            offset: number;
+        }[] = [];
 
-        for (let i = 0; i < audioBuffers.length; i++) {
-            const buffer = audioBuffers[i];
+        const decodePromises = audioBuffers.map(async (buffer, i) => {
             const offset = offsets[i] || 0;
-
             try {
                 // 解码音频数据
-                const decoded = await ctxRef.current.decodeAudioData(
+                const decoded = await ctxRef.current!.decodeAudioData(
                     buffer.slice(0),
                 );
 
                 // 创建播放源
-                const source = ctxRef.current.createBufferSource();
+                const source = ctxRef.current!.createBufferSource();
                 source.buffer = decoded;
-                source.connect(ctxRef.current.destination);
+                source.connect(ctxRef.current!.destination);
 
-                // 从 currentTime 开始播放
-                source.start(ctxRef.current.currentTime, currentTime);
-
-                // 计算音频总时长（从 currentTime 到结束）
-                const duration = decoded.duration - currentTime;
-                maxDuration = Math.max(maxDuration, duration);
-
-                sourcesRef.current.push(source);
+                decodedSources.push({ source, decoded, offset });
             } catch (error) {
                 console.error("音频解码失败", error);
             }
+        });
+
+        // 等待所有音频都解码完成
+        await Promise.all(decodePromises);
+
+        // 同时启动所有的音源
+        let maxDuration = 0;
+        for (const { source, decoded, offset } of decodedSources) {
+            // 从 currentTime 开始播放
+            source.start(ctxRef.current.currentTime, currentTime);
+
+            // 计算音频总时长（从 currentTime 到结束）
+            const duration = decoded.duration - currentTime;
+            maxDuration = Math.max(maxDuration, duration);
+
+            sourcesRef.current.push(source);
         }
 
         maxDurationRef.current = maxDuration;
@@ -105,7 +119,7 @@ function PlaySelected(prop: _p) {
             }
 
             const elapsedTime = (timestamp - startTime.current) / 1000;
-            prop.setCurrentTime(prop.refCurrentTime + elapsedTime);
+            prop.setCurrentTime(initialTimeRef.current + elapsedTime);
 
             // 检查是否所有音频都播放完成
             if (
