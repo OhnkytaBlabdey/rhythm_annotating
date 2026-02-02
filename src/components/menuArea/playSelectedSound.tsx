@@ -14,17 +14,81 @@ function PlaySelected(prop: _p) {
     const startTime = useRef<number | null>(null);
     const isPlayingRef = useRef(prop.refIsPlaying);
     const audios = useContext(AudioDataCtx);
+    const ctxRef = useRef<AudioContext | null>(null);
+    const sourcesRef = useRef<AudioBufferSourceNode[]>([]);
+    const maxDurationRef = useRef<number>(0);
+    const onCompleteRef = useRef<(() => void) | null>(null);
 
     // 同步 refIsPlaying 到 ref，使 tick 能获得最新值
     useEffect(() => {
         isPlayingRef.current = prop.refIsPlaying;
     }, [prop.refIsPlaying]);
 
-    function stopAll() {
-        console.log("stop playing");
+    function ensureContext() {
+        if (!ctxRef.current) {
+            ctxRef.current = new AudioContext();
+        }
     }
-    function playAll() {
-        console.log("playing");
+
+    function stopAll() {
+        sourcesRef.current.forEach((source) => {
+            try {
+                source.stop();
+            } catch (e) {
+                // 忽略已停止的源
+            }
+        });
+        sourcesRef.current = [];
+        maxDurationRef.current = 0;
+    }
+
+    async function playAll(
+        audioBuffers: ArrayBuffer[],
+        offsets: number[],
+        currentTime: number = 0,
+        onComplete?: () => void,
+    ) {
+        ensureContext();
+        if (!ctxRef.current) return;
+
+        if (ctxRef.current.state === "suspended") {
+            await ctxRef.current.resume();
+        }
+
+        stopAll();
+        onCompleteRef.current = onComplete || null;
+
+        let maxDuration = 0;
+
+        for (let i = 0; i < audioBuffers.length; i++) {
+            const buffer = audioBuffers[i];
+            const offset = offsets[i] || 0;
+
+            try {
+                // 解码音频数据
+                const decoded = await ctxRef.current.decodeAudioData(
+                    buffer.slice(0),
+                );
+
+                // 创建播放源
+                const source = ctxRef.current.createBufferSource();
+                source.buffer = decoded;
+                source.connect(ctxRef.current.destination);
+
+                // 从 currentTime 开始播放
+                source.start(ctxRef.current.currentTime, currentTime);
+
+                // 计算音频总时长（从 currentTime 到结束）
+                const duration = decoded.duration - currentTime;
+                maxDuration = Math.max(maxDuration, duration);
+
+                sourcesRef.current.push(source);
+            } catch (error) {
+                console.error("音频解码失败", error);
+            }
+        }
+
+        maxDurationRef.current = maxDuration;
     }
 
     const tick = useCallback(
@@ -39,9 +103,24 @@ function PlaySelected(prop: _p) {
                 startTime.current = timestamp;
                 console.log("started at " + startTime.current);
             }
-            prop.setCurrentTime(
-                prop.refCurrentTime + (timestamp - startTime.current) / 1000,
-            );
+
+            const elapsedTime = (timestamp - startTime.current) / 1000;
+            prop.setCurrentTime(prop.refCurrentTime + elapsedTime);
+
+            // 检查是否所有音频都播放完成
+            if (
+                maxDurationRef.current > 0 &&
+                elapsedTime >= maxDurationRef.current
+            ) {
+                // 所有音频播放结束
+                prop.setIsPlaying(false);
+                startTime.current = null;
+                if (onCompleteRef.current) {
+                    onCompleteRef.current();
+                }
+                return;
+            }
+
             rafRef.current = requestAnimationFrame(tick);
         },
         [prop],
@@ -50,8 +129,12 @@ function PlaySelected(prop: _p) {
     // 监听播放状态变化
     useEffect(() => {
         if (prop.refIsPlaying && !rafRef.current) {
-            // 开始播放
-            playAll();
+            // 开始播放：从 audios context 中提取音频数据和 offset
+            const audioBuffers = audios.map((audio) => audio.buffer);
+            const offsets = audios.map(() => 0);
+            playAll(audioBuffers, offsets, prop.refCurrentTime, () => {
+                console.log("All audios completed");
+            });
             rafRef.current = requestAnimationFrame(tick);
         } else if (!prop.refIsPlaying && rafRef.current) {
             // 停止播放
@@ -69,6 +152,11 @@ function PlaySelected(prop: _p) {
         return () => {
             if (rafRef.current) cancelAnimationFrame(rafRef.current);
             startTime.current = null;
+            stopAll();
+            if (ctxRef.current) {
+                ctxRef.current.close();
+                ctxRef.current = null;
+            }
             console.log("component unmounted");
         };
     }, []);
