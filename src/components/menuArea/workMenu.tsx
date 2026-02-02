@@ -38,16 +38,10 @@ function WorkMenu(prop: _prop) {
                 <PlaySelected
                     refCurrentTime={prop.refCurrentTime}
                     refIsPlaying={prop.isPlaying}
-                    // refSoundLanes={prop.refSoundLanes}
                     setCurrentTime={prop.setCurrentTime}
                     setIsPlaying={prop.setIsPlaying}
                     // key={}
                 />
-                {/* <PauseSelected
-                    refIsPlaying={prop.isPlaying}
-                    setIsPlaying={prop.setIsPlaying}
-                    // key={}
-                /> */}
             </div>
         </div>
     );

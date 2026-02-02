@@ -1,6 +1,7 @@
 import { defaultSoundLane, soundlane } from "@/interface/soundLane/soundlane";
 import Image from "next/image";
-import React, { useRef } from "react";
+import React, { useContext, useRef } from "react";
+import { AudioDataCtx } from "../audioContext";
 
 interface _prop {
     refSoundLanes: soundlane[];
@@ -9,6 +10,7 @@ interface _prop {
 
 function AddSound(prop: _prop) {
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const audios = useContext(AudioDataCtx);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -24,15 +26,19 @@ function AddSound(prop: _prop) {
                 // 使用 Web Audio API 解码音频以获取时长
                 const audioContext = new AudioContext();
                 const audioBuffer = await audioContext.decodeAudioData(
-                    arrayBuffer.slice(0)
+                    arrayBuffer.slice(0),
                 );
-
                 const duration = audioBuffer.duration; // 秒
-
                 prop.setSoundLanes([
                     ...prop.refSoundLanes,
                     defaultSoundLane(fileName, arrayBuffer, duration),
                 ]);
+                //TODO 对音频数据hash，得到唯一ID作为key.
+                audios.push({
+                    file: fileName,
+                    buffer: arrayBuffer,
+                    duration: duration,
+                });
 
                 audioContext.close();
             } catch (error) {

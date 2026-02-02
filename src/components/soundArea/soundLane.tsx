@@ -75,7 +75,7 @@ export default function SoundLane(prop: _prop) {
                     {prop.timeRange[1].toFixed(4)} second
                 </div>
             </div>
-            {/* <div className="flex flex-1">
+            <div className="flex flex-1">
                 <div className="w-auto" onClick={(e) => e.stopPropagation()}>
                     <SoundMenu
                         refNoteLanes={prop.refSoundLane.noteLanes}
@@ -136,7 +136,7 @@ export default function SoundLane(prop: _prop) {
                         />
                     ))}
                 </div>
-            </div> */}
+            </div>
         </div>
     );
 }

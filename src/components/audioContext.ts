@@ -1,3 +1,4 @@
 import { createContext } from "react";
-export const isPlaying = createContext(false);
-export const audioData = createContext([]);
+export const AudioDataCtx = createContext<
+    { file: string; buffer: ArrayBuffer; duration: number }[]
+>([]);

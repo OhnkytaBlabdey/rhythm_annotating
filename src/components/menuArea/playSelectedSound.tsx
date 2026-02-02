@@ -1,6 +1,9 @@
 // PlaySelected.tsx
-import React, { useEffect, useRef, useCallback } from "react";
+import React, { useEffect, useRef, useCallback, useContext } from "react";
+import { AudioDataCtx } from "../audioContext";
 interface _p {
+    //TODO 哪些音频被激活，需要播放
+    //当选中状态变化时，web audio播放的状态也跟着变
     refCurrentTime: number;
     setCurrentTime: (_: number) => void;
     refIsPlaying: boolean;
@@ -10,6 +13,7 @@ function PlaySelected(prop: _p) {
     const rafRef = useRef<number | null>(null);
     const startTime = useRef<number | null>(null);
     const isPlayingRef = useRef(prop.refIsPlaying);
+    const audios = useContext(AudioDataCtx);
 
     // 同步 refIsPlaying 到 ref，使 tick 能获得最新值
     useEffect(() => {
