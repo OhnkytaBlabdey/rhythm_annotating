@@ -8,6 +8,16 @@ interface _prop {
     setSoundLanes: (a: soundlane[]) => void;
 }
 
+// 计算ArrayBuffer的SHA256值
+async function calculateSHA256(buffer: ArrayBuffer): Promise<string> {
+    const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    return hashHex;
+}
+
 function AddSound(prop: _prop) {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const audios = useContext(AudioDataCtx);
@@ -29,12 +39,17 @@ function AddSound(prop: _prop) {
                     arrayBuffer.slice(0),
                 );
                 const duration = audioBuffer.duration; // 秒
+
+                // 计算音频数据的SHA256值作为ID
+                const audioId = await calculateSHA256(arrayBuffer);
+
                 prop.setSoundLanes([
                     ...prop.refSoundLanes,
                     defaultSoundLane(fileName, arrayBuffer, duration),
                 ]);
                 //TODO 对音频数据hash，得到唯一ID作为key.
                 audios.push({
+                    id: audioId,
                     file: fileName,
                     buffer: arrayBuffer,
                     duration: duration,
