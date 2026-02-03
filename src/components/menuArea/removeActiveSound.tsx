@@ -1,18 +1,21 @@
-import { soundlane } from "@/interface/soundLane/soundlane";
+import { SoundLaneState } from "@/interface/audioData";
 import Image from "next/image";
 import React from "react";
+
 interface _prop {
-    refSoundLanes: soundlane[];
-    setSoundLanes: (a: soundlane[]) => void;
+    refSoundLaneStates: SoundLaneState[];
+    setSoundLaneStates: (a: SoundLaneState[]) => void;
 }
+
 function DeleteActiveSound(prop: _prop) {
     const handleDeleteSoundLane = () => {
-        prop.setSoundLanes(
-            prop.refSoundLanes.filter((lane: soundlane) => {
-                return !lane.isActive;
-            })
+        prop.setSoundLaneStates(
+            prop.refSoundLaneStates.filter((state: SoundLaneState) => {
+                return !state.isActive;
+            }),
         );
     };
+
     return (
         <div>
             <button
@@ -33,4 +36,3 @@ function DeleteActiveSound(prop: _prop) {
 }
 
 export default DeleteActiveSound;
-// 从工程中删除关于该音频文件的引用

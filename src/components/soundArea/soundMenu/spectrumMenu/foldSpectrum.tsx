@@ -1,16 +1,24 @@
-import React from "react";
+import React, { useState } from "react";
 import style from "./spectrumMenu.module.css";
 import classNames from "classnames/bind";
 import Image from "next/image";
+
 const cls = classNames.bind(style);
+
 interface _p {
-    refIsFold: boolean;
+    audioId: string;
     setIsFold: (_: boolean) => void;
 }
+
 function FoldSpectrum(p: _p) {
+    const [isFold, setIsFold] = useState(false);
+
     const handleFold = () => {
-        p.setIsFold(!p.refIsFold);
+        const newValue = !isFold;
+        setIsFold(newValue);
+        p.setIsFold(newValue);
     };
+
     return (
         <div>
             <div className="flex">
@@ -21,7 +29,7 @@ function FoldSpectrum(p: _p) {
                 >
                     <Image
                         src={
-                            p.refIsFold
+                            isFold
                                 ? "/assets/icons/unfold.png"
                                 : "/assets/icons/fold.png"
                         }
@@ -29,7 +37,7 @@ function FoldSpectrum(p: _p) {
                         width={24}
                         height={24}
                     />
-                    <span>{!p.refIsFold ? "折叠频域" : "展开频域"}</span>
+                    <span>{!isFold ? "折叠频域" : "展开频域"}</span>
                 </button>
             </div>
         </div>

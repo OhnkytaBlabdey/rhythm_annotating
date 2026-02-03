@@ -1,64 +1,38 @@
 "use client";
 import "./soundLane.module.css";
 import SoundFileTitleBar from "./soundFileTitleBar";
-import { NoteLane } from "./noteArea/noteLane";
-import { notelane } from "@/interface/soundLane/noteLane/notelane";
 import SoundMenu from "./soundMenu/soundMenu";
-import { soundlane } from "@/interface/soundLane/soundlane";
 import WaveLane from "./waveArea/waveLane";
-import { wavelane } from "@/interface/soundLane/waveLane/wavelane";
 import SpectrumLane from "./spectrumArea/spectrumLane";
-import { spectrumlane } from "@/interface/soundLane/spectrumLane/spectrumlane";
 import WaveMenu from "./soundMenu/waveMenu/waveMenu";
 import SpectrumMenu from "./soundMenu/spectrumMenu/spectrumMenu";
+import { useContext } from "react";
+import { AudioDataCtx } from "../audioContext";
+import { SoundLaneState } from "@/interface/audioData";
 
 interface _prop {
     index: number;
-    soundFile: string;
+    audioId: string;
     timeRange: [number, number];
-    refSoundLane: soundlane;
-    setSoundLane: (i: number, l: soundlane) => void;
+    refSoundLaneState: SoundLaneState;
+    setSoundLaneState: (i: number, state: SoundLaneState) => void;
 }
 
 export default function SoundLane(prop: _prop) {
-    function handleClickToActivate() {
-        const updatedSoundLane = {
-            ...prop.refSoundLane,
-            isActive: !prop.refSoundLane.isActive,
-        };
-        prop.setSoundLane(prop.index, updatedSoundLane);
+    const audioDataList = useContext(AudioDataCtx);
+    const audioData = audioDataList.find((a) => a.id === prop.audioId);
+
+    if (!audioData) {
+        return <div>Audio not found</div>;
     }
 
-    function setNoteLanes(newNoteLanes: notelane[]) {
-        const updatedSoundLane = {
-            ...prop.refSoundLane,
-            noteLanes: newNoteLanes,
+    function handleClickToActivate() {
+        const updatedState = {
+            ...prop.refSoundLaneState,
+            isActive: !prop.refSoundLaneState.isActive,
         };
-        prop.setSoundLane(prop.index, updatedSoundLane);
+        prop.setSoundLaneState(prop.index, updatedState);
     }
-    function setWaveLane(newwavelane: wavelane) {
-        const updatedSoundLane = {
-            ...prop.refSoundLane,
-            waveLane: newwavelane,
-        };
-        prop.setSoundLane(prop.index, updatedSoundLane);
-    }
-    function setSpectrumLane(newspectrumlane: spectrumlane) {
-        const updatedSoundLane = {
-            ...prop.refSoundLane,
-            spectrumLane: newspectrumlane,
-        };
-        prop.setSoundLane(prop.index, updatedSoundLane);
-    }
-    function setAmplitudeMultiplier(newampmulti: number) {
-        setWaveLane({
-            ...prop.refSoundLane.waveLane,
-            amplitudeMultiplier: newampmulti,
-        });
-    }
-    // const activeNotelane = prop.refSoundLane.noteLanes.filter(
-    //     (lane) => lane.isActive
-    // )[0];
 
     return (
         <div
@@ -67,8 +41,8 @@ export default function SoundLane(prop: _prop) {
         >
             <div className="w-auto">
                 <SoundFileTitleBar
-                    soundFile={prop.soundFile}
-                    isActive={prop.refSoundLane.isActive || false}
+                    soundFile={audioData.file}
+                    isActive={prop.refSoundLaneState.isActive || false}
                 />
                 <div>
                     {prop.timeRange[0].toFixed(4)} -{" "}
@@ -77,64 +51,23 @@ export default function SoundLane(prop: _prop) {
             </div>
             <div className="flex flex-1">
                 <div className="w-auto" onClick={(e) => e.stopPropagation()}>
-                    <SoundMenu
-                        refNoteLanes={prop.refSoundLane.noteLanes}
-                        setNoteLanes={setNoteLanes}
-                    />
+                    <SoundMenu audioId={prop.audioId} />
                     <WaveMenu
-                        refAmplitudeMultiplier={
-                            prop.refSoundLane.waveLane.amplitudeMultiplier
-                        }
-                        setAmplitudeMultiplier={setAmplitudeMultiplier}
-                        refIsFold={prop.refSoundLane.waveLane.isFolded}
-                        setIsFold={(fold: boolean) => {
-                            setWaveLane({
-                                ...prop.refSoundLane.waveLane,
-                                isFolded: fold,
-                            });
-                        }}
+                        audioId={prop.audioId}
+                        setAmplitudeMultiplier={() => {}}
                     />
-                    <SpectrumMenu
-                        refIsFold={prop.refSoundLane.spectrumLane.isFolded}
-                        setIsFold={(fold: boolean) => {
-                            setSpectrumLane({
-                                ...prop.refSoundLane.spectrumLane,
-                                isFolded: fold,
-                            });
-                        }}
-                    />
+                    <SpectrumMenu audioId={prop.audioId} setIsFold={() => {}} />
                 </div>
                 <div className="">
                     <WaveLane
-                        mediaFilePath={prop.soundFile}
-                        waveLane={prop.refSoundLane.waveLane}
-                        setWaveLane={setWaveLane}
-                        arrayBuffer={prop.refSoundLane.audioBuffer}
-                        key={`${prop.index}-wave`}
+                        audioId={prop.audioId}
                         timeRange={prop.timeRange}
                     />
                     <SpectrumLane
-                        mediaFilePath={prop.soundFile}
-                        spectrumLane={prop.refSoundLane.spectrumLane}
-                        setSpectrumLane={setSpectrumLane}
-                        arrayBuffer={prop.refSoundLane.audioBuffer}
-                        key={`${prop.index}-spectrum`}
+                        audioId={prop.audioId}
                         timeRange={prop.timeRange}
                     />
-                    {prop.refSoundLane.noteLanes.map((lane, index) => (
-                        <NoteLane
-                            key={`${prop.index}-${index}`}
-                            Key={`${prop.index}-${index}`}
-                            index={index}
-                            timeRange={prop.timeRange}
-                            refNoteLane={lane}
-                            setNoteLane={(newlane) => {
-                                const newlanes = prop.refSoundLane.noteLanes;
-                                newlanes[index] = newlane;
-                                setNoteLanes(newlanes);
-                            }}
-                        />
-                    ))}
+                    {/* TODO: NoteLane 列表 */}
                 </div>
             </div>
         </div>

@@ -1,17 +1,14 @@
-import { wavelane } from "@/interface/soundLane/waveLane/wavelane";
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
+import { AudioDataCtx } from "../../audioContext";
 
 interface _p {
     timeRange: [number, number];
-    mediaFilePath: string;
-    waveLane: wavelane;
-    setWaveLane: (_: wavelane) => void;
-    arrayBuffer?: ArrayBuffer;
+    audioId: string;
 }
 
 interface WaveformCache {
     audioBuffer: AudioBuffer;
-    mixedData: Float32Array; // 已混合的单通道数据
+    mixedData: Float32Array;
     sampleRate: number;
 }
 
@@ -23,7 +20,6 @@ function mixDownToMono(audioBuffer: AudioBuffer): Float32Array {
     const length = audioBuffer.length;
 
     if (channelCount === 1) {
-        // 拷贝，避免直接引用 AudioBuffer 内部数据
         return audioBuffer.getChannelData(0).slice();
     }
 
@@ -49,10 +45,15 @@ function WaveLane(p: _p) {
     const CANVAS_PHYSICAL_WIDTH = 1200;
     const CANVAS_HEIGHT = 100;
 
+    const audioDataList = useContext(AudioDataCtx);
+    const audioData = audioDataList.find((a) => a.id === p.audioId);
+
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const waveformCacheRef = useRef<WaveformCache | null>(null);
     const [isCacheReady, setIsCacheReady] = useState(false);
+    const [amplitudeMultiplier, setAmplitudeMultiplier] = useState(5);
+    const [isFolded, setIsFolded] = useState(false);
 
     /**
      * 使用缓存的单通道数据实时绘制波形
@@ -62,7 +63,7 @@ function WaveLane(p: _p) {
         mixedData: Float32Array,
         sampleRate: number,
         timeRange: [number, number],
-        amplitudeMultiplier: number
+        amplitudeMultiplier: number,
     ) => {
         const canvas = ctx.canvas;
         const width = canvas.width;
@@ -75,7 +76,7 @@ function WaveLane(p: _p) {
         const startSample = Math.max(0, Math.floor(t_left * sampleRate));
         const endSample = Math.min(
             mixedData.length,
-            Math.ceil(t_right * sampleRate)
+            Math.ceil(t_right * sampleRate),
         );
 
         const rangeLength = endSample - startSample;
@@ -130,7 +131,7 @@ function WaveLane(p: _p) {
      * 解码音频并初始化缓存（只做一次重计算）
      */
     useEffect(() => {
-        if (!p.arrayBuffer) return;
+        if (!audioData?.buffer) return;
 
         if (!audioContextRef.current) {
             const AudioContextConstructor =
@@ -143,7 +144,19 @@ function WaveLane(p: _p) {
             audioContextRef.current = new AudioContextConstructor();
         }
 
-        const arrayBufferCopy = p.arrayBuffer.slice(0);
+        // 如果已有 decodedBuffer，直接使用
+        if (audioData.decodedBuffer) {
+            const mixedData = mixDownToMono(audioData.decodedBuffer);
+            waveformCacheRef.current = {
+                audioBuffer: audioData.decodedBuffer,
+                mixedData,
+                sampleRate: audioData.decodedBuffer.sampleRate,
+            };
+            setIsCacheReady(true);
+            return;
+        }
+
+        const arrayBufferCopy = audioData.buffer.slice(0);
 
         audioContextRef.current.decodeAudioData(
             arrayBufferCopy,
@@ -161,9 +174,9 @@ function WaveLane(p: _p) {
             (error) => {
                 console.error("音频解码失败:", error);
                 setIsCacheReady(false);
-            }
+            },
         );
-    }, [p.arrayBuffer]);
+    }, [audioData]);
 
     /**
      * 初始化 canvas 物理尺寸
@@ -189,14 +202,14 @@ function WaveLane(p: _p) {
             waveformCacheRef.current.mixedData,
             waveformCacheRef.current.sampleRate,
             p.timeRange,
-            p.waveLane.amplitudeMultiplier
+            amplitudeMultiplier,
         );
-    }, [p.timeRange, p.waveLane.amplitudeMultiplier, isCacheReady]);
+    }, [p.timeRange, amplitudeMultiplier, isCacheReady]);
 
     return (
         <div>
             <div className="flex gap-2">
-                {!p.waveLane.isFolded && (
+                {!isFolded && (
                     <canvas
                         ref={canvasRef}
                         width={CANVAS_PHYSICAL_WIDTH}

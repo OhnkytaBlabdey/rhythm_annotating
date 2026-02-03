@@ -1,19 +1,30 @@
 import Image from "next/image";
-import React from "react";
+import React, { useState } from "react";
 import style from "./waveMenu.module.css";
 import classNames from "classnames/bind";
+
 const cls = classNames.bind(style);
+
 interface _p {
-    refAmplitudeMultiplier: number;
+    audioId: string;
     setAmplitudeMultiplier: (_: number) => void;
 }
+
 function AmplitudeScale(p: _p) {
+    const [amplitudeMultiplier, setAmplitudeMultiplier] = useState(5);
+
     function handleAmpUp() {
-        p.setAmplitudeMultiplier(p.refAmplitudeMultiplier * (6 / 5));
+        const newValue = amplitudeMultiplier * (6 / 5);
+        setAmplitudeMultiplier(newValue);
+        p.setAmplitudeMultiplier(newValue);
     }
+
     function handleAmpDown() {
-        p.setAmplitudeMultiplier(p.refAmplitudeMultiplier * (5 / 6));
+        const newValue = amplitudeMultiplier * (5 / 6);
+        setAmplitudeMultiplier(newValue);
+        p.setAmplitudeMultiplier(newValue);
     }
+
     return (
         <div>
             <div className="flex-col">

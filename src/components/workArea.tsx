@@ -1,41 +1,49 @@
 "use client";
-import { useContext, useState } from "react";
-import style from "./workArea.module.css";
+import { useState } from "react";
 import { defaultProject, project } from "@/interface/project";
 import SoundLane from "./soundArea/soundLane";
 import WorkMenu from "./menuArea/workMenu";
-import { soundlane } from "@/interface/soundLane/soundlane";
+import {
+    SoundLaneState,
+    defaultSoundLaneState,
+    AudioData,
+} from "@/interface/audioData";
 import { AudioDataCtx } from "./audioContext";
 
 export default function WorkArea() {
     const [objProject, setProject] = useState<project>(defaultProject());
-    const audios = useContext(AudioDataCtx);
-    function setIndexSoundLane(index: number, lane: soundlane) {
-        const lanes = [...objProject.soundLanes];
-        lanes[index] = lane;
+    const [audioDataList, setAudioDataList] = useState<AudioData[]>([]);
+
+    function setIndexSoundLaneState(index: number, laneState: SoundLaneState) {
+        const lanes = [...objProject.soundLaneStates];
+        lanes[index] = laneState;
         setProject({
             ...objProject,
-            soundLanes: lanes,
+            soundLaneStates: lanes,
         });
     }
-    function setSoundLanes(newlanes: soundlane[]) {
+
+    function setSoundLaneStates(newlanes: SoundLaneState[]) {
         setProject({
             ...objProject,
-            soundLanes: newlanes,
+            soundLaneStates: newlanes,
         });
     }
+
     function setTimeMultiplier(newm: number) {
         setProject({
             ...objProject,
             timeMultiplier: newm,
         });
     }
+
     function setCurrentTime(newt: number) {
         setProject({
             ...objProject,
             currentTime: newt,
         });
     }
+
     function setIsPlaying(p: boolean) {
         setProject({
             ...objProject,
@@ -43,27 +51,42 @@ export default function WorkArea() {
         });
     }
 
+    function addAudioData(audioData: AudioData) {
+        setAudioDataList([...audioDataList, audioData]);
+        // 同时添加一个新的 SoundLaneState
+        setSoundLaneStates([
+            ...objProject.soundLaneStates,
+            defaultSoundLaneState(audioData.id),
+        ]);
+    }
+
+    // 计算总时长
+    const getDuration = () => {
+        return audioDataList.reduce(
+            (max, audio) => Math.max(max, audio.duration),
+            0,
+        );
+    };
+
     return (
-        <div className="WorkArea">
-            <AudioDataCtx value={[]}>
+        <AudioDataCtx.Provider value={audioDataList}>
+            <div className="WorkArea">
                 <div className="flex flex-col">
                     {/* Menu */}
                     <div className="flex px-12 py-2 ">
                         <div className="rounded-lg border border-gray-300 p-4 w-7/8 mx-auto">
                             <WorkMenu
                                 key={"menu"}
-                                setSoundLanes={setSoundLanes}
-                                refSoundLanes={objProject.soundLanes}
+                                setSoundLaneStates={setSoundLaneStates}
+                                refSoundLaneStates={objProject.soundLaneStates}
                                 refTimeMultiplier={objProject.timeMultiplier}
                                 setTimeMultiplier={setTimeMultiplier}
                                 refCurrentTime={objProject.currentTime}
                                 setCurrentTime={setCurrentTime}
                                 isPlaying={objProject.isPlaying}
                                 setIsPlaying={setIsPlaying}
-                                Duration={objProject.soundLanes.reduce(
-                                    (max, lane) => Math.max(max, lane.duration),
-                                    0,
-                                )}
+                                Duration={getDuration()}
+                                addAudioData={addAudioData}
                             />
                         </div>
                     </div>
@@ -71,14 +94,17 @@ export default function WorkArea() {
                     <div className="flex flex-col gap-4 px-10 py-2">
                         <div className="rounded-lg border border-gray-300 p-4">
                             <div className="w-7/8 mx-auto">
-                                {/* {objProject.soundLanes.map((lane, index) => ( */}
-                                {audios.map((audio, index) => (
+                                {audioDataList.map((audio, index) => (
                                     <SoundLane
                                         key={`audio-${audio.id}`}
                                         index={index}
-                                        soundFile={audio.file}
-                                        refSoundLane={lane}
-                                        setSoundLane={setIndexSoundLane}
+                                        audioId={audio.id}
+                                        refSoundLaneState={
+                                            objProject.soundLaneStates[index]
+                                        }
+                                        setSoundLaneState={
+                                            setIndexSoundLaneState
+                                        }
                                         timeRange={[
                                             objProject.currentTime,
                                             objProject.currentTime +
@@ -90,7 +116,7 @@ export default function WorkArea() {
                         </div>
                     </div>
                 </div>
-            </AudioDataCtx>
-        </div>
+            </div>
+        </AudioDataCtx.Provider>
     );
 }

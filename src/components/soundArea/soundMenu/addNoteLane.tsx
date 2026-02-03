@@ -1,20 +1,17 @@
 "use client";
-import {
-    defaultNoteLane,
-    notelane,
-} from "@/interface/soundLane/noteLane/notelane";
 import Image from "next/image";
 import style from "./addNoteLane.module.css";
 import classNames from "classnames/bind";
+
 const cls = classNames.bind(style);
+
 interface _prop {
-    refNoteLanes: notelane[];
-    setNoteLanes: (a: notelane[]) => void;
+    audioId: string;
 }
 
 function AddNoteLane(prop: _prop) {
     const handleAddNoteLane = () => {
-        prop.setNoteLanes([...prop.refNoteLanes, defaultNoteLane()]);
+        // TODO: 通过 audioId 添加 NoteLane 到该音频
     };
 
     return (

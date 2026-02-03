@@ -3,19 +3,17 @@ import FoldWave from "./foldWave";
 import AmplitudeScale from "./amplitudeScale";
 
 interface _p {
-    refAmplitudeMultiplier: number;
+    audioId: string;
     setAmplitudeMultiplier: (_: number) => void;
-    refIsFold: boolean;
-    setIsFold: (_: boolean) => void;
 }
+
 function WaveMenu(p: _p) {
     return (
         <div>
             <div className="flex flex-col">
-                <FoldWave refIsFold={p.refIsFold} setIsFold={p.setIsFold} />
-
+                <FoldWave audioId={p.audioId} />
                 <AmplitudeScale
-                    refAmplitudeMultiplier={p.refAmplitudeMultiplier}
+                    audioId={p.audioId}
                     setAmplitudeMultiplier={p.setAmplitudeMultiplier}
                 />
             </div>

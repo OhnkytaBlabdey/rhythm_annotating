@@ -1,13 +1,13 @@
 import React from "react";
 import AddSound from "./addSound";
-import { soundlane } from "@/interface/soundLane/soundlane";
+import { AudioData, SoundLaneState } from "@/interface/audioData";
 import TimeScale from "./adjustTimeScale";
 import DeleteActiveSound from "./removeActiveSound";
 import PlaySelected from "./playSelectedSound";
-// import PauseSelected from "./pauseSelectedSound";
+
 interface _prop {
-    refSoundLanes: soundlane[];
-    setSoundLanes: (a: soundlane[]) => void;
+    refSoundLaneStates: SoundLaneState[];
+    setSoundLaneStates: (a: SoundLaneState[]) => void;
     refTimeMultiplier: number;
     setTimeMultiplier: (_: number) => void;
     refCurrentTime: number;
@@ -15,20 +15,18 @@ interface _prop {
     isPlaying: boolean;
     setIsPlaying: (_: boolean) => void;
     Duration: number;
+    addAudioData: (audioData: AudioData) => void;
 }
+
 function WorkMenu(prop: _prop) {
     return (
         <div className="WorkMenu">
             <div className="flex">
-                <AddSound
-                    key={"add sound"}
-                    refSoundLanes={prop.refSoundLanes}
-                    setSoundLanes={prop.setSoundLanes}
-                />
+                <AddSound key={"add sound"} addAudioData={prop.addAudioData} />
                 <DeleteActiveSound
                     key={"delete sound"}
-                    refSoundLanes={prop.refSoundLanes}
-                    setSoundLanes={prop.setSoundLanes}
+                    refSoundLaneStates={prop.refSoundLaneStates}
+                    setSoundLaneStates={prop.setSoundLaneStates}
                 />
                 <TimeScale
                     key={"time scale"}

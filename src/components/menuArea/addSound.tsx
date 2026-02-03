@@ -1,11 +1,9 @@
-import { defaultSoundLane, soundlane } from "@/interface/soundLane/soundlane";
+import { AudioData } from "@/interface/audioData";
 import Image from "next/image";
-import React, { useContext, useRef } from "react";
-import { AudioDataCtx } from "../audioContext";
+import React, { useRef } from "react";
 
 interface _prop {
-    refSoundLanes: soundlane[];
-    setSoundLanes: (a: soundlane[]) => void;
+    addAudioData: (audioData: AudioData) => void;
 }
 
 // 计算ArrayBuffer的SHA256值
@@ -20,7 +18,6 @@ async function calculateSHA256(buffer: ArrayBuffer): Promise<string> {
 
 function AddSound(prop: _prop) {
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const audios = useContext(AudioDataCtx);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -43,16 +40,12 @@ function AddSound(prop: _prop) {
                 // 计算音频数据的SHA256值作为ID
                 const audioId = await calculateSHA256(arrayBuffer);
 
-                prop.setSoundLanes([
-                    ...prop.refSoundLanes,
-                    defaultSoundLane(fileName, arrayBuffer, duration),
-                ]);
-                //TODO 对音频数据hash，得到唯一ID作为key.
-                audios.push({
+                prop.addAudioData({
                     id: audioId,
                     file: fileName,
                     buffer: arrayBuffer,
                     duration: duration,
+                    decodedBuffer: audioBuffer,
                 });
 
                 audioContext.close();

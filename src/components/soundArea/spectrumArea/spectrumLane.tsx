@@ -1,13 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import { spectrumlane } from "@/interface/soundLane/spectrumLane/spectrumlane";
-import SpectrumMenu from "../soundMenu/spectrumMenu/spectrumMenu";
+import { useContext, useEffect, useRef, useState } from "react";
+import { AudioDataCtx } from "../../audioContext";
 
 interface _p {
     timeRange: [number, number];
-    mediaFilePath: string;
-    spectrumLane: spectrumlane;
-    setSpectrumLane: (_: spectrumlane) => void;
-    arrayBuffer?: ArrayBuffer;
+    audioId: string;
 }
 
 interface SpectrumCache {
@@ -121,16 +117,20 @@ function SpectrumLane(p: _p) {
     const CANVAS_WIDTH = 1200;
     const CANVAS_HEIGHT = 100;
 
+    const audioDataList = useContext(AudioDataCtx);
+    const audioData = audioDataList.find((a) => a.id === p.audioId);
+
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const cacheRef = useRef<SpectrumCache | null>(null);
     const [ready, setReady] = useState(false);
+    const [isFolded, setIsFolded] = useState(false);
 
     /**
      * 初始化音频缓存
      */
     useEffect(() => {
-        if (!p.arrayBuffer) return;
+        if (!audioData?.buffer) return;
 
         if (!audioContextRef.current) {
             const Ctor =
@@ -143,8 +143,18 @@ function SpectrumLane(p: _p) {
             audioContextRef.current = new Ctor();
         }
 
+        // 如果已有 decodedBuffer，直接使用
+        if (audioData.decodedBuffer) {
+            cacheRef.current = {
+                mixedData: mixDownToMono(audioData.decodedBuffer),
+                sampleRate: audioData.decodedBuffer.sampleRate,
+            };
+            setReady(true);
+            return;
+        }
+
         audioContextRef.current.decodeAudioData(
-            p.arrayBuffer.slice(0),
+            audioData.buffer.slice(0),
             (audioBuffer) => {
                 cacheRef.current = {
                     mixedData: mixDownToMono(audioBuffer),
@@ -155,9 +165,9 @@ function SpectrumLane(p: _p) {
             (err) => {
                 console.error("音频解码失败:", err);
                 setReady(false);
-            }
+            },
         );
-    }, [p.arrayBuffer]);
+    }, [audioData]);
 
     /**
      * 初始化 canvas 尺寸
@@ -183,14 +193,14 @@ function SpectrumLane(p: _p) {
         const startSample = Math.max(0, Math.floor(tL * sampleRate));
         const endSample = Math.min(
             mixedData.length,
-            Math.floor(tR * sampleRate)
+            Math.floor(tR * sampleRate),
         );
 
         const windowSize = 1024;
         const hopSize = 256;
 
         const frameCount = Math.floor(
-            (endSample - startSample - windowSize) / hopSize
+            (endSample - startSample - windowSize) / hopSize,
         );
         if (frameCount <= 0) return;
 
@@ -205,7 +215,7 @@ function SpectrumLane(p: _p) {
             const frameStart = startSample + t * hopSize;
             const segment = mixedData.slice(
                 frameStart,
-                frameStart + windowSize
+                frameStart + windowSize,
             );
 
             applyHannWindow(segment);
@@ -227,7 +237,7 @@ function SpectrumLane(p: _p) {
     return (
         <div>
             <div className="flex gap-2">
-                {!p.spectrumLane.isFolded && (
+                {!isFolded && (
                     <canvas
                         ref={canvasRef}
                         width={CANVAS_WIDTH}
