@@ -1,9 +1,12 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { AudioDataCtx } from "../../audioContext";
+import { SpectrumLaneState } from "@/interface/audioData";
 
 interface _p {
     timeRange: [number, number];
     audioId: string;
+    spectrumState: SpectrumLaneState;
+    setSpectrumState: (state: SpectrumLaneState) => void;
 }
 
 interface SpectrumCache {
@@ -124,7 +127,6 @@ function SpectrumLane(p: _p) {
     const audioContextRef = useRef<AudioContext | null>(null);
     const cacheRef = useRef<SpectrumCache | null>(null);
     const [ready, setReady] = useState(false);
-    const [isFolded, setIsFolded] = useState(false);
 
     /**
      * 初始化音频缓存
@@ -237,7 +239,7 @@ function SpectrumLane(p: _p) {
     return (
         <div>
             <div className="flex gap-2">
-                {!isFolded && (
+                {!p.spectrumState.isFolded && (
                     <canvas
                         ref={canvasRef}
                         width={CANVAS_WIDTH}

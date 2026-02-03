@@ -17,6 +17,8 @@ export interface SoundLaneState {
     isActive: boolean;
     offset: number;
     isPlayComplete: boolean;
+    waveLane: WaveLaneState;
+    spectrumLane: SpectrumLaneState;
 }
 
 /**
@@ -50,6 +52,8 @@ export function defaultSoundLaneState(audioId: string): SoundLaneState {
         isActive: false,
         offset: 0,
         isPlayComplete: false,
+        waveLane: defaultWaveLaneState(),
+        spectrumLane: defaultSpectrumLaneState(),
     };
 }
 

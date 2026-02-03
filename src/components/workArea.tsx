@@ -30,6 +30,16 @@ export default function WorkArea() {
         });
     }
 
+    function removeAudioData(audioId: string) {
+        // 删除音频和对应的状态
+        setAudioDataList(audioDataList.filter((a) => a.id !== audioId));
+        setSoundLaneStates(
+            objProject.soundLaneStates.filter(
+                (state) => state.audioId !== audioId,
+            ),
+        );
+    }
+
     function setTimeMultiplier(newm: number) {
         setProject({
             ...objProject,
@@ -87,6 +97,7 @@ export default function WorkArea() {
                                 setIsPlaying={setIsPlaying}
                                 Duration={getDuration()}
                                 addAudioData={addAudioData}
+                                removeAudioData={removeAudioData}
                             />
                         </div>
                     </div>

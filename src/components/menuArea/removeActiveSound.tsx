@@ -4,16 +4,17 @@ import React from "react";
 
 interface _prop {
     refSoundLaneStates: SoundLaneState[];
-    setSoundLaneStates: (a: SoundLaneState[]) => void;
+    removeAudioData: (audioId: string) => void;
 }
 
 function DeleteActiveSound(prop: _prop) {
     const handleDeleteSoundLane = () => {
-        prop.setSoundLaneStates(
-            prop.refSoundLaneStates.filter((state: SoundLaneState) => {
-                return !state.isActive;
-            }),
+        const activeState = prop.refSoundLaneStates.find(
+            (state: SoundLaneState) => state.isActive,
         );
+        if (activeState) {
+            prop.removeAudioData(activeState.audioId);
+        }
     };
 
     return (

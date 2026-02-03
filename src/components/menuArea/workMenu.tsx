@@ -16,6 +16,7 @@ interface _prop {
     setIsPlaying: (_: boolean) => void;
     Duration: number;
     addAudioData: (audioData: AudioData) => void;
+    removeAudioData: (audioId: string) => void;
 }
 
 function WorkMenu(prop: _prop) {
@@ -26,7 +27,7 @@ function WorkMenu(prop: _prop) {
                 <DeleteActiveSound
                     key={"delete sound"}
                     refSoundLaneStates={prop.refSoundLaneStates}
-                    setSoundLaneStates={prop.setSoundLaneStates}
+                    removeAudioData={prop.removeAudioData}
                 />
                 <TimeScale
                     key={"time scale"}

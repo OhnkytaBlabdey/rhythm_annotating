@@ -1,5 +1,5 @@
 import Image from "next/image";
-import React, { useState } from "react";
+import React from "react";
 import style from "./waveMenu.module.css";
 import classNames from "classnames/bind";
 
@@ -7,22 +7,17 @@ const cls = classNames.bind(style);
 
 interface _p {
     audioId: string;
+    amplitudeMultiplier: number;
     setAmplitudeMultiplier: (_: number) => void;
 }
 
 function AmplitudeScale(p: _p) {
-    const [amplitudeMultiplier, setAmplitudeMultiplier] = useState(5);
-
     function handleAmpUp() {
-        const newValue = amplitudeMultiplier * (6 / 5);
-        setAmplitudeMultiplier(newValue);
-        p.setAmplitudeMultiplier(newValue);
+        p.setAmplitudeMultiplier(p.amplitudeMultiplier * (6 / 5));
     }
 
     function handleAmpDown() {
-        const newValue = amplitudeMultiplier * (5 / 6);
-        setAmplitudeMultiplier(newValue);
-        p.setAmplitudeMultiplier(newValue);
+        p.setAmplitudeMultiplier(p.amplitudeMultiplier * (5 / 6));
     }
 
     return (

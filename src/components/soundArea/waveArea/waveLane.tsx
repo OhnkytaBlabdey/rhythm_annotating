@@ -1,9 +1,12 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { AudioDataCtx } from "../../audioContext";
+import { WaveLaneState } from "@/interface/audioData";
 
 interface _p {
     timeRange: [number, number];
     audioId: string;
+    waveState: WaveLaneState;
+    setWaveState: (state: WaveLaneState) => void;
 }
 
 interface WaveformCache {
@@ -52,8 +55,6 @@ function WaveLane(p: _p) {
     const audioContextRef = useRef<AudioContext | null>(null);
     const waveformCacheRef = useRef<WaveformCache | null>(null);
     const [isCacheReady, setIsCacheReady] = useState(false);
-    const [amplitudeMultiplier, setAmplitudeMultiplier] = useState(5);
-    const [isFolded, setIsFolded] = useState(false);
 
     /**
      * 使用缓存的单通道数据实时绘制波形
@@ -106,8 +107,12 @@ function WaveLane(p: _p) {
                 if (v > maxVal) maxVal = v;
             }
 
-            const y1 = centerY - maxVal * (height / 2) * amplitudeMultiplier;
-            const y2 = centerY - minVal * (height / 2) * amplitudeMultiplier;
+            const y1 =
+                centerY -
+                maxVal * (height / 2) * p.waveState.amplitudeMultiplier;
+            const y2 =
+                centerY -
+                minVal * (height / 2) * p.waveState.amplitudeMultiplier;
 
             if (i === 0) {
                 ctx.moveTo(i, y1);
@@ -202,14 +207,14 @@ function WaveLane(p: _p) {
             waveformCacheRef.current.mixedData,
             waveformCacheRef.current.sampleRate,
             p.timeRange,
-            amplitudeMultiplier,
+            p.waveState.amplitudeMultiplier,
         );
-    }, [p.timeRange, amplitudeMultiplier, isCacheReady]);
+    }, [p.timeRange, p.waveState.amplitudeMultiplier, isCacheReady]);
 
     return (
         <div>
             <div className="flex gap-2">
-                {!isFolded && (
+                {!p.waveState.isFolded && (
                     <canvas
                         ref={canvasRef}
                         width={CANVAS_PHYSICAL_WIDTH}

@@ -54,18 +54,47 @@ export default function SoundLane(prop: _prop) {
                     <SoundMenu audioId={prop.audioId} />
                     <WaveMenu
                         audioId={prop.audioId}
-                        setAmplitudeMultiplier={() => {}}
+                        waveState={prop.refSoundLaneState.waveLane}
+                        setWaveState={(waveLane) => {
+                            prop.setSoundLaneState(prop.index, {
+                                ...prop.refSoundLaneState,
+                                waveLane,
+                            });
+                        }}
                     />
-                    <SpectrumMenu audioId={prop.audioId} setIsFold={() => {}} />
+                    <SpectrumMenu
+                        audioId={prop.audioId}
+                        spectrumState={prop.refSoundLaneState.spectrumLane}
+                        setSpectrumState={(spectrumLane) => {
+                            prop.setSoundLaneState(prop.index, {
+                                ...prop.refSoundLaneState,
+                                spectrumLane,
+                            });
+                        }}
+                    />
                 </div>
                 <div className="">
                     <WaveLane
                         audioId={prop.audioId}
                         timeRange={prop.timeRange}
+                        waveState={prop.refSoundLaneState.waveLane}
+                        setWaveState={(waveLane) => {
+                            prop.setSoundLaneState(prop.index, {
+                                ...prop.refSoundLaneState,
+                                waveLane,
+                            });
+                        }}
                     />
                     <SpectrumLane
                         audioId={prop.audioId}
                         timeRange={prop.timeRange}
+                        spectrumState={prop.refSoundLaneState.spectrumLane}
+                        setSpectrumState={(spectrumLane) => {
+                            prop.setSoundLaneState(prop.index, {
+                                ...prop.refSoundLaneState,
+                                spectrumLane,
+                            });
+                        }}
                     />
                     {/* TODO: NoteLane 列表 */}
                 </div>

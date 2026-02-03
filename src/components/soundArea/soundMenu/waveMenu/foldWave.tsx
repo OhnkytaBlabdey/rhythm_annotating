@@ -1,5 +1,5 @@
 import Image from "next/image";
-import React, { useState } from "react";
+import React from "react";
 import style from "./waveMenu.module.css";
 import classNames from "classnames/bind";
 
@@ -7,13 +7,13 @@ const cls = classNames.bind(style);
 
 interface _p {
     audioId: string;
+    isFolded: boolean;
+    setIsFolded: (folded: boolean) => void;
 }
 
 function FoldWave(p: _p) {
-    const [isFold, setIsFold] = useState(false);
-
     const handleFold = () => {
-        setIsFold(!isFold);
+        p.setIsFolded(!p.isFolded);
     };
 
     return (
@@ -26,7 +26,7 @@ function FoldWave(p: _p) {
                 >
                     <Image
                         src={
-                            isFold
+                            p.isFolded
                                 ? "/assets/icons/unfold.png"
                                 : "/assets/icons/fold.png"
                         }
@@ -34,7 +34,7 @@ function FoldWave(p: _p) {
                         width={24}
                         height={24}
                     />
-                    <span>{!isFold ? "折叠幅值" : "展开幅值"}</span>
+                    <span>{!p.isFolded ? "折叠幅值" : "展开幅值"}</span>
                 </button>
             </div>
         </div>
