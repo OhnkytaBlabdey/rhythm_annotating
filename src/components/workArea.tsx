@@ -40,6 +40,17 @@ export default function WorkArea() {
         );
     }
 
+    function removeMultipleAudioData(audioIds: string[]) {
+        // 删除多个音频和对应的状态
+        const idsSet = new Set(audioIds);
+        setAudioDataList(audioDataList.filter((a) => !idsSet.has(a.id)));
+        setSoundLaneStates(
+            objProject.soundLaneStates.filter(
+                (state) => !idsSet.has(state.audioId),
+            ),
+        );
+    }
+
     function setTimeMultiplier(newm: number) {
         setProject({
             ...objProject,
@@ -98,6 +109,9 @@ export default function WorkArea() {
                                 Duration={getDuration()}
                                 addAudioData={addAudioData}
                                 removeAudioData={removeAudioData}
+                                removeMultipleAudioData={
+                                    removeMultipleAudioData
+                                }
                             />
                         </div>
                     </div>
