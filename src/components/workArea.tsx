@@ -51,6 +51,7 @@ export default function WorkArea() {
                     <div className="flex px-12 py-2 ">
                         <div className="rounded-lg border border-gray-300 p-4 w-7/8 mx-auto">
                             <WorkMenu
+                                key={"menu"}
                                 setSoundLanes={setSoundLanes}
                                 refSoundLanes={objProject.soundLanes}
                                 refTimeMultiplier={objProject.timeMultiplier}
@@ -70,11 +71,12 @@ export default function WorkArea() {
                     <div className="flex flex-col gap-4 px-10 py-2">
                         <div className="rounded-lg border border-gray-300 p-4">
                             <div className="w-7/8 mx-auto">
-                                {objProject.soundLanes.map((lane, index) => (
+                                {/* {objProject.soundLanes.map((lane, index) => ( */}
+                                {audios.map((audio, index) => (
                                     <SoundLane
-                                        key={index}
+                                        key={`audio-${audio.id}`}
                                         index={index}
-                                        soundFile={lane.mediaFilePath}
+                                        soundFile={audio.file}
                                         refSoundLane={lane}
                                         setSoundLane={setIndexSoundLane}
                                         timeRange={[
