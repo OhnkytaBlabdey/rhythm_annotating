@@ -18,6 +18,7 @@ interface WaveformCache {
 interface RenderedWaveCache {
     amplitudeMultiplier: number;
     wavePoints: Array<{ y1: number; y2: number }>;
+    pointCount: number; // 记录计算时的点数，用于缩放计算
 }
 
 interface UpdateTask {
@@ -56,34 +57,34 @@ function mixDownToMono(audioBuffer: AudioBuffer): Float32Array {
 /**
  * 计算波形点数据，支持中断
  * @param mixedData 单通道混合数据
- * @param canvasWidth canvas宽度（像素）
+ * @param pointCount 要计算的点数
  * @param canvasHeight canvas高度（像素）
  * @param amplitudeMultiplier 幅度倍数
  * @param signal 中止信号
  */
 function computeWavePoints(
     mixedData: Float32Array,
-    canvasWidth: number,
+    pointCount: number,
     canvasHeight: number,
     amplitudeMultiplier: number,
     signal: AbortSignal,
 ): { y1: number; y2: number }[] | null {
     if (signal.aborted) return null;
 
-    const wavePoints: { y1: number; y2: number }[] = new Array(canvasWidth);
+    const wavePoints: { y1: number; y2: number }[] = new Array(pointCount);
     const centerY = canvasHeight / 2;
     const samplesPerPixel = Math.max(
         1,
-        Math.floor(mixedData.length / canvasWidth),
+        Math.floor(mixedData.length / pointCount),
     );
 
-    for (let i = 0; i < canvasWidth; i++) {
+    for (let i = 0; i < pointCount; i++) {
         // 频繁检查中止信号
         if (signal.aborted) {
             return null;
         }
 
-        const sampleIndex = Math.floor((i / canvasWidth) * mixedData.length);
+        const sampleIndex = Math.floor((i / pointCount) * mixedData.length);
 
         let minVal = mixedData[sampleIndex];
         let maxVal = mixedData[sampleIndex];
@@ -113,6 +114,7 @@ function computeWavePoints(
 function renderWaveToCanvas(
     ctx: CanvasRenderingContext2D,
     wavePoints: { y1: number; y2: number }[],
+    pointCount: number,
     timeRange: [number, number],
     sampleRate: number,
     mixedDataLength: number,
@@ -134,26 +136,26 @@ function renderWaveToCanvas(
     const rangeLength = endSample - startSample;
     if (rangeLength <= 0) return;
 
-    // 计算时间范围对应的全局像素范围
-    const startPixel = (startSample / mixedDataLength) * wavePoints.length;
-    const endPixel = (endSample / mixedDataLength) * wavePoints.length;
-    const pixelRange = endPixel - startPixel;
+    // 计算时间范围对应的全局点范围
+    const startPoint = (startSample / mixedDataLength) * pointCount;
+    const endPoint = (endSample / mixedDataLength) * pointCount;
+    const pointRange = endPoint - startPoint;
 
     ctx.strokeStyle = "#0066cc";
     ctx.lineWidth = 1;
     ctx.beginPath();
 
     for (let canvasI = 0; canvasI < width; canvasI++) {
-        // 计算canvas上第canvasI个像素对应的全局像素位置
-        const globalPixelPos = startPixel + (canvasI / width) * pixelRange;
-        const globalPixelIdx = Math.floor(globalPixelPos);
+        // 计算canvas上第canvasI个像素对应的波形点位置
+        const globalPointPos = startPoint + (canvasI / width) * pointRange;
+        const globalPointIdx = Math.floor(globalPointPos);
 
         // 越界保护
-        if (globalPixelIdx < 0 || globalPixelIdx >= wavePoints.length) {
+        if (globalPointIdx < 0 || globalPointIdx >= pointCount) {
             continue;
         }
 
-        const { y1, y2 } = wavePoints[globalPixelIdx];
+        const { y1, y2 } = wavePoints[globalPointIdx];
         if (canvasI === 0) {
             ctx.moveTo(canvasI, y1);
         } else {
@@ -206,7 +208,14 @@ function WaveLane(p: _p) {
             amplitudeMultiplier,
         };
 
-        const { mixedData } = waveformCacheRef.current;
+        const { mixedData, sampleRate } = waveformCacheRef.current;
+
+        // 根据采样率动态计算点数，确保足够的分辨率
+        // 目标：每秒至少1000个点，以支持精细缩放
+        const pointCount = Math.max(
+            1200,
+            Math.min(sampleRate * 2, mixedData.length),
+        );
 
         // 使用 requestAnimationFrame 异步计算，避免阻塞主线程
         const compute = () => {
@@ -217,7 +226,7 @@ function WaveLane(p: _p) {
 
             const wavePoints = computeWavePoints(
                 mixedData,
-                CANVAS_PHYSICAL_WIDTH,
+                pointCount,
                 CANVAS_HEIGHT,
                 amplitudeMultiplier,
                 abortController.signal,
@@ -233,6 +242,7 @@ function WaveLane(p: _p) {
             renderedWaveCacheRef.current = {
                 amplitudeMultiplier,
                 wavePoints,
+                pointCount,
             };
 
             setIsRenderReady(true);
@@ -337,6 +347,7 @@ function WaveLane(p: _p) {
         renderWaveToCanvas(
             ctx,
             renderedWaveCacheRef.current.wavePoints,
+            renderedWaveCacheRef.current.pointCount,
             p.timeRange,
             waveformCacheRef.current.sampleRate,
             waveformCacheRef.current.mixedData.length,
