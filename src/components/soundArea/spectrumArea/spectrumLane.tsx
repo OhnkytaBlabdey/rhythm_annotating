@@ -9,16 +9,9 @@ interface _p {
     setSpectrumState: (state: SpectrumLaneState) => void;
 }
 
-interface SpectrumCache {
-    mixedData: Float32Array;
-    sampleRate: number;
-}
-
 interface SpectrumFrameCache {
-    frameData: Array<Float32Array>;
+    frameData: Float32Array[];
     maxMagnitude: number;
-    windowSize: number;
-    hopSize: number;
     sampleRate: number;
 }
 
@@ -47,71 +40,6 @@ function mixDownToMono(audioBuffer: AudioBuffer): Float32Array {
     return mixed;
 }
 
-function fftMagnitude(input: Float32Array): Float32Array {
-    const N = input.length;
-    const re = new Float32Array(N);
-    const im = new Float32Array(N);
-
-    for (let i = 0; i < N; i++) re[i] = input[i];
-
-    for (let len = 2; len <= N; len <<= 1) {
-        const half = len >> 1;
-        const step = (Math.PI * 2) / len;
-
-        for (let i = 0; i < N; i += len) {
-            for (let j = 0; j < half; j++) {
-                const k = i + j;
-                const l = k + half;
-
-                const angle = step * j;
-                const cos = Math.cos(angle);
-                const sin = -Math.sin(angle);
-
-                const tre = re[l] * cos - im[l] * sin;
-                const tim = re[l] * sin + im[l] * cos;
-
-                re[l] = re[k] - tre;
-                im[l] = im[k] - tim;
-                re[k] += tre;
-                im[k] += tim;
-            }
-        }
-    }
-
-    const mag = new Float32Array(N / 2);
-    const norm = (2 / N) * 1.5;
-
-    for (let i = 0; i < mag.length; i++) {
-        mag[i] = Math.sqrt(re[i] * re[i] + im[i] * im[i]) * norm;
-    }
-
-    return mag;
-}
-
-function applyHannWindow(buf: Float32Array): void {
-    const N = buf.length;
-    for (let i = 0; i < N; i++) {
-        buf[i] *= 0.5 * (1 - Math.cos((2 * Math.PI * i) / (N - 1)));
-    }
-}
-
-function magnitudeToDb(mag: number): number {
-    return 20 * Math.log10(Math.max(mag, 1e-10));
-}
-
-function dbToRGB(db: number): [number, number, number] {
-    const minDb = -100;
-    const maxDb = 0;
-
-    const x = Math.min(1, Math.max(0, (db - minDb) / (maxDb - minDb)));
-
-    const r = Math.floor(255 * Math.min(1, Math.max(0, (x - 0.5) * 2)));
-    const g = Math.floor(255 * Math.min(1, Math.max(0, (x - 0.25) * 2)));
-    const b = Math.floor(255 * (1 - x));
-
-    return [r, g, b];
-}
-
 function SpectrumLane(p: _p) {
     const CANVAS_WIDTH = 1200;
     const CANVAS_HEIGHT = 100;
@@ -122,76 +50,122 @@ function SpectrumLane(p: _p) {
     const audioData = audioDataList.find((a) => a.id === p.audioId);
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const audioContextRef = useRef<AudioContext | null>(null);
-    const cacheRef = useRef<SpectrumCache | null>(null);
-    const spectrumFrameCacheRef = useRef<SpectrumFrameCache | null>(null);
+    const workerRef = useRef<Worker | null>(null);
+    const cacheRef = useRef<SpectrumFrameCache | null>(null);
     const [ready, setReady] = useState(false);
 
     const contrast =
-        (p.spectrumState as unknown as { contrast?: number }).contrast ?? 0.2;
+        (p.spectrumState as unknown as { contrast?: number }).contrast ?? 1;
 
-    function drawSpectrum() {
+    const logLUTRef = useRef<number[]>([]);
+    const colorLUTRef = useRef<[number, number, number][]>([]);
+
+    // ======== 初始化 LUT ========
+
+    useEffect(() => {
+        // 频率对数映射 LUT
+        const lut: number[] = [];
+        const minFreq = 20;
+        const maxFreq = 20000;
+
+        for (let y = 0; y < CANVAS_HEIGHT; y++) {
+            const norm = y / CANVAS_HEIGHT;
+            const freq = minFreq * Math.pow(maxFreq / minFreq, norm);
+            lut.push(freq);
+        }
+
+        logLUTRef.current = lut;
+
+        // 颜色 LUT
+        const colorLUT: [number, number, number][] = [];
+        for (let i = 0; i < 1024; i++) {
+            const x = i / 1023;
+            const r = Math.floor(255 * Math.max(0, (x - 0.5) * 2));
+            const g = Math.floor(255 * Math.max(0, (x - 0.25) * 2));
+            const b = Math.floor(255 * (1 - x));
+            colorLUT.push([r, g, b]);
+        }
+        colorLUTRef.current = colorLUT;
+    }, []);
+
+    // ======== 启动 Worker FFT ========
+
+    useEffect(() => {
+        if (!audioData?.buffer) return;
+
+        const ctx = new AudioContext();
+        ctx.decodeAudioData(audioData.buffer.slice(0), (decoded) => {
+            const mono = mixDownToMono(decoded);
+
+            workerRef.current = new Worker(
+                new URL("./spectrumWorker.ts", import.meta.url),
+            );
+
+            workerRef.current.onmessage = (e) => {
+                if (e.data.type === "result") {
+                    cacheRef.current = {
+                        frameData: e.data.frameData,
+                        maxMagnitude: e.data.maxMagnitude,
+                        sampleRate: decoded.sampleRate,
+                    };
+                    setReady(true);
+                }
+            };
+
+            workerRef.current.postMessage({
+                type: "init",
+                audio: mono,
+                sampleRate: decoded.sampleRate,
+                windowSize: WINDOW_SIZE,
+                hopSize: HOP_SIZE,
+            });
+        });
+    }, [audioData]);
+
+    // ======== 绘制 ========
+
+    useEffect(() => {
+        if (!ready) return;
         if (!canvasRef.current) return;
-        const cache = spectrumFrameCacheRef.current;
-        if (!cache) return;
+        if (!cacheRef.current) return;
 
         const ctx = canvasRef.current.getContext("2d");
         if (!ctx) return;
 
-        const { frameData, maxMagnitude, hopSize, sampleRate } = cache;
-        if (frameData.length === 0) return;
-
-        const [tL, tR] = p.timeRange;
-
-        const startSample = Math.max(0, Math.floor(tL * sampleRate));
-        const endSample = Math.min(
-            sampleRate * (tR - tL) + startSample,
-            frameData.length * hopSize,
-        );
-
-        const startFrameIdx = Math.floor(startSample / hopSize);
-        const endFrameIdx = Math.ceil(endSample / hopSize);
-        const displayFrameCount = endFrameIdx - startFrameIdx;
-        if (displayFrameCount <= 0) return;
-
-        const binCount = frameData[0].length;
-        const gamma = 1 - contrast * 0.8;
+        const { frameData, maxMagnitude, sampleRate } = cacheRef.current;
 
         const imageData = ctx.createImageData(CANVAS_WIDTH, CANVAS_HEIGHT);
         const data = imageData.data;
 
-        for (let x = 0; x < CANVAS_WIDTH; x++) {
-            let frameStart: number;
-            let frameEnd: number;
+        const [tL, tR] = p.timeRange;
+        const startFrame = Math.floor((tL * sampleRate) / HOP_SIZE);
+        const endFrame = Math.floor((tR * sampleRate) / HOP_SIZE);
+        const frameCount = endFrame - startFrame;
 
-            if (displayFrameCount <= CANVAS_WIDTH) {
-                // 放大模式（保证铺满）
-                const ratio = displayFrameCount / CANVAS_WIDTH;
-                frameStart = Math.floor(startFrameIdx + x * ratio);
-                frameEnd = frameStart + 1;
-            } else {
-                // 下采样模式
-                const framesPerPixel = displayFrameCount / CANVAS_WIDTH;
-                frameStart = Math.floor(startFrameIdx + x * framesPerPixel);
-                frameEnd = Math.floor(frameStart + framesPerPixel);
-            }
+        const gamma = 1 - contrast * 0.8;
+
+        for (let x = 0; x < CANVAS_WIDTH; x++) {
+            const frameIdx =
+                startFrame + Math.floor((x / CANVAS_WIDTH) * frameCount);
+
+            if (frameIdx >= frameData.length) continue;
+
+            const spectrum = frameData[frameIdx];
 
             for (let y = 0; y < CANVAS_HEIGHT; y++) {
-                const binIdx = Math.floor((y / CANVAS_HEIGHT) * binCount);
+                const freq = logLUTRef.current[y];
+                const bin = Math.floor(
+                    (freq / (sampleRate / 2)) * spectrum.length,
+                );
 
-                let maxVal = 0;
+                if (bin >= spectrum.length) continue;
 
-                for (let f = frameStart; f < frameEnd; f++) {
-                    if (f >= frameData.length) break;
-                    const spectrum = frameData[f];
-                    const val = spectrum[binIdx];
-                    if (val > maxVal) maxVal = val;
-                }
+                const val = spectrum[bin] / maxMagnitude;
+                const enhanced = Math.pow(val, gamma);
 
-                const normalized = maxVal / maxMagnitude;
-                const enhanced = Math.pow(normalized, gamma);
-                const db = magnitudeToDb(enhanced);
-                const [r, g, b] = dbToRGB(db);
+                const lutIndex = Math.floor(enhanced * 1023);
+
+                const [r, g, b] = colorLUTRef.current[lutIndex];
 
                 const row = CANVAS_HEIGHT - y - 1;
                 const idx = (row * CANVAS_WIDTH + x) * 4;
@@ -204,80 +178,19 @@ function SpectrumLane(p: _p) {
         }
 
         ctx.putImageData(imageData, 0, 0);
-    }
-
-    useEffect(() => {
-        if (!audioData?.buffer) return;
-
-        if (!audioContextRef.current) {
-            audioContextRef.current = new AudioContext();
-        }
-
-        audioContextRef.current.decodeAudioData(
-            audioData.buffer.slice(0),
-            (audioBuffer) => {
-                cacheRef.current = {
-                    mixedData: mixDownToMono(audioBuffer),
-                    sampleRate: audioBuffer.sampleRate,
-                };
-                setReady(true);
-            },
-        );
-    }, [audioData]);
-
-    useEffect(() => {
-        if (!ready || spectrumFrameCacheRef.current) return;
-        if (!cacheRef.current) return;
-
-        const { mixedData, sampleRate } = cacheRef.current;
-
-        const totalFrames = Math.floor(
-            (mixedData.length - WINDOW_SIZE) / HOP_SIZE,
-        );
-
-        const frameData: Float32Array[] = [];
-        let maxMagnitude = 0;
-
-        for (let t = 0; t < totalFrames; t++) {
-            const start = t * HOP_SIZE;
-            const segment = mixedData.slice(start, start + WINDOW_SIZE);
-            applyHannWindow(segment);
-            const spectrum = fftMagnitude(segment);
-            frameData.push(spectrum);
-
-            for (let i = 0; i < spectrum.length; i++) {
-                if (spectrum[i] > maxMagnitude) maxMagnitude = spectrum[i];
-            }
-        }
-
-        spectrumFrameCacheRef.current = {
-            frameData,
-            maxMagnitude: Math.max(maxMagnitude, 1),
-            windowSize: WINDOW_SIZE,
-            hopSize: HOP_SIZE,
-            sampleRate,
-        };
-
-        drawSpectrum();
-    }, [ready]);
-
-    useEffect(() => {
-        drawSpectrum();
-    }, [p.timeRange, contrast]);
+    }, [p.timeRange, ready, contrast]);
 
     return (
-        <div>
-            <canvas
-                ref={canvasRef}
-                width={CANVAS_WIDTH}
-                height={CANVAS_HEIGHT}
-                style={{
-                    border: "1px solid #ccc",
-                    width: "100%",
-                    height: "auto",
-                }}
-            />
-        </div>
+        <canvas
+            ref={canvasRef}
+            width={CANVAS_WIDTH}
+            height={CANVAS_HEIGHT}
+            style={{
+                border: "1px solid #ccc",
+                width: "100%",
+                height: "auto",
+            }}
+        />
     );
 }
 
