@@ -31,6 +31,7 @@ function mixDownToMono(audioBuffer: AudioBuffer): Float32Array {
     }
 
     const mixed = new Float32Array(length);
+
     for (let c = 0; c < channelCount; c++) {
         const ch = audioBuffer.getChannelData(c);
         for (let i = 0; i < length; i++) {
@@ -95,11 +96,10 @@ function applyHannWindow(buf: Float32Array): void {
 }
 
 function magnitudeToDb(mag: number): number {
-    const eps = 1e-10;
-    return 20 * Math.log10(Math.max(mag, eps));
+    return 20 * Math.log10(Math.max(mag, 1e-10));
 }
 
-function dbToColor(db: number): string {
+function dbToRGB(db: number): [number, number, number] {
     const minDb = -100;
     const maxDb = 0;
 
@@ -109,7 +109,7 @@ function dbToColor(db: number): string {
     const g = Math.floor(255 * Math.min(1, Math.max(0, (x - 0.25) * 2)));
     const b = Math.floor(255 * (1 - x));
 
-    return `rgb(${r},${g},${b})`;
+    return [r, g, b];
 }
 
 function SpectrumLane(p: _p) {
@@ -138,99 +138,79 @@ function SpectrumLane(p: _p) {
         const ctx = canvasRef.current.getContext("2d");
         if (!ctx) return;
 
-        const allFrameData = cache.frameData;
-        const maxMagnitude = cache.maxMagnitude;
-        const hopSize = cache.hopSize;
-        const sampleRate = cache.sampleRate;
-
-        if (allFrameData.length === 0) return;
+        const { frameData, maxMagnitude, hopSize, sampleRate } = cache;
+        if (frameData.length === 0) return;
 
         const [tL, tR] = p.timeRange;
 
         const startSample = Math.max(0, Math.floor(tL * sampleRate));
         const endSample = Math.min(
             sampleRate * (tR - tL) + startSample,
-            allFrameData.length * hopSize,
+            frameData.length * hopSize,
         );
 
-        const startFrameIdx = Math.max(0, Math.floor(startSample / hopSize));
-        const endFrameIdx = Math.min(
-            allFrameData.length,
-            Math.ceil(endSample / hopSize),
-        );
-
+        const startFrameIdx = Math.floor(startSample / hopSize);
+        const endFrameIdx = Math.ceil(endSample / hopSize);
         const displayFrameCount = endFrameIdx - startFrameIdx;
         if (displayFrameCount <= 0) return;
 
-        ctx.fillStyle = "#000000";
-        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-        const binCount = allFrameData[0].length;
-
-        const frameStep = Math.max(
-            1,
-            Math.floor(displayFrameCount / CANVAS_WIDTH),
-        );
-
-        const binStep = Math.max(1, Math.floor(binCount / CANVAS_HEIGHT));
-
+        const binCount = frameData[0].length;
         const gamma = 1 - contrast * 0.8;
 
+        const imageData = ctx.createImageData(CANVAS_WIDTH, CANVAS_HEIGHT);
+        const data = imageData.data;
+
         for (let x = 0; x < CANVAS_WIDTH; x++) {
-            const frameIdx = startFrameIdx + x * frameStep;
-            if (frameIdx >= endFrameIdx) break;
+            let frameStart: number;
+            let frameEnd: number;
+
+            if (displayFrameCount <= CANVAS_WIDTH) {
+                // 放大模式（保证铺满）
+                const ratio = displayFrameCount / CANVAS_WIDTH;
+                frameStart = Math.floor(startFrameIdx + x * ratio);
+                frameEnd = frameStart + 1;
+            } else {
+                // 下采样模式
+                const framesPerPixel = displayFrameCount / CANVAS_WIDTH;
+                frameStart = Math.floor(startFrameIdx + x * framesPerPixel);
+                frameEnd = Math.floor(frameStart + framesPerPixel);
+            }
 
             for (let y = 0; y < CANVAS_HEIGHT; y++) {
-                const binIdx = y * binStep;
-                if (binIdx >= binCount) break;
+                const binIdx = Math.floor((y / CANVAS_HEIGHT) * binCount);
 
                 let maxVal = 0;
 
-                for (let fi = 0; fi < frameStep; fi++) {
-                    const fIdx = frameIdx + fi;
-                    if (fIdx >= endFrameIdx) break;
-
-                    const spectrum = allFrameData[fIdx];
-                    for (let bi = 0; bi < binStep; bi++) {
-                        const bIdx = binIdx + bi;
-                        if (bIdx >= binCount) break;
-                        const val = spectrum[bIdx];
-                        if (val > maxVal) maxVal = val;
-                    }
+                for (let f = frameStart; f < frameEnd; f++) {
+                    if (f >= frameData.length) break;
+                    const spectrum = frameData[f];
+                    const val = spectrum[binIdx];
+                    if (val > maxVal) maxVal = val;
                 }
 
                 const normalized = maxVal / maxMagnitude;
                 const enhanced = Math.pow(normalized, gamma);
                 const db = magnitudeToDb(enhanced);
-                ctx.fillStyle = dbToColor(db);
+                const [r, g, b] = dbToRGB(db);
 
-                ctx.fillRect(x, CANVAS_HEIGHT - y - 1, 1, 1);
+                const row = CANVAS_HEIGHT - y - 1;
+                const idx = (row * CANVAS_WIDTH + x) * 4;
+
+                data[idx] = r;
+                data[idx + 1] = g;
+                data[idx + 2] = b;
+                data[idx + 3] = 255;
             }
         }
+
+        ctx.putImageData(imageData, 0, 0);
     }
 
     useEffect(() => {
-        if (p.spectrumState.isFolded) return;
         if (!audioData?.buffer) return;
 
         if (!audioContextRef.current) {
-            const Ctor =
-                window.AudioContext ||
-                (
-                    window as unknown as {
-                        webkitAudioContext: typeof AudioContext;
-                    }
-                ).webkitAudioContext;
-            audioContextRef.current = new Ctor();
-        }
-
-        if (audioData.decodedBuffer) {
-            cacheRef.current = {
-                mixedData: mixDownToMono(audioData.decodedBuffer),
-                sampleRate: audioData.decodedBuffer.sampleRate,
-            };
-            setReady(true);
-            return;
+            audioContextRef.current = new AudioContext();
         }
 
         audioContextRef.current.decodeAudioData(
@@ -242,11 +222,8 @@ function SpectrumLane(p: _p) {
                 };
                 setReady(true);
             },
-            () => {
-                setReady(false);
-            },
         );
-    }, [audioData, p.spectrumState.isFolded]);
+    }, [audioData]);
 
     useEffect(() => {
         if (!ready || spectrumFrameCacheRef.current) return;
@@ -254,29 +231,22 @@ function SpectrumLane(p: _p) {
 
         const { mixedData, sampleRate } = cacheRef.current;
 
-        const totalFrames = Math.max(
-            1,
-            Math.floor((mixedData.length - WINDOW_SIZE) / HOP_SIZE) + 1,
+        const totalFrames = Math.floor(
+            (mixedData.length - WINDOW_SIZE) / HOP_SIZE,
         );
 
-        const frameData: Array<Float32Array> = new Array(totalFrames);
+        const frameData: Float32Array[] = [];
         let maxMagnitude = 0;
 
         for (let t = 0; t < totalFrames; t++) {
-            const frameStart = t * HOP_SIZE;
-            if (frameStart + WINDOW_SIZE > mixedData.length) break;
-
-            const segment = mixedData.slice(
-                frameStart,
-                frameStart + WINDOW_SIZE,
-            );
-
+            const start = t * HOP_SIZE;
+            const segment = mixedData.slice(start, start + WINDOW_SIZE);
             applyHannWindow(segment);
             const spectrum = fftMagnitude(segment);
-            frameData[t] = spectrum;
+            frameData.push(spectrum);
 
-            for (let f = 0; f < spectrum.length; f++) {
-                if (spectrum[f] > maxMagnitude) maxMagnitude = spectrum[f];
+            for (let i = 0; i < spectrum.length; i++) {
+                if (spectrum[i] > maxMagnitude) maxMagnitude = spectrum[i];
             }
         }
 
@@ -292,24 +262,21 @@ function SpectrumLane(p: _p) {
     }, [ready]);
 
     useEffect(() => {
-        if (p.spectrumState.isFolded) return;
         drawSpectrum();
-    }, [p.timeRange, ready, p.spectrumState.isFolded, contrast]);
+    }, [p.timeRange, contrast]);
 
     return (
         <div>
-            {!p.spectrumState.isFolded && (
-                <canvas
-                    ref={canvasRef}
-                    width={CANVAS_WIDTH}
-                    height={CANVAS_HEIGHT}
-                    style={{
-                        border: "1px solid #ccc",
-                        width: "100%",
-                        height: "auto",
-                    }}
-                />
-            )}
+            <canvas
+                ref={canvasRef}
+                width={CANVAS_WIDTH}
+                height={CANVAS_HEIGHT}
+                style={{
+                    border: "1px solid #ccc",
+                    width: "100%",
+                    height: "auto",
+                }}
+            />
         </div>
     );
 }
