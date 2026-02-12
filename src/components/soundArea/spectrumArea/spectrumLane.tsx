@@ -15,16 +15,13 @@ interface SpectrumCache {
 }
 
 interface SpectrumFrameCache {
-    frameData: Array<Float32Array>; // 每帧的频谱幅度数据
-    maxMagnitude: number; // 缓存最大值，避免每次渲染都扫描
+    frameData: Array<Float32Array>;
+    maxMagnitude: number;
     windowSize: number;
     hopSize: number;
     sampleRate: number;
 }
 
-/**
- * 多通道混合为单通道（初始化一次）
- */
 function mixDownToMono(audioBuffer: AudioBuffer): Float32Array {
     const channelCount = audioBuffer.numberOfChannels;
     const length = audioBuffer.length;
@@ -49,9 +46,6 @@ function mixDownToMono(audioBuffer: AudioBuffer): Float32Array {
     return mixed;
 }
 
-/**
- * FFT 幅度谱（实数输入，带正规化）
- */
 function fftMagnitude(input: Float32Array): Float32Array {
     const N = input.length;
     const re = new Float32Array(N);
@@ -84,17 +78,15 @@ function fftMagnitude(input: Float32Array): Float32Array {
     }
 
     const mag = new Float32Array(N / 2);
-    const norm = (2 / N) * 1.5; // 正规化因子 + Hann窗补偿
+    const norm = (2 / N) * 1.5;
+
     for (let i = 0; i < mag.length; i++) {
-        const amplitude = Math.sqrt(re[i] * re[i] + im[i] * im[i]) * norm;
-        mag[i] = amplitude;
+        mag[i] = Math.sqrt(re[i] * re[i] + im[i] * im[i]) * norm;
     }
+
     return mag;
 }
 
-/**
- * Hann 窗
- */
 function applyHannWindow(buf: Float32Array): void {
     const N = buf.length;
     for (let i = 0; i < N; i++) {
@@ -102,22 +94,12 @@ function applyHannWindow(buf: Float32Array): void {
     }
 }
 
-/**
- * 幅度转 dB，带增益调整
- * 增益用于调整频谱的显示亮度
- */
-function magnitudeToDb(mag: number, gain: number = 100): number {
+function magnitudeToDb(mag: number): number {
     const eps = 1e-10;
-    const adjusted = Math.max(mag * gain, eps);
-    return 20 * Math.log10(adjusted);
+    return 20 * Math.log10(Math.max(mag, eps));
 }
 
-/**
- * dB → 颜色映射（固定动态范围）
- */
 function dbToColor(db: number): string {
-    // 对于正规化后的输入（0-1），db范围大约是-200到+20
-    // 重新映射到更合理的动态范围
     const minDb = -100;
     const maxDb = 0;
 
@@ -143,13 +125,90 @@ function SpectrumLane(p: _p) {
     const audioContextRef = useRef<AudioContext | null>(null);
     const cacheRef = useRef<SpectrumCache | null>(null);
     const spectrumFrameCacheRef = useRef<SpectrumFrameCache | null>(null);
-    const computeTaskRef = useRef<AbortController | null>(null);
     const [ready, setReady] = useState(false);
-    // 频谱缓存后无需异步setState，直接重绘即可
 
-    /**
-     * 初始化音频缓存
-     */
+    const contrast =
+        (p.spectrumState as unknown as { contrast?: number }).contrast ?? 0.2;
+
+    function drawSpectrum() {
+        if (!canvasRef.current) return;
+        const cache = spectrumFrameCacheRef.current;
+        if (!cache) return;
+
+        const ctx = canvasRef.current.getContext("2d");
+        if (!ctx) return;
+
+        const allFrameData = cache.frameData;
+        const maxMagnitude = cache.maxMagnitude;
+        const hopSize = cache.hopSize;
+        const sampleRate = cache.sampleRate;
+
+        if (allFrameData.length === 0) return;
+
+        const [tL, tR] = p.timeRange;
+
+        const startSample = Math.max(0, Math.floor(tL * sampleRate));
+        const endSample = Math.min(
+            sampleRate * (tR - tL) + startSample,
+            allFrameData.length * hopSize,
+        );
+
+        const startFrameIdx = Math.max(0, Math.floor(startSample / hopSize));
+        const endFrameIdx = Math.min(
+            allFrameData.length,
+            Math.ceil(endSample / hopSize),
+        );
+
+        const displayFrameCount = endFrameIdx - startFrameIdx;
+        if (displayFrameCount <= 0) return;
+
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        const binCount = allFrameData[0].length;
+
+        const frameStep = Math.max(
+            1,
+            Math.floor(displayFrameCount / CANVAS_WIDTH),
+        );
+
+        const binStep = Math.max(1, Math.floor(binCount / CANVAS_HEIGHT));
+
+        const gamma = 1 - contrast * 0.8;
+
+        for (let x = 0; x < CANVAS_WIDTH; x++) {
+            const frameIdx = startFrameIdx + x * frameStep;
+            if (frameIdx >= endFrameIdx) break;
+
+            for (let y = 0; y < CANVAS_HEIGHT; y++) {
+                const binIdx = y * binStep;
+                if (binIdx >= binCount) break;
+
+                let maxVal = 0;
+
+                for (let fi = 0; fi < frameStep; fi++) {
+                    const fIdx = frameIdx + fi;
+                    if (fIdx >= endFrameIdx) break;
+
+                    const spectrum = allFrameData[fIdx];
+                    for (let bi = 0; bi < binStep; bi++) {
+                        const bIdx = binIdx + bi;
+                        if (bIdx >= binCount) break;
+                        const val = spectrum[bIdx];
+                        if (val > maxVal) maxVal = val;
+                    }
+                }
+
+                const normalized = maxVal / maxMagnitude;
+                const enhanced = Math.pow(normalized, gamma);
+                const db = magnitudeToDb(enhanced);
+                ctx.fillStyle = dbToColor(db);
+
+                ctx.fillRect(x, CANVAS_HEIGHT - y - 1, 1, 1);
+            }
+        }
+    }
+
     useEffect(() => {
         if (p.spectrumState.isFolded) return;
         if (!audioData?.buffer) return;
@@ -165,7 +224,6 @@ function SpectrumLane(p: _p) {
             audioContextRef.current = new Ctor();
         }
 
-        // 如果已有 decodedBuffer，直接使用
         if (audioData.decodedBuffer) {
             cacheRef.current = {
                 mixedData: mixDownToMono(audioData.decodedBuffer),
@@ -184,51 +242,44 @@ function SpectrumLane(p: _p) {
                 };
                 setReady(true);
             },
-            (err) => {
-                console.error("音频解码失败:", err);
+            () => {
                 setReady(false);
             },
         );
     }, [audioData, p.spectrumState.isFolded]);
 
-    /**
-     * 初始化 canvas 尺寸
-     */
     useEffect(() => {
-        if (!canvasRef.current) return;
-        canvasRef.current.width = CANVAS_WIDTH;
-        canvasRef.current.height = CANVAS_HEIGHT;
-    }, []);
+        if (!ready || spectrumFrameCacheRef.current) return;
+        if (!cacheRef.current) return;
 
-    /**
-     * 音频缓存就绪后，异步优先计算显示窗口两侧的频谱帧，直到覆盖整个音频
-     */
-    useEffect(() => {
-        if (p.spectrumState.isFolded) return;
-        if (!ready || !cacheRef.current) return;
-        // 只计算一次全音频所有帧
-        if (spectrumFrameCacheRef.current) return;
         const { mixedData, sampleRate } = cacheRef.current;
+
         const totalFrames = Math.max(
             1,
             Math.floor((mixedData.length - WINDOW_SIZE) / HOP_SIZE) + 1,
         );
+
         const frameData: Array<Float32Array> = new Array(totalFrames);
         let maxMagnitude = 0;
+
         for (let t = 0; t < totalFrames; t++) {
             const frameStart = t * HOP_SIZE;
             if (frameStart + WINDOW_SIZE > mixedData.length) break;
+
             const segment = mixedData.slice(
                 frameStart,
                 frameStart + WINDOW_SIZE,
             );
+
             applyHannWindow(segment);
             const spectrum = fftMagnitude(segment);
             frameData[t] = spectrum;
+
             for (let f = 0; f < spectrum.length; f++) {
                 if (spectrum[f] > maxMagnitude) maxMagnitude = spectrum[f];
             }
         }
+
         spectrumFrameCacheRef.current = {
             frameData,
             maxMagnitude: Math.max(maxMagnitude, 1),
@@ -236,121 +287,29 @@ function SpectrumLane(p: _p) {
             hopSize: HOP_SIZE,
             sampleRate,
         };
-        // 计算完立即重绘
-        if (canvasRef.current) {
-            const ctx = canvasRef.current.getContext("2d");
-            if (ctx) {
-                const cache = spectrumFrameCacheRef.current;
-                const allFrameData = cache.frameData;
-                const maxMagnitude = cache.maxMagnitude;
-                const hopSize = cache.hopSize;
-                const sampleRate = cache.sampleRate;
-                const [tL, tR] = p.timeRange;
-                const startSample = Math.max(0, Math.floor(tL * sampleRate));
-                const endSample = Math.min(
-                    sampleRate * (tR - tL) + startSample,
-                    allFrameData.length * hopSize,
-                );
-                const startFrameIdx = Math.max(
-                    0,
-                    Math.floor(startSample / hopSize),
-                );
-                const endFrameIdx = Math.min(
-                    allFrameData.length,
-                    Math.ceil(endSample / hopSize),
-                );
-                const displayFrameCount = endFrameIdx - startFrameIdx;
-                ctx.fillStyle = "#000000";
-                ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-                const binCount = allFrameData[0].length;
-                const pxPerFrame = CANVAS_WIDTH / displayFrameCount;
-                const pxPerBin = CANVAS_HEIGHT / binCount;
-                for (let canvasI = 0; canvasI < displayFrameCount; canvasI++) {
-                    const frameIdx = startFrameIdx + canvasI;
-                    if (frameIdx >= allFrameData.length) break;
-                    const spectrum = allFrameData[frameIdx];
-                    if (!spectrum) continue;
-                    for (let f = 0; f < spectrum.length; f++) {
-                        const normalized = spectrum[f] / maxMagnitude;
-                        const db = magnitudeToDb(normalized);
-                        ctx.fillStyle = dbToColor(db);
-                        const x = canvasI * pxPerFrame;
-                        const y = CANVAS_HEIGHT - (f + 1) * pxPerBin;
-                        ctx.fillRect(x, y, pxPerFrame + 1, pxPerBin + 1);
-                    }
-                }
-            }
-        }
-    }, [ready, p.spectrumState.isFolded]);
 
-    /**
-     * 绘制频谱热图（使用缓存的频谱数据）
-     * 根据时间范围截取对应的帧并渲染
-     */
+        drawSpectrum();
+    }, [ready]);
+
     useEffect(() => {
         if (p.spectrumState.isFolded) return;
-        // 只要依赖变化就强制重绘
-        if (!canvasRef.current) return;
-        const cache = spectrumFrameCacheRef.current;
-        if (!cache || !cache.frameData) return;
-        const ctx = canvasRef.current.getContext("2d");
-        if (!ctx) return;
-        const allFrameData = cache.frameData;
-        const maxMagnitude = cache.maxMagnitude;
-        const hopSize = cache.hopSize;
-        const sampleRate = cache.sampleRate;
-        if (allFrameData.length === 0) return;
-        // 根据时间范围计算对应的帧索引范围
-        const [tL, tR] = p.timeRange;
-        const startSample = Math.max(0, Math.floor(tL * sampleRate));
-        const endSample = Math.min(
-            sampleRate * (tR - tL) + startSample,
-            allFrameData.length * hopSize,
-        );
-        const startFrameIdx = Math.max(0, Math.floor(startSample / hopSize));
-        const endFrameIdx = Math.min(
-            allFrameData.length,
-            Math.ceil(endSample / hopSize),
-        );
-        const displayFrameCount = endFrameIdx - startFrameIdx;
-        if (displayFrameCount <= 0) return;
-        ctx.fillStyle = "#000000";
-        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        const binCount = allFrameData[0].length;
-        const pxPerFrame = CANVAS_WIDTH / displayFrameCount;
-        const pxPerBin = CANVAS_HEIGHT / binCount;
-        for (let canvasI = 0; canvasI < displayFrameCount; canvasI++) {
-            const frameIdx = startFrameIdx + canvasI;
-            if (frameIdx >= allFrameData.length) break;
-            const spectrum = allFrameData[frameIdx];
-            if (!spectrum) continue;
-            for (let f = 0; f < spectrum.length; f++) {
-                const normalized = spectrum[f] / maxMagnitude;
-                const db = magnitudeToDb(normalized);
-                ctx.fillStyle = dbToColor(db);
-                const x = canvasI * pxPerFrame;
-                const y = CANVAS_HEIGHT - (f + 1) * pxPerBin;
-                ctx.fillRect(x, y, pxPerFrame + 1, pxPerBin + 1);
-            }
-        }
-    }, [p.timeRange, ready, p.spectrumState.isFolded]);
+        drawSpectrum();
+    }, [p.timeRange, ready, p.spectrumState.isFolded, contrast]);
 
     return (
         <div>
-            <div className="flex gap-2">
-                {!p.spectrumState.isFolded && (
-                    <canvas
-                        ref={canvasRef}
-                        width={CANVAS_WIDTH}
-                        height={CANVAS_HEIGHT}
-                        style={{
-                            border: "1px solid #ccc",
-                            width: "100%",
-                            height: "auto",
-                        }}
-                    />
-                )}
-            </div>
+            {!p.spectrumState.isFolded && (
+                <canvas
+                    ref={canvasRef}
+                    width={CANVAS_WIDTH}
+                    height={CANVAS_HEIGHT}
+                    style={{
+                        border: "1px solid #ccc",
+                        width: "100%",
+                        height: "auto",
+                    }}
+                />
+            )}
         </div>
     );
 }
