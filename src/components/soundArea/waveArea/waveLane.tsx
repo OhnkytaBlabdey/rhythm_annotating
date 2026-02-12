@@ -17,8 +17,7 @@ interface WaveformCache {
 
 interface RenderedWaveCache {
     amplitudeMultiplier: number;
-    wavePoints: Array<{ y1: number; y2: number }>;
-    pointCount: number; // 记录计算时的点数，用于缩放计算
+    fullWavePoints: Array<{ y: number }>;
 }
 
 interface UpdateTask {
@@ -55,57 +54,16 @@ function mixDownToMono(audioBuffer: AudioBuffer): Float32Array {
 }
 
 /**
- * 计算波形点数据，支持中断
- * @param mixedData 单通道混合数据
- * @param pointCount 要计算的点数
- * @param canvasHeight canvas高度（像素）
- * @param amplitudeMultiplier 幅度倍数
- * @param signal 中止信号
+ * 计算全分辨率波形点（每采样点一个y值，缩放/移动时仅重绘）
  */
-function computeWavePoints(
+function computeFullWavePoints(
     mixedData: Float32Array,
-    pointCount: number,
     canvasHeight: number,
     amplitudeMultiplier: number,
-    signal: AbortSignal,
-): { y1: number; y2: number }[] | null {
-    if (signal.aborted) return null;
-
-    const wavePoints: { y1: number; y2: number }[] = new Array(pointCount);
+): { y: number }[] {
     const centerY = canvasHeight / 2;
-    const samplesPerPixel = Math.max(
-        1,
-        Math.floor(mixedData.length / pointCount),
-    );
-
-    for (let i = 0; i < pointCount; i++) {
-        // 频繁检查中止信号
-        if (signal.aborted) {
-            return null;
-        }
-
-        const sampleIndex = Math.floor((i / pointCount) * mixedData.length);
-
-        let minVal = mixedData[sampleIndex];
-        let maxVal = mixedData[sampleIndex];
-
-        for (
-            let j = 1;
-            j < samplesPerPixel && sampleIndex + j < mixedData.length;
-            j++
-        ) {
-            const v = mixedData[sampleIndex + j];
-            if (v < minVal) minVal = v;
-            if (v > maxVal) maxVal = v;
-        }
-
-        const y1 = centerY - maxVal * (canvasHeight / 2) * amplitudeMultiplier;
-        const y2 = centerY - minVal * (canvasHeight / 2) * amplitudeMultiplier;
-
-        wavePoints[i] = { y1, y2 };
-    }
-
-    return wavePoints;
+    const scale = (canvasHeight / 2) * amplitudeMultiplier;
+    return Array.from(mixedData, (v) => ({ y: centerY - v * scale }));
 }
 
 /**
@@ -113,8 +71,7 @@ function computeWavePoints(
  */
 function renderWaveToCanvas(
     ctx: CanvasRenderingContext2D,
-    wavePoints: { y1: number; y2: number }[],
-    pointCount: number,
+    fullWavePoints: { y: number }[],
     timeRange: [number, number],
     sampleRate: number,
     mixedDataLength: number,
@@ -132,38 +89,24 @@ function renderWaveToCanvas(
         mixedDataLength,
         Math.ceil(t_right * sampleRate),
     );
-
     const rangeLength = endSample - startSample;
-    if (rangeLength <= 0) return;
-
-    // 计算时间范围对应的全局点范围
-    const startPoint = (startSample / mixedDataLength) * pointCount;
-    const endPoint = (endSample / mixedDataLength) * pointCount;
-    const pointRange = endPoint - startPoint;
+    if (rangeLength <= 1) return;
 
     ctx.strokeStyle = "#0066cc";
     ctx.lineWidth = 1;
     ctx.beginPath();
-
     for (let canvasI = 0; canvasI < width; canvasI++) {
-        // 计算canvas上第canvasI个像素对应的波形点位置
-        const globalPointPos = startPoint + (canvasI / width) * pointRange;
-        const globalPointIdx = Math.floor(globalPointPos);
-
-        // 越界保护
-        if (globalPointIdx < 0 || globalPointIdx >= pointCount) {
-            continue;
-        }
-
-        const { y1, y2 } = wavePoints[globalPointIdx];
+        // 计算canvas像素对应的采样点
+        const samplePos = startSample + (canvasI / width) * rangeLength;
+        const idx = Math.floor(samplePos);
+        if (idx < 0 || idx >= fullWavePoints.length) continue;
+        const y = fullWavePoints[idx].y;
         if (canvasI === 0) {
-            ctx.moveTo(canvasI, y1);
+            ctx.moveTo(canvasI, y);
         } else {
-            ctx.lineTo(canvasI, y1);
-            ctx.lineTo(canvasI, y2);
+            ctx.lineTo(canvasI, y);
         }
     }
-
     ctx.stroke();
 
     // 绘制中线
@@ -187,69 +130,24 @@ function WaveLane(p: _p) {
     const audioContextRef = useRef<AudioContext | null>(null);
     const waveformCacheRef = useRef<WaveformCache | null>(null);
     const renderedWaveCacheRef = useRef<RenderedWaveCache | null>(null);
-    const updateTaskRef = useRef<UpdateTask | null>(null);
+    // 已不再需要 updateTaskRef
     const [isCacheReady, setIsCacheReady] = useState(false);
-    const [isRenderReady, setIsRenderReady] = useState(false);
+    // 波形缓存后无需异步setState，直接重绘即可
 
     /**
-     * 开启缓存计算任务
+     * 只在amplitudeMultiplier变化时重算全分辨率波形，缩放/移动仅重绘
      */
-    const startWavePointsComputeTask = (amplitudeMultiplier: number) => {
-        // 中止旧任务
-        if (updateTaskRef.current) {
-            updateTaskRef.current.abortController.abort();
-        }
-
+    const updateFullWaveCache = (amplitudeMultiplier: number) => {
         if (!waveformCacheRef.current) return;
-
-        const abortController = new AbortController();
-        updateTaskRef.current = {
-            abortController,
+        const { mixedData } = waveformCacheRef.current;
+        renderedWaveCacheRef.current = {
             amplitudeMultiplier,
-        };
-
-        const { mixedData, sampleRate } = waveformCacheRef.current;
-
-        // 根据采样率动态计算点数，确保足够的分辨率
-        // 目标：每秒至少1000个点，以支持精细缩放
-        const pointCount = Math.max(
-            1200,
-            Math.min(sampleRate * 2, mixedData.length),
-        );
-
-        // 使用 requestAnimationFrame 异步计算，避免阻塞主线程
-        const compute = () => {
-            if (abortController.signal.aborted) {
-                updateTaskRef.current = null;
-                return;
-            }
-
-            const wavePoints = computeWavePoints(
+            fullWavePoints: computeFullWavePoints(
                 mixedData,
-                pointCount,
                 CANVAS_HEIGHT,
                 amplitudeMultiplier,
-                abortController.signal,
-            );
-
-            // 如果被中止或计算失败，不更新缓存
-            if (wavePoints === null || abortController.signal.aborted) {
-                updateTaskRef.current = null;
-                return;
-            }
-
-            // 成功计算，更新缓存
-            renderedWaveCacheRef.current = {
-                amplitudeMultiplier,
-                wavePoints,
-                pointCount,
-            };
-
-            setIsRenderReady(true);
-            updateTaskRef.current = null;
+            ),
         };
-
-        requestAnimationFrame(compute);
     };
 
     /**
@@ -277,7 +175,7 @@ function WaveLane(p: _p) {
                 mixedData,
                 sampleRate: audioData.decodedBuffer.sampleRate,
             };
-            setIsCacheReady(true);
+            Promise.resolve().then(() => setIsCacheReady(true));
             return;
         }
 
@@ -317,42 +215,36 @@ function WaveLane(p: _p) {
      */
     useEffect(() => {
         if (!isCacheReady) return;
-
-        // 检查是否需要重新计算缓存
         if (
             !renderedWaveCacheRef.current ||
             renderedWaveCacheRef.current.amplitudeMultiplier !==
                 p.waveState.amplitudeMultiplier
         ) {
-            setIsRenderReady(false);
-            startWavePointsComputeTask(p.waveState.amplitudeMultiplier);
+            updateFullWaveCache(p.waveState.amplitudeMultiplier);
         }
-    }, [isCacheReady, p.waveState.amplitudeMultiplier]);
+        // 只要依赖变化就强制重绘
+        if (
+            canvasRef.current &&
+            renderedWaveCacheRef.current?.fullWavePoints &&
+            waveformCacheRef.current
+        ) {
+            const ctx = canvasRef.current.getContext("2d");
+            if (ctx) {
+                renderWaveToCanvas(
+                    ctx,
+                    renderedWaveCacheRef.current.fullWavePoints,
+                    p.timeRange,
+                    waveformCacheRef.current.sampleRate,
+                    waveformCacheRef.current.mixedData.length,
+                );
+            }
+        }
+    }, [isCacheReady, p.waveState.amplitudeMultiplier, p.timeRange]);
 
     /**
      * 时间范围/缓存就绪时实时重绘（仅使用缓存，不涉及计算）
      */
-    useEffect(() => {
-        if (
-            !canvasRef.current ||
-            !renderedWaveCacheRef.current?.wavePoints ||
-            !waveformCacheRef.current ||
-            !isRenderReady
-        )
-            return;
-
-        const ctx = canvasRef.current.getContext("2d");
-        if (!ctx) return;
-
-        renderWaveToCanvas(
-            ctx,
-            renderedWaveCacheRef.current.wavePoints,
-            renderedWaveCacheRef.current.pointCount,
-            p.timeRange,
-            waveformCacheRef.current.sampleRate,
-            waveformCacheRef.current.mixedData.length,
-        );
-    }, [p.timeRange, isRenderReady]);
+    // 移除冗余的 isRenderReady 相关 effect
 
     return (
         <div>
