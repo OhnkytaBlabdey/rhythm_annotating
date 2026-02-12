@@ -151,6 +151,7 @@ function SpectrumLane(p: _p) {
      * 初始化音频缓存
      */
     useEffect(() => {
+        if (p.spectrumState.isFolded) return;
         if (!audioData?.buffer) return;
 
         if (!audioContextRef.current) {
@@ -188,7 +189,7 @@ function SpectrumLane(p: _p) {
                 setReady(false);
             },
         );
-    }, [audioData]);
+    }, [audioData, p.spectrumState.isFolded]);
 
     /**
      * 初始化 canvas 尺寸
@@ -203,6 +204,7 @@ function SpectrumLane(p: _p) {
      * 音频缓存就绪后，异步优先计算显示窗口两侧的频谱帧，直到覆盖整个音频
      */
     useEffect(() => {
+        if (p.spectrumState.isFolded) return;
         if (!ready || !cacheRef.current) return;
         // 只计算一次全音频所有帧
         if (spectrumFrameCacheRef.current) return;
@@ -279,13 +281,14 @@ function SpectrumLane(p: _p) {
                 }
             }
         }
-    }, [ready]);
+    }, [ready, p.spectrumState.isFolded]);
 
     /**
      * 绘制频谱热图（使用缓存的频谱数据）
      * 根据时间范围截取对应的帧并渲染
      */
     useEffect(() => {
+        if (p.spectrumState.isFolded) return;
         // 只要依赖变化就强制重绘
         if (!canvasRef.current) return;
         const cache = spectrumFrameCacheRef.current;
@@ -330,7 +333,7 @@ function SpectrumLane(p: _p) {
                 ctx.fillRect(x, y, pxPerFrame + 1, pxPerBin + 1);
             }
         }
-    }, [p.timeRange, ready]);
+    }, [p.timeRange, ready, p.spectrumState.isFolded]);
 
     return (
         <div>

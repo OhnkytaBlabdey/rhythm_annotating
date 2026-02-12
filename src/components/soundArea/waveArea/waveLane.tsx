@@ -95,12 +95,21 @@ function renderWaveToCanvas(
     ctx.strokeStyle = "#0066cc";
     ctx.lineWidth = 1;
     ctx.beginPath();
+    // 降采样优化：每像素只取一个点（极值点）
+    const step = Math.max(1, Math.floor(rangeLength / width));
     for (let canvasI = 0; canvasI < width; canvasI++) {
-        // 计算canvas像素对应的采样点
-        const samplePos = startSample + (canvasI / width) * rangeLength;
-        const idx = Math.floor(samplePos);
-        if (idx < 0 || idx >= fullWavePoints.length) continue;
-        const y = fullWavePoints[idx].y;
+        // 计算采样区间
+        const sampleStart = startSample + canvasI * step;
+        const sampleEnd = Math.min(startSample + (canvasI + 1) * step, endSample);
+        let minY = height, maxY = 0;
+        for (let idx = Math.floor(sampleStart); idx < Math.floor(sampleEnd); idx++) {
+            if (idx < 0 || idx >= fullWavePoints.length) continue;
+            const y = fullWavePoints[idx].y;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+        }
+        // 画极值点（可选：画线段）
+        const y = (minY + maxY) / 2;
         if (canvasI === 0) {
             ctx.moveTo(canvasI, y);
         } else {
