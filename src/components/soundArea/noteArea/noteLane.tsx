@@ -16,34 +16,59 @@ interface NoteAnchor {
     time: number;
 }
 
-const TYPE_COLORS = ["#4f46e5", "#16a34a", "#ea580c", "#dc2626", "#0ea5e9", "#a855f7"];
+const TYPE_COLORS = [
+    "#4f46e5",
+    "#16a34a",
+    "#ea580c",
+    "#dc2626",
+    "#0ea5e9",
+    "#a855f7",
+];
 
 function toBeatValue(input: Fraction | undefined): number | null {
-    if (!input || !Number.isFinite(input.a) || !Number.isFinite(input.b) || input.b === 0) {
+    if (
+        !input ||
+        !Number.isFinite(input.a) ||
+        !Number.isFinite(input.b) ||
+        input.b === 0
+    ) {
         return null;
     }
     return input.a / input.b;
 }
 
-function toAnchors(note: ChartNote, measureStart: number, beatDuration: number): NoteAnchor[] {
+function toAnchors(
+    note: ChartNote,
+    measureStart: number,
+    beatDuration: number,
+): NoteAnchor[] {
     const anchors: NoteAnchor[] = [];
     const headBeat = toBeatValue(note.head);
     if (headBeat !== null) {
-        anchors.push({ kind: "head", time: measureStart + headBeat * beatDuration });
+        anchors.push({
+            kind: "head",
+            time: measureStart + headBeat * beatDuration,
+        });
     }
 
     if (note.body) {
         for (const point of note.body) {
             const beat = toBeatValue(point);
             if (beat !== null) {
-                anchors.push({ kind: "body", time: measureStart + beat * beatDuration });
+                anchors.push({
+                    kind: "body",
+                    time: measureStart + beat * beatDuration,
+                });
             }
         }
     }
 
     const tailBeat = toBeatValue(note.tail);
     if (tailBeat !== null) {
-        anchors.push({ kind: "tail", time: measureStart + tailBeat * beatDuration });
+        anchors.push({
+            kind: "tail",
+            time: measureStart + tailBeat * beatDuration,
+        });
     }
 
     return anchors.sort((a, b) => a.time - b.time);
@@ -64,7 +89,10 @@ export default function NoteLane({
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [width, setWidth] = useState(1200);
 
-    const segments = useMemo(() => [...chartData].sort((a, b) => a.time - b.time), [chartData]);
+    const segments = useMemo(
+        () => [...chartData].sort((a, b) => a.time - b.time),
+        [chartData],
+    );
     const safeSubdivision = Math.max(1, Math.floor(beatSubdivision));
 
     useEffect(() => {
@@ -108,7 +136,8 @@ export default function NoteLane({
             return;
         }
 
-        const mapTimeToX = (time: number) => (time - rangeStart) * pixelPerSecond;
+        const mapTimeToX = (time: number) =>
+            (time - rangeStart) * pixelPerSecond;
 
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
         ctx.clearRect(0, 0, width, height);
@@ -128,7 +157,11 @@ export default function NoteLane({
             const beatDuration = 60 / segment.tempo;
             const measureCount = segment.measures.length;
 
-            for (let measureIndex = 0; measureIndex < measureCount; measureIndex++) {
+            for (
+                let measureIndex = 0;
+                measureIndex < measureCount;
+                measureIndex++
+            ) {
                 const measureStart = segment.time + measureIndex * beatDuration;
                 const measureEnd = measureStart + beatDuration;
                 if (measureEnd < rangeStart || measureStart > rangeEnd) {
@@ -146,7 +179,8 @@ export default function NoteLane({
                 ctx.strokeStyle = "#334155";
                 ctx.lineWidth = 1;
                 for (let step = 1; step < safeSubdivision; step++) {
-                    const tickTime = measureStart + (beatDuration * step) / safeSubdivision;
+                    const tickTime =
+                        measureStart + (beatDuration * step) / safeSubdivision;
                     if (tickTime < rangeStart || tickTime > rangeEnd) {
                         continue;
                     }
@@ -166,7 +200,11 @@ export default function NoteLane({
             }
 
             const beatDuration = 60 / segment.tempo;
-            for (let measureIndex = 0; measureIndex < segment.measures.length; measureIndex++) {
+            for (
+                let measureIndex = 0;
+                measureIndex < segment.measures.length;
+                measureIndex++
+            ) {
                 const measureStart = segment.time + measureIndex * beatDuration;
                 const measure = segment.measures[measureIndex];
 
@@ -177,7 +215,7 @@ export default function NoteLane({
                     }
 
                     const color = colorByType(note.type);
-                    const y = centerY + ((note.type % 5) - 2) * 8;
+                    const y = centerY;
                     const noteW = 10;
                     const noteH = 14;
 
@@ -188,12 +226,20 @@ export default function NoteLane({
                             const x1 = mapTimeToX(start);
                             const x2 = mapTimeToX(end);
                             ctx.fillStyle = `${color}88`;
-                            ctx.fillRect(Math.min(x1, x2), y - 2, Math.abs(x2 - x1), 4);
+                            ctx.fillRect(
+                                Math.min(x1, x2),
+                                y - 2,
+                                Math.abs(x2 - x1),
+                                4,
+                            );
                         }
                     }
 
                     for (const anchor of anchors) {
-                        if (anchor.time < rangeStart || anchor.time > rangeEnd) {
+                        if (
+                            anchor.time < rangeStart ||
+                            anchor.time > rangeEnd
+                        ) {
                             continue;
                         }
 
@@ -204,7 +250,14 @@ export default function NoteLane({
                                 : anchor.kind === "tail"
                                   ? "#f8fafc"
                                   : color;
-                        ctx.fillRect(x - noteW / 2, y - noteH / 2, noteW, noteH);
+                        if (anchor.kind !== "body") {
+                            ctx.fillRect(
+                                x - noteW / 2,
+                                y - noteH / 2,
+                                noteW,
+                                noteH,
+                            );
+                        }
                     }
                 }
             }
@@ -212,7 +265,10 @@ export default function NoteLane({
     }, [segments, timeRange, width, height, safeSubdivision]);
 
     return (
-        <div className={style.noteLaneRoot} onClick={(e) => e.stopPropagation()}>
+        <div
+            className={style.noteLaneRoot}
+            onClick={(e) => e.stopPropagation()}
+        >
             <div className={style.noteLaneCanvasWrap} ref={wrapperRef}>
                 <canvas ref={canvasRef} className={style.noteLaneCanvas} />
             </div>
