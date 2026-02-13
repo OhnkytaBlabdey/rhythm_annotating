@@ -1,119 +1,220 @@
 "use client";
-import { notelane } from "@/interface/soundLane/noteLane/notelane";
-import { Measure } from "./measureArea/measure";
-import { measure } from "@/interface/soundLane/noteLane/measure/measure";
-import NoteMenu from "./noteMenu/noteMenu";
-import { JSX } from "react";
-interface _prop {
-    index: number;
-    Key: string;
-    refNoteLane: notelane;
-    setNoteLane: (_: notelane) => void;
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import style from "./noteLane.module.css";
+import { ChartNote, ChartSegment, Fraction } from "./chartTypes";
+
+interface NoteLaneProps {
+    chartData: ChartSegment[];
     timeRange: [number, number];
+    beatSubdivision?: number;
+    height?: number;
 }
-export function NoteLane(prop: _prop) {
-    function delMeasure(id: string) {
-        const newms = prop.refNoteLane.measures.filter((m) => m.id !== id);
-        prop.setNoteLane({
-            ...prop.refNoteLane,
-            measures: newms,
-        });
+
+interface NoteAnchor {
+    kind: "head" | "body" | "tail";
+    time: number;
+}
+
+const TYPE_COLORS = ["#4f46e5", "#16a34a", "#ea580c", "#dc2626", "#0ea5e9", "#a855f7"];
+
+function toBeatValue(input: Fraction | undefined): number | null {
+    if (!input || !Number.isFinite(input.a) || !Number.isFinite(input.b) || input.b === 0) {
+        return null;
     }
-    return (
-        <div className="NoteLane">
-            <div className="flex flex-col">
-                {/* <NoteMenu /> */}
-                <div className="flex-1" onClick={(e) => e.stopPropagation()}>
-                    <NoteMenu
-                        refMeasures={prop.refNoteLane.measures}
-                        setMeasures={(newmss: measure[]) => {
-                            prop.setNoteLane({
-                                ...prop.refNoteLane,
-                                measures: newmss,
-                            });
-                        }}
-                    />
-                </div>
-                {/* measures */}
-                <div
-                    className="relative overflow-hidden"
-                    style={{ width: 1200, height: 60 }} // 父级宽度 1200px，高度 60px（按需调整）
-                >
-                    {(() => {
-                        const res: JSX.Element[] = [];
-                        let t = 0;
-                        const [rangeStart, rangeEnd] = prop.timeRange;
-                        const RANGE_WIDTH = 1218;
-                        const totalRange = Math.max(
-                            1e-6,
-                            rangeEnd - rangeStart
-                        ); // 防止除以 0
-                        const pixelsPerSecond = RANGE_WIDTH / totalRange;
-                        for (
-                            let index = 0;
-                            index < prop.refNoteLane.measures.length;
-                            index++
-                        ) {
-                            const m = prop.refNoteLane.measures[index];
-                            // 每个 measure = 1 拍 的时长（秒）
-                            const beatDuration = m.noBeat
-                                ? (m.lasted as number)
-                                : 60 / (m.bpm as number);
-                            const tPost = t + beatDuration;
-                            // 判断与 timeRange 是否有交集（用于决定是否渲染）
-                            const visibleStart = Math.max(t, rangeStart);
-                            const visibleEnd = Math.min(tPost, rangeEnd);
-                            if (visibleStart < visibleEnd) {
-                                // 计算该 measure 在时间轴上的绝对位置与宽度（基于 timeRange -> 1200px 映射）
-                                const measureStartRelative = t - rangeStart; // 可能为负
-                                const leftPx =
-                                    measureStartRelative * pixelsPerSecond;
-                                const beatWidthPx =
-                                    beatDuration * pixelsPerSecond;
-                                // outer wrapper：绝对定位，宽度等于完整拍宽（这样左右部分会被父容器裁掉）
-                                res.push(
-                                    <div
-                                        key={`${prop.Key}-${m.id}`}
-                                        className="absolute top-0 left-0"
-                                        style={{
-                                            left: leftPx, // 可以为负或超出 1200，父容器 overflow:hidden 会裁掉
-                                            width: beatWidthPx,
-                                            height: "100%",
-                                            boxSizing: "border-box",
-                                        }}
-                                    >
-                                        {/* 强制 Measure 填满父容器 */}
-                                        <div
-                                            style={{
-                                                width: "100%",
-                                                height: "100%",
-                                            }}
-                                        >
-                                            <Measure
-                                                refMeasure={m}
-                                                i={index}
-                                                setMeasure={(newm: measure) => {
-                                                    const newms = [
-                                                        ...prop.refNoteLane
-                                                            .measures,
-                                                    ];
-                                                    newms[index] = newm;
-                                                    prop.setNoteLane({
-                                                        ...prop.refNoteLane,
-                                                        measures: newms,
-                                                    });
-                                                }}
-                                                delMeasure={delMeasure}
-                                            />
-                                        </div>
-                                    </div>
-                                );
-                            }
-                            t = tPost;
+    return input.a / input.b;
+}
+
+function toAnchors(note: ChartNote, measureStart: number, beatDuration: number): NoteAnchor[] {
+    const anchors: NoteAnchor[] = [];
+    const headBeat = toBeatValue(note.head);
+    if (headBeat !== null) {
+        anchors.push({ kind: "head", time: measureStart + headBeat * beatDuration });
+    }
+
+    if (note.body) {
+        for (const point of note.body) {
+            const beat = toBeatValue(point);
+            if (beat !== null) {
+                anchors.push({ kind: "body", time: measureStart + beat * beatDuration });
+            }
+        }
+    }
+
+    const tailBeat = toBeatValue(note.tail);
+    if (tailBeat !== null) {
+        anchors.push({ kind: "tail", time: measureStart + tailBeat * beatDuration });
+    }
+
+    return anchors.sort((a, b) => a.time - b.time);
+}
+
+function colorByType(type: number): string {
+    const idx = Math.abs(type) % TYPE_COLORS.length;
+    return TYPE_COLORS[idx];
+}
+
+export default function NoteLane({
+    chartData,
+    timeRange,
+    beatSubdivision = 4,
+    height = 120,
+}: NoteLaneProps) {
+    const wrapperRef = useRef<HTMLDivElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [width, setWidth] = useState(1200);
+
+    const segments = useMemo(() => [...chartData].sort((a, b) => a.time - b.time), [chartData]);
+    const safeSubdivision = Math.max(1, Math.floor(beatSubdivision));
+
+    useEffect(() => {
+        const target = wrapperRef.current;
+        if (!target) {
+            return;
+        }
+
+        const resize = () => {
+            const next = Math.floor(target.clientWidth);
+            if (next > 0) {
+                setWidth(next);
+            }
+        };
+
+        resize();
+        const observer = new ResizeObserver(resize);
+        observer.observe(target);
+
+        return () => observer.disconnect();
+    }, []);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) {
+            return;
+        }
+
+        const [rangeStart, rangeEnd] = timeRange;
+        const span = Math.max(1e-6, rangeEnd - rangeStart);
+        const pixelPerSecond = width / span;
+        const ratio = window.devicePixelRatio || 1;
+
+        canvas.width = Math.max(1, Math.floor(width * ratio));
+        canvas.height = Math.max(1, Math.floor(height * ratio));
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+            return;
+        }
+
+        const mapTimeToX = (time: number) => (time - rangeStart) * pixelPerSecond;
+
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        ctx.clearRect(0, 0, width, height);
+
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(0, 0, width, height);
+
+        ctx.strokeStyle = "#1e293b";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
+
+        for (const segment of segments) {
+            if (!Number.isFinite(segment.tempo) || segment.tempo <= 0) {
+                continue;
+            }
+
+            const beatDuration = 60 / segment.tempo;
+            const measureCount = segment.measures.length;
+
+            for (let measureIndex = 0; measureIndex < measureCount; measureIndex++) {
+                const measureStart = segment.time + measureIndex * beatDuration;
+                const measureEnd = measureStart + beatDuration;
+                if (measureEnd < rangeStart || measureStart > rangeEnd) {
+                    continue;
+                }
+
+                const measureX = mapTimeToX(measureStart);
+                ctx.strokeStyle = "#94a3b8";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(measureX, 0);
+                ctx.lineTo(measureX, height);
+                ctx.stroke();
+
+                ctx.strokeStyle = "#334155";
+                ctx.lineWidth = 1;
+                for (let step = 1; step < safeSubdivision; step++) {
+                    const tickTime = measureStart + (beatDuration * step) / safeSubdivision;
+                    if (tickTime < rangeStart || tickTime > rangeEnd) {
+                        continue;
+                    }
+                    const tickX = mapTimeToX(tickTime);
+                    ctx.beginPath();
+                    ctx.moveTo(tickX, 0);
+                    ctx.lineTo(tickX, height);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        const centerY = height / 2;
+        for (const segment of segments) {
+            if (!Number.isFinite(segment.tempo) || segment.tempo <= 0) {
+                continue;
+            }
+
+            const beatDuration = 60 / segment.tempo;
+            for (let measureIndex = 0; measureIndex < segment.measures.length; measureIndex++) {
+                const measureStart = segment.time + measureIndex * beatDuration;
+                const measure = segment.measures[measureIndex];
+
+                for (const note of measure.notes) {
+                    const anchors = toAnchors(note, measureStart, beatDuration);
+                    if (anchors.length === 0) {
+                        continue;
+                    }
+
+                    const color = colorByType(note.type);
+                    const y = centerY + ((note.type % 5) - 2) * 8;
+                    const noteW = 10;
+                    const noteH = 14;
+
+                    if (anchors.length > 1) {
+                        const start = anchors[0].time;
+                        const end = anchors[anchors.length - 1].time;
+                        if (end >= rangeStart && start <= rangeEnd) {
+                            const x1 = mapTimeToX(start);
+                            const x2 = mapTimeToX(end);
+                            ctx.fillStyle = `${color}88`;
+                            ctx.fillRect(Math.min(x1, x2), y - 2, Math.abs(x2 - x1), 4);
                         }
-                        return res;
-                    })()}
-                </div>
+                    }
+
+                    for (const anchor of anchors) {
+                        if (anchor.time < rangeStart || anchor.time > rangeEnd) {
+                            continue;
+                        }
+
+                        const x = mapTimeToX(anchor.time);
+                        ctx.fillStyle =
+                            anchor.kind === "body"
+                                ? `${color}cc`
+                                : anchor.kind === "tail"
+                                  ? "#f8fafc"
+                                  : color;
+                        ctx.fillRect(x - noteW / 2, y - noteH / 2, noteW, noteH);
+                    }
+                }
+            }
+        }
+    }, [segments, timeRange, width, height, safeSubdivision]);
+
+    return (
+        <div className={style.noteLaneRoot} onClick={(e) => e.stopPropagation()}>
+            <div className={style.noteLaneCanvasWrap} ref={wrapperRef}>
+                <canvas ref={canvasRef} className={style.noteLaneCanvas} />
             </div>
         </div>
     );

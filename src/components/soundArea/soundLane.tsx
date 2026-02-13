@@ -6,9 +6,13 @@ import WaveLane from "./waveArea/waveLane";
 import SpectrumLane from "./spectrumArea/spectrumLane";
 import WaveMenu from "./soundMenu/waveMenu/waveMenu";
 import SpectrumMenu from "./soundMenu/spectrumMenu/spectrumMenu";
-import { useContext } from "react";
+import { useContext, useMemo } from "react";
 import { AudioDataCtx } from "../audioContext";
 import { SoundLaneState } from "@/interface/audioData";
+import NoteLane from "./noteArea/noteLane";
+import testChartRaw from "../../../test/test_chart.json";
+import { normalizeChartSegments } from "./noteArea/chartAdapter";
+import { RawChartSegment } from "./noteArea/chartTypes";
 
 interface _prop {
     index: number;
@@ -21,6 +25,10 @@ interface _prop {
 export default function SoundLane(prop: _prop) {
     const audioDataList = useContext(AudioDataCtx);
     const audioData = audioDataList.find((a) => a.id === prop.audioId);
+    const demoChartData = useMemo(
+        () => normalizeChartSegments(testChartRaw as RawChartSegment[]),
+        []
+    );
 
     if (!audioData) {
         return <div>Audio not found</div>;
@@ -96,7 +104,12 @@ export default function SoundLane(prop: _prop) {
                             });
                         }}
                     />
-                    {/* TODO: NoteLane 列表 */}
+                    <NoteLane
+                        chartData={demoChartData}
+                        timeRange={prop.timeRange}
+                        beatSubdivision={4}
+                        height={120}
+                    />
                 </div>
             </div>
         </div>
