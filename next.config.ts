@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactCompiler: true,
   output: "export",
-  basePath: "/note_beat_sampling",
+  basePath: "/rhythm_annotating",
   images: {
     unoptimized: true,
   },
