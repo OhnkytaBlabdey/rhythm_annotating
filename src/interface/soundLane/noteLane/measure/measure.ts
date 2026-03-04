@@ -1,4 +1,5 @@
 import { note } from "./note";
+import { generateId } from "@/interface/audioData";
 // 实际上是1beat
 export interface measure {
     id: string;
@@ -9,11 +10,6 @@ export interface measure {
     currentDivide?: number; //n等分 分母
     currentNum?: number; //光标 分子
 }
-export const generateId = (): string => {
-    const timestamp = Date.now(); // 13位时间戳
-    const random = Math.floor(Math.random() * 1000000); // 0-999999随机数
-    return `${timestamp}${random}`;
-};
 export function defaultMeasure() {
     return {
         id: generateId(),

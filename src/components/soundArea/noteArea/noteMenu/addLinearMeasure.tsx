@@ -1,8 +1,8 @@
 import {
     defaultMeasure,
-    generateId,
     measure,
 } from "@/interface/soundLane/noteLane/measure/measure";
+import { generateId } from "@/interface/audioData";
 import Image from "next/image";
 import React from "react";
 import style from "./noteMenu.module.css";

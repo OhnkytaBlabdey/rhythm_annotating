@@ -1,3 +1,6 @@
+import { v4 as generateId } from "uuid";
+export { generateId };
+
 /**
  * 完整的音频文件数据，存储在全局 context 中
  */
@@ -44,6 +47,7 @@ export interface WaveLaneState {
 export interface SpectrumLaneState {
     paletteSchema: string;
     isFolded: boolean;
+    contrast: number;
 }
 
 export function defaultSoundLaneState(audioId: string): SoundLaneState {
@@ -76,11 +80,6 @@ export function defaultSpectrumLaneState(): SpectrumLaneState {
     return {
         paletteSchema: "default",
         isFolded: false,
+        contrast: 1,
     };
 }
-
-export const generateId = (): string => {
-    const timestamp = Date.now();
-    const random = Math.floor(Math.random() * 1000000);
-    return `${timestamp}${random}`;
-};

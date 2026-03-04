@@ -54,8 +54,7 @@ function SpectrumLane(p: _p) {
     const cacheRef = useRef<SpectrumFrameCache | null>(null);
     const [ready, setReady] = useState(false);
 
-    const contrast =
-        (p.spectrumState as unknown as { contrast?: number }).contrast ?? 1;
+    const contrast = p.spectrumState.contrast ?? 1;
 
     const logLUTRef = useRef<number[]>([]);
     const colorLUTRef = useRef<[number, number, number][]>([]);
