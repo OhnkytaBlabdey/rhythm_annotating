@@ -1,0 +1,15 @@
+public/assets/icons/ampDown.png filter=lfs diff=lfs merge=lfs -text
+public/assets/icons/newSoundLane.png filter=lfs diff=lfs merge=lfs -text
+public/assets/icons/timeAdd.png filter=lfs diff=lfs merge=lfs -text
+public/assets/icons/ampUp.png filter=lfs diff=lfs merge=lfs -text
+public/assets/icons/bpm.png filter=lfs diff=lfs merge=lfs -text
+public/assets/icons/timeSub.png filter=lfs diff=lfs merge=lfs -text
+public/assets/icons/zoomIn.png filter=lfs diff=lfs merge=lfs -text
+public/assets/icons/addMeasure.png filter=lfs diff=lfs merge=lfs -text
+public/assets/icons/deleteSoundLane.png filter=lfs diff=lfs merge=lfs -text
+public/assets/icons/newNoteLane.png filter=lfs diff=lfs merge=lfs -text
+public/assets/icons/setBPM.png filter=lfs diff=lfs merge=lfs -text
+public/assets/icons/unfold.png filter=lfs diff=lfs merge=lfs -text
+public/assets/icons/zoomOut.png filter=lfs diff=lfs merge=lfs -text
+public/assets/icons/deleteMeasure.png filter=lfs diff=lfs merge=lfs -text
+public/assets/icons/fold.png filter=lfs diff=lfs merge=lfs -text
