@@ -1,5 +1,5 @@
 import { AudioData } from "@/interface/audioData";
-import Image from "next/image";
+import Image from "@/components/Image";
 import React, { useRef } from "react";
 
 interface _prop {
