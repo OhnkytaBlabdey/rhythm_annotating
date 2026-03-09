@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import style from "./measure.module.css";
 import classNames from "classnames/bind";
 import { measure } from "@/interface/soundLane/noteLane/measure/measure";
-import Image from "next/image";
+import Image from "@/components/Image";
 const cls = classNames.bind(style);
 
 interface _prop {

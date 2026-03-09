@@ -1,4 +1,4 @@
-import Image from "next/image";
+import Image from "@/components/Image";
 import style from "./adjustTimeScale.module.css";
 import classNames from "classnames/bind";
 import React from "react";

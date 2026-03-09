@@ -1,7 +1,7 @@
 import React, { useRef } from "react";
 import style from "./noteMenu.module.css";
 import classNames from "classnames/bind";
-import Image from "next/image";
+import Image from "@/components/Image";
 const cls = classNames.bind(style);
 interface _p {
     refBPM: number;

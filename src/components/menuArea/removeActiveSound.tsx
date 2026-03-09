@@ -1,5 +1,5 @@
 import { SoundLaneState } from "@/interface/audioData";
-import Image from "next/image";
+import Image from "@/components/Image";
 import React from "react";
 
 interface _prop {

@@ -3,7 +3,7 @@ import {
     generateId,
     measure,
 } from "@/interface/soundLane/noteLane/measure/measure";
-import Image from "next/image";
+import Image from "@/components/Image";
 import React from "react";
 import style from "./noteMenu.module.css";
 import classNames from "classnames/bind";

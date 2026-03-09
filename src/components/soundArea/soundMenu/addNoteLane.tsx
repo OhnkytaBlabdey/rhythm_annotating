@@ -1,5 +1,5 @@
 "use client";
-import Image from "next/image";
+import Image from "@/components/Image";
 import style from "./addNoteLane.module.css";
 import classNames from "classnames/bind";
 
