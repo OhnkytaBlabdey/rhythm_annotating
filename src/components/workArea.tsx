@@ -107,13 +107,9 @@ export default function WorkArea() {
     }
 
     // 计算总时长
-    const duration = useMemo(
-        () =>
-            audioDataList.reduce(
-                (max, audio) => Math.max(max, audio.duration),
-                0,
-            ),
-        [audioDataList],
+    const duration = audioDataList.reduce(
+        (max, audio) => Math.max(max, audio.duration),
+        0,
     );
 
     const visibleSpan = useMemo(
