@@ -28,7 +28,7 @@ function ResolutionUp(p: _p) {
                     className={`flex items-center gap-2 ${cls("button")}`}
                 >
                     <Image
-                        src="/assets/icons/timeAdd.png"
+                        src="/assets/icons/zoomIn.png"
                         alt="提高分辨率"
                         width={24}
                         height={24}

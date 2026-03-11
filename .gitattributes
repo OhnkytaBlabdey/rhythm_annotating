@@ -13,3 +13,5 @@ public/assets/icons/unfold.png filter=lfs diff=lfs merge=lfs -text
 public/assets/icons/zoomOut.png filter=lfs diff=lfs merge=lfs -text
 public/assets/icons/deleteMeasure.png filter=lfs diff=lfs merge=lfs -text
 public/assets/icons/fold.png filter=lfs diff=lfs merge=lfs -text
+public/assets/icons/liangdudown.svg filter=lfs diff=lfs merge=lfs -text
+public/assets/icons/liangduup.svg filter=lfs diff=lfs merge=lfs -text

@@ -28,7 +28,7 @@ function BrightnessUp(p: _p) {
                     className={`flex items-center gap-2 ${cls("button")}`}
                 >
                     <Image
-                        src="/assets/icons/zoomIn.png"
+                        src="/assets/icons/liangduup.svg"
                         alt="提高亮度"
                         width={24}
                         height={24}

@@ -28,7 +28,7 @@ function ResolutionDown(p: _p) {
                     className={`flex items-center gap-2 ${cls("button")}`}
                 >
                     <Image
-                        src="/assets/icons/timeSub.png"
+                        src="/assets/icons/zoomOut.png"
                         alt="降低分辨率"
                         width={24}
                         height={24}

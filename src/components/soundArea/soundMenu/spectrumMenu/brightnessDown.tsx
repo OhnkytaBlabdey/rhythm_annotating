@@ -28,7 +28,7 @@ function BrightnessDown(p: _p) {
                     className={`flex items-center gap-2 ${cls("button")}`}
                 >
                     <Image
-                        src="/assets/icons/zoomOut.png"
+                        src="/assets/icons/liangdudown.svg"
                         alt="降低亮度"
                         width={24}
                         height={24}
