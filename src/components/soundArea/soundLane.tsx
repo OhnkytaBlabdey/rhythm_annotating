@@ -27,7 +27,7 @@ export default function SoundLane(prop: _prop) {
     const audioData = audioDataList.find((a) => a.id === prop.audioId);
     const demoChartData = useMemo(
         () => normalizeChartSegments(testChartRaw as RawChartSegment[]),
-        []
+        [],
     );
 
     if (!audioData) {

@@ -10,7 +10,13 @@ import {
 } from "@/interface/audioData";
 import { AudioDataCtx } from "./audioContext";
 import { useAppSettings } from "./appSettingsContext";
-import { getNextTimeMultiplierByWheel, getVisibleSpan } from "./timeViewUtils";
+import {
+    clamp,
+    getNextTimeMultiplierByWheel,
+    getVisibleSpan,
+} from "./timeViewUtils";
+
+const WHEEL_PAN_RATIO = 0.05;
 
 export default function WorkArea() {
     const { hasHydratedSettings, matchesShortcut, setTimeView, timeView } =
@@ -116,29 +122,53 @@ export default function WorkArea() {
 
     function handleLaneWheel(event: React.WheelEvent<HTMLDivElement>) {
         if (duration <= 0) return;
-        if (
-            !matchesShortcut("timeRange.zoomIn", event) &&
-            !matchesShortcut("timeRange.zoomOut", event)
-        ) {
+
+        const isZoomIn = matchesShortcut("timeRange.zoomIn", event);
+        const isZoomOut = matchesShortcut("timeRange.zoomOut", event);
+        const isPanUp = matchesShortcut("timeRange.panUp", event);
+        const isPanDown = matchesShortcut("timeRange.panDown", event);
+
+        if (!isZoomIn && !isZoomOut && !isPanUp && !isPanDown) {
             return;
         }
 
         event.preventDefault();
         event.stopPropagation();
 
-        const nextMultiplier = getNextTimeMultiplierByWheel(
-            duration,
-            objProject.timeMultiplier,
-            event.deltaY,
-        );
-        const nextSpan = getVisibleSpan(duration, nextMultiplier);
-        const maxStart = Math.max(0, duration - nextSpan);
+        if (isZoomIn || isZoomOut) {
+            setProject((prev) => {
+                const nextMultiplier = getNextTimeMultiplierByWheel(
+                    duration,
+                    prev.timeMultiplier,
+                    event.deltaY,
+                );
+                const nextSpan = getVisibleSpan(duration, nextMultiplier);
+                const maxStart = Math.max(0, duration - nextSpan);
 
-        setProject((prev) => ({
-            ...prev,
-            timeMultiplier: nextMultiplier,
-            currentTime: Math.min(Math.max(0, prev.currentTime), maxStart),
-        }));
+                return {
+                    ...prev,
+                    timeMultiplier: nextMultiplier,
+                    currentTime: clamp(prev.currentTime, 0, maxStart),
+                };
+            });
+            return;
+        }
+
+        const panDirection = isPanUp ? -1 : 1;
+        setProject((prev) => {
+            const visibleSpan = getVisibleSpan(duration, prev.timeMultiplier);
+            const maxStart = Math.max(0, duration - visibleSpan);
+            const panStep = visibleSpan * WHEEL_PAN_RATIO;
+
+            return {
+                ...prev,
+                currentTime: clamp(
+                    prev.currentTime + panDirection * panStep,
+                    0,
+                    maxStart,
+                ),
+            };
+        });
     }
 
     return (

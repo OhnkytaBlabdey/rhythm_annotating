@@ -10,7 +10,11 @@ import React, {
 
 const STORAGE_KEY = "explicitize.app-settings";
 
-export type ShortcutAction = "timeRange.zoomIn" | "timeRange.zoomOut";
+export type ShortcutAction =
+    | "timeRange.zoomIn"
+    | "timeRange.zoomOut"
+    | "timeRange.panUp"
+    | "timeRange.panDown";
 
 export type ShortcutMap = Record<ShortcutAction, string>;
 
@@ -28,6 +32,8 @@ interface PersistedSettings {
 const DEFAULT_SHORTCUTS: ShortcutMap = {
     "timeRange.zoomIn": "Alt+WheelUp",
     "timeRange.zoomOut": "Alt+WheelDown",
+    "timeRange.panUp": "WheelUp",
+    "timeRange.panDown": "WheelDown",
 };
 
 const DEFAULT_TIME_VIEW: TimeViewSettings = {
@@ -83,6 +89,16 @@ function normalizeShortcuts(input: unknown): ShortcutMap {
             input["timeRange.zoomOut"].trim()
                 ? (input["timeRange.zoomOut"] as string)
                 : DEFAULT_SHORTCUTS["timeRange.zoomOut"],
+        "timeRange.panUp":
+            typeof input["timeRange.panUp"] === "string" &&
+            input["timeRange.panUp"].trim()
+                ? (input["timeRange.panUp"] as string)
+                : DEFAULT_SHORTCUTS["timeRange.panUp"],
+        "timeRange.panDown":
+            typeof input["timeRange.panDown"] === "string" &&
+            input["timeRange.panDown"].trim()
+                ? (input["timeRange.panDown"] as string)
+                : DEFAULT_SHORTCUTS["timeRange.panDown"],
     };
 }
 
@@ -165,6 +181,8 @@ export function AppSettingsProvider({
     }, [settings]);
 
     const value = useMemo<AppSettingsContextValue>(() => {
+        const effectiveShortcuts = normalizeShortcuts(settings.shortcuts);
+
         const setShortcut = (action: ShortcutAction, combo: string) => {
             setSettings((prev) => ({
                 ...prev,
@@ -189,7 +207,9 @@ export function AppSettingsProvider({
             action,
             event,
         ) => {
-            const config = parseShortcut(settings.shortcuts[action] || "");
+            const config = parseShortcut(
+                effectiveShortcuts[action] || DEFAULT_SHORTCUTS[action] || "",
+            );
             if (config.requireAlt !== !!event.altKey) return false;
             if (config.requireCtrl !== !!event.ctrlKey) return false;
             if (config.requireMeta !== !!event.metaKey) return false;
@@ -200,7 +220,7 @@ export function AppSettingsProvider({
         };
 
         return {
-            shortcuts: settings.shortcuts,
+            shortcuts: effectiveShortcuts,
             timeView: settings.timeView,
             hasHydratedSettings,
             setShortcut,

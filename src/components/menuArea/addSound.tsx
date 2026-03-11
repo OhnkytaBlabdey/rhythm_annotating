@@ -6,14 +6,28 @@ interface _prop {
     addAudioData: (audioData: AudioData) => void;
 }
 
+function fallbackHash(buffer: ArrayBuffer): string {
+    // FNV-1a 32-bit fallback for environments without Web Crypto subtle.
+    let hash = 0x811c9dc5;
+    const bytes = new Uint8Array(buffer);
+    for (const byte of bytes) {
+        hash ^= byte;
+        hash = Math.imul(hash, 0x01000193);
+    }
+    return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
 // 计算ArrayBuffer的SHA256值
 async function calculateSHA256(buffer: ArrayBuffer): Promise<string> {
-    const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashHex = hashArray
+    const subtle = globalThis.crypto?.subtle;
+    if (!subtle) {
+        return fallbackHash(buffer);
+    }
+
+    const hashBuffer = await subtle.digest("SHA-256", buffer);
+    return Array.from(new Uint8Array(hashBuffer))
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
-    return hashHex;
 }
 
 function AddSound(prop: _prop) {
