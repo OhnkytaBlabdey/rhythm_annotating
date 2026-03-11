@@ -1,5 +1,7 @@
 import React from "react";
 import FoldSpectrum from "./foldSpectrum";
+import BrightnessUp from "./brightnessUp";
+import BrightnessDown from "./brightnessDown";
 import { SpectrumLaneState } from "@/interface/audioData";
 
 interface _p {
@@ -24,6 +26,26 @@ function SpectrumMenu(p: _p) {
                         }}
                     />
                 </div>
+                <BrightnessUp
+                    audioId={p.audioId}
+                    brightnessOffset={p.spectrumState.brightnessOffset}
+                    setBrightnessOffset={(brightnessOffset) => {
+                        p.setSpectrumState({
+                            ...p.spectrumState,
+                            brightnessOffset,
+                        });
+                    }}
+                />
+                <BrightnessDown
+                    audioId={p.audioId}
+                    brightnessOffset={p.spectrumState.brightnessOffset}
+                    setBrightnessOffset={(brightnessOffset) => {
+                        p.setSpectrumState({
+                            ...p.spectrumState,
+                            brightnessOffset,
+                        });
+                    }}
+                />
             </div>
         </div>
     );

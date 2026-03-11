@@ -60,6 +60,7 @@ function SpectrumLane(p: _p) {
 
     const contrast =
         (p.spectrumState as unknown as { contrast?: number }).contrast ?? 1;
+    const brightnessOffset = p.spectrumState.brightnessOffset ?? 0;
 
     const logLUTRef = useRef<number[]>([]);
     const logLUTRangeRef = useRef<{ minFreq: number; maxFreq: number } | null>(
@@ -224,7 +225,8 @@ function SpectrumLane(p: _p) {
                 const db =
                     20 *
                     Math.log10(Math.max(magnitude / safeMaxMagnitude, 1e-12));
-                const clamped = Math.max(minDb, Math.min(maxDb, db));
+                const displayedDb = db + brightnessOffset;
+                const clamped = Math.max(minDb, Math.min(maxDb, displayedDb));
                 const normalized = clamp01((clamped - minDb) / (maxDb - minDb));
                 const enhanced = Math.pow(normalized, gamma);
                 const lutIndex = Math.max(
@@ -245,7 +247,7 @@ function SpectrumLane(p: _p) {
         }
 
         ctx.putImageData(imageData, 0, 0);
-    }, [p.timeRange, ready, contrast]);
+    }, [p.timeRange, ready, contrast, brightnessOffset]);
 
     return (
         <canvas
