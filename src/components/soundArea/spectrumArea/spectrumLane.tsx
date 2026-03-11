@@ -10,9 +10,25 @@ interface _p {
 }
 
 interface SpectrumFrameCache {
+    id: string;
     frameData: Float32Array[];
     maxMagnitude: number;
     sampleRate: number;
+    windowSize: number;
+    hopSize: number;
+    minTimeMs: number;
+    minFreqHz: number;
+}
+
+interface WorkerLayerProfile {
+    id: string;
+    windowSize: number;
+    hopSize: number;
+}
+
+interface ResolutionTargets {
+    minTimeMs: number;
+    minFreqHz: number;
 }
 
 function clamp01(v: number): number {
@@ -21,6 +37,65 @@ function clamp01(v: number): number {
 
 function clampNumber(v: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, v));
+}
+
+function getResolutionTargets(scale: number): ResolutionTargets {
+    const normalized = clampNumber(scale, 0.5, 2);
+    const t = (normalized - 0.5) / 1.5;
+
+    return {
+        minTimeMs: 14 - t * 12,
+        minFreqHz: 24 - t * 18,
+    };
+}
+
+function getSpectrumProfiles(): WorkerLayerProfile[] {
+    return [
+        { id: "overview", windowSize: 2048, hopSize: 512 },
+        { id: "balanced", windowSize: 4096, hopSize: 256 },
+        { id: "detail", windowSize: 8192, hopSize: 128 },
+        { id: "micro-time", windowSize: 4096, hopSize: 64 },
+    ];
+}
+
+function chooseLayer(
+    layers: SpectrumFrameCache[],
+    targets: ResolutionTargets,
+    timeRange: [number, number],
+    canvasWidth: number,
+): SpectrumFrameCache | null {
+    if (!layers.length) return null;
+
+    const rangeMs = Math.max(1, (timeRange[1] - timeRange[0]) * 1000);
+    const msPerPixel = rangeMs / Math.max(1, canvasWidth);
+    const desiredTimeMs = Math.min(
+        targets.minTimeMs,
+        Math.max(0.6, msPerPixel * 1.5),
+    );
+
+    let bestLayer: SpectrumFrameCache | null = null;
+    let bestScore = Number.POSITIVE_INFINITY;
+
+    for (const layer of layers) {
+        if (!layer.frameData.length) continue;
+
+        const timeScore = Math.abs(Math.log(layer.minTimeMs / desiredTimeMs));
+        const freqScore = Math.abs(
+            Math.log(layer.minFreqHz / targets.minFreqHz),
+        );
+        const frameDensity = rangeMs / layer.minTimeMs;
+        const sparsePenalty = frameDensity < 32 ? (32 - frameDensity) / 32 : 0;
+        const costPenalty = Math.log1p(layer.frameData.length) * 0.015;
+        const score =
+            timeScore * 1.4 + freqScore + sparsePenalty * 2 + costPenalty;
+
+        if (score < bestScore) {
+            bestScore = score;
+            bestLayer = layer;
+        }
+    }
+
+    return bestLayer;
 }
 
 function mixDownToMono(audioBuffer: AudioBuffer): Float32Array {
@@ -49,18 +124,18 @@ function mixDownToMono(audioBuffer: AudioBuffer): Float32Array {
 }
 
 function SpectrumLane(p: _p) {
-    const CANVAS_WIDTH = 1200;
     const CANVAS_HEIGHT = 100;
-    const WINDOW_SIZE = 4096;
-    const HOP_SIZE = Math.floor(WINDOW_SIZE * 0.25);
 
     const audioDataList = useContext(AudioDataCtx);
     const audioData = audioDataList.find((a) => a.id === p.audioId);
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const workerRef = useRef<Worker | null>(null);
-    const cacheRef = useRef<SpectrumFrameCache | null>(null);
+    const cacheRef = useRef<Record<string, SpectrumFrameCache>>({});
+    const [layerVersion, setLayerVersion] = useState(0);
     const [ready, setReady] = useState(false);
+    const [workerDone, setWorkerDone] = useState(false);
+    const [canvasWidth, setCanvasWidth] = useState(1200);
 
     const contrast =
         (p.spectrumState as unknown as { contrast?: number }).contrast ?? 1;
@@ -74,6 +149,35 @@ function SpectrumLane(p: _p) {
         height: number;
     } | null>(null);
     const colorLUTRef = useRef<[number, number, number][]>([]);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const updateCanvasWidth = () => {
+            const cssWidth = Math.max(
+                320,
+                Math.round(canvas.clientWidth || 1200),
+            );
+            const dpr =
+                typeof window === "undefined"
+                    ? 1
+                    : window.devicePixelRatio || 1;
+            const nextWidth = Math.max(320, Math.round(cssWidth * dpr));
+            setCanvasWidth((prev) => (prev === nextWidth ? prev : nextWidth));
+        };
+
+        updateCanvasWidth();
+
+        if (typeof ResizeObserver !== "undefined") {
+            const observer = new ResizeObserver(() => updateCanvasWidth());
+            observer.observe(canvas);
+            return () => observer.disconnect();
+        }
+
+        window.addEventListener("resize", updateCanvasWidth);
+        return () => window.removeEventListener("resize", updateCanvasWidth);
+    }, []);
 
     // ======== 初始化 LUT ========
 
@@ -123,33 +227,63 @@ function SpectrumLane(p: _p) {
     useEffect(() => {
         if (!audioData?.buffer) return;
 
+        cacheRef.current = {};
+
         const ctx = new AudioContext();
+        let isCancelled = false;
+
         ctx.decodeAudioData(audioData.buffer.slice(0), (decoded) => {
+            if (isCancelled) return;
+            setLayerVersion(0);
+            setReady(false);
+            setWorkerDone(false);
             const mono = mixDownToMono(decoded);
+
+            if (workerRef.current) {
+                workerRef.current.terminate();
+                workerRef.current = null;
+            }
 
             workerRef.current = new Worker(
                 new URL("./spectrumWorker.ts", import.meta.url),
             );
 
             workerRef.current.onmessage = (e) => {
-                if (e.data.type === "result") {
-                    cacheRef.current = {
-                        frameData: e.data.frameData,
-                        maxMagnitude: e.data.maxMagnitude,
-                        sampleRate: decoded.sampleRate,
+                if (e.data.type === "layer") {
+                    const layer: SpectrumFrameCache = {
+                        id: e.data.layer.id,
+                        frameData: e.data.layer.frameData,
+                        maxMagnitude: e.data.layer.maxMagnitude,
+                        sampleRate: e.data.layer.sampleRate,
+                        windowSize: e.data.layer.windowSize,
+                        hopSize: e.data.layer.hopSize,
+                        minTimeMs: e.data.layer.minTimeMs,
+                        minFreqHz: e.data.layer.minFreqHz,
                     };
+
+                    cacheRef.current[layer.id] = layer;
+                    setLayerVersion((v) => v + 1);
                     setReady(true);
                 }
+                if (e.data.type === "done") setWorkerDone(true);
             };
 
             workerRef.current.postMessage({
                 type: "init",
                 audio: mono,
                 sampleRate: decoded.sampleRate,
-                windowSize: WINDOW_SIZE,
-                hopSize: HOP_SIZE,
+                profiles: getSpectrumProfiles(),
             });
         });
+
+        return () => {
+            isCancelled = true;
+            if (workerRef.current) {
+                workerRef.current.terminate();
+                workerRef.current = null;
+            }
+            void ctx.close();
+        };
     }, [audioData]);
 
     // ======== 绘制 ========
@@ -157,22 +291,39 @@ function SpectrumLane(p: _p) {
     useEffect(() => {
         if (!ready) return;
         if (!canvasRef.current) return;
-        if (!cacheRef.current) return;
+        const layers = Object.values(cacheRef.current);
+        if (!layers.length) return;
 
         const ctx = canvasRef.current.getContext("2d");
         if (!ctx) return;
 
-        const { frameData, maxMagnitude, sampleRate } = cacheRef.current;
+        const targets = getResolutionTargets(resolutionScale);
+        const selectedLayer = chooseLayer(
+            layers,
+            targets,
+            p.timeRange,
+            canvasWidth,
+        );
+        if (!selectedLayer) return;
+
+        const { frameData, maxMagnitude, sampleRate, hopSize, minFreqHz } =
+            selectedLayer;
         if (frameData.length === 0) return;
         const nyquist = sampleRate / 2;
         const minFreq = 20;
         const maxFreq = Math.min(20000, nyquist);
         const spectrumLen = frameData[0].length;
-        const baseBinsPerPixel = 16;
-        const binsPerPixel = Math.max(4, baseBinsPerPixel / resolutionScale);
+        const binsPerPixel = clampNumber(
+            targets.minFreqHz / Math.max(minFreqHz, 1e-6),
+            1,
+            10,
+        );
         const desiredHeight = Math.round(spectrumLen / binsPerPixel);
-        const renderHeight = clampNumber(desiredHeight, 80, 320);
+        const renderHeight = clampNumber(desiredHeight, 80, 420);
 
+        if (canvasRef.current.width !== canvasWidth) {
+            canvasRef.current.width = canvasWidth;
+        }
         if (canvasRef.current.height !== renderHeight) {
             canvasRef.current.height = renderHeight;
             canvasRef.current.style.height = `${renderHeight}px`;
@@ -193,12 +344,12 @@ function SpectrumLane(p: _p) {
             logLUTRangeRef.current = { minFreq, maxFreq, height: renderHeight };
         }
 
-        const imageData = ctx.createImageData(CANVAS_WIDTH, renderHeight);
+        const imageData = ctx.createImageData(canvasWidth, renderHeight);
         const data = imageData.data;
 
         const [tL, tR] = p.timeRange;
-        const startFrame = Math.floor((tL * sampleRate) / HOP_SIZE);
-        const endFrame = Math.floor((tR * sampleRate) / HOP_SIZE);
+        const startFrame = Math.floor((tL * sampleRate) / hopSize);
+        const endFrame = Math.floor((tR * sampleRate) / hopSize);
         const frameCount = Math.max(1, endFrame - startFrame);
 
         const safeMaxMagnitude = Math.max(maxMagnitude, 1e-12);
@@ -206,9 +357,9 @@ function SpectrumLane(p: _p) {
         const maxDb = 0;
         const gamma = Math.max(0.35, 1.15 - contrast * 0.6);
 
-        for (let x = 0; x < CANVAS_WIDTH; x++) {
+        for (let x = 0; x < canvasWidth; x++) {
             const framePos =
-                startFrame + (x / Math.max(1, CANVAS_WIDTH - 1)) * frameCount;
+                startFrame + (x / Math.max(1, canvasWidth - 1)) * frameCount;
             const frameIdx0 = Math.min(
                 frameData.length - 1,
                 Math.max(0, Math.floor(framePos)),
@@ -252,7 +403,7 @@ function SpectrumLane(p: _p) {
                 const [r, g, b] = colorLUTRef.current[lutIndex];
 
                 const row = renderHeight - y - 1;
-                const idx = (row * CANVAS_WIDTH + x) * 4;
+                const idx = (row * canvasWidth + x) * 4;
 
                 data[idx] = r;
                 data[idx + 1] = g;
@@ -262,13 +413,26 @@ function SpectrumLane(p: _p) {
         }
 
         ctx.putImageData(imageData, 0, 0);
-    }, [p.timeRange, ready, contrast, brightnessOffset, resolutionScale]);
+    }, [
+        p.timeRange,
+        ready,
+        contrast,
+        brightnessOffset,
+        resolutionScale,
+        canvasWidth,
+        layerVersion,
+    ]);
 
     return (
         <canvas
             ref={canvasRef}
-            width={CANVAS_WIDTH}
+            width={canvasWidth}
             height={CANVAS_HEIGHT}
+            title={
+                workerDone
+                    ? "Spectrum ready: multi-resolution STFT"
+                    : "Computing multi-resolution spectrum"
+            }
             style={{
                 border: "1px solid #ccc",
                 width: "100%",

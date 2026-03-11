@@ -24,7 +24,7 @@ function ResolutionDown(p: _p) {
             <div className="flex">
                 <button
                     onClick={handleResolutionDown}
-                    title="Resolution Down"
+                    title="Decrease time+frequency analysis resolution"
                     className={`flex items-center gap-2 ${cls("button")}`}
                 >
                     <Image

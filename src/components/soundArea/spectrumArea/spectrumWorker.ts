@@ -2,15 +2,36 @@ interface WorkerInitMessage {
     type: "init";
     audio: Float32Array;
     sampleRate: number;
+    profiles: WorkerLayerProfile[];
+}
+
+interface WorkerLayerProfile {
+    id: string;
     windowSize: number;
     hopSize: number;
 }
 
-interface WorkerResultMessage {
-    type: "result";
+interface WorkerLayerResult {
+    id: string;
     frameData: Float32Array[];
     maxMagnitude: number;
+    sampleRate: number;
+    windowSize: number;
+    hopSize: number;
+    minTimeMs: number;
+    minFreqHz: number;
 }
+
+interface WorkerLayerMessage {
+    type: "layer";
+    layer: WorkerLayerResult;
+}
+
+interface WorkerDoneMessage {
+    type: "done";
+}
+
+const MAX_FRAMES_PER_LAYER = 90000;
 
 function applyHannWindow(buf: Float32Array): void {
     const N = buf.length;
@@ -63,30 +84,75 @@ function fftMagnitude(input: Float32Array): Float32Array {
 self.onmessage = (e: MessageEvent<WorkerInitMessage>) => {
     if (e.data.type !== "init") return;
 
-    const { audio, windowSize, hopSize } = e.data;
+    const { audio, sampleRate, profiles } = e.data;
 
-    const totalFrames = Math.floor((audio.length - windowSize) / hopSize);
+    const sortedProfiles = [...profiles].sort((a, b) => {
+        const detailA = a.windowSize / a.hopSize;
+        const detailB = b.windowSize / b.hopSize;
+        return detailA - detailB;
+    });
 
-    const frameData: Float32Array[] = [];
-    let maxMagnitude = 0;
+    for (const profile of sortedProfiles) {
+        const windowSize = Math.max(256, profile.windowSize | 0);
+        const baseHopSize = Math.max(16, profile.hopSize | 0);
 
-    for (let t = 0; t < totalFrames; t++) {
-        const start = t * hopSize;
-        const segment = audio.slice(start, start + windowSize);
-        applyHannWindow(segment);
-        const spectrum = fftMagnitude(segment);
-        frameData.push(spectrum);
+        let hopSize = baseHopSize;
+        let estimatedFrames =
+            audio.length <= windowSize
+                ? 1
+                : Math.floor((audio.length - windowSize) / hopSize) + 1;
 
-        for (let i = 0; i < spectrum.length; i++) {
-            if (spectrum[i] > maxMagnitude) maxMagnitude = spectrum[i];
+        if (estimatedFrames > MAX_FRAMES_PER_LAYER) {
+            const stride = Math.ceil(estimatedFrames / MAX_FRAMES_PER_LAYER);
+            hopSize *= stride;
+            estimatedFrames =
+                audio.length <= windowSize
+                    ? 1
+                    : Math.floor((audio.length - windowSize) / hopSize) + 1;
         }
+
+        const totalFrames = Math.max(1, estimatedFrames);
+
+        const frameData: Float32Array[] = [];
+        let maxMagnitude = 0;
+
+        for (let t = 0; t < totalFrames; t++) {
+            const start = t * hopSize;
+            const segment = new Float32Array(windowSize);
+            const src = audio.subarray(
+                start,
+                Math.min(start + windowSize, audio.length),
+            );
+            segment.set(src);
+
+            applyHannWindow(segment);
+            const spectrum = fftMagnitude(segment);
+            frameData.push(spectrum);
+
+            for (let i = 0; i < spectrum.length; i++) {
+                if (spectrum[i] > maxMagnitude) maxMagnitude = spectrum[i];
+            }
+        }
+
+        const layerMsg: WorkerLayerMessage = {
+            type: "layer",
+            layer: {
+                id: profile.id,
+                frameData,
+                maxMagnitude: Math.max(maxMagnitude, 1e-12),
+                sampleRate,
+                windowSize,
+                hopSize,
+                minTimeMs: (hopSize / sampleRate) * 1000,
+                minFreqHz: sampleRate / windowSize,
+            },
+        };
+
+        self.postMessage(layerMsg);
     }
 
-    const result: WorkerResultMessage = {
-        type: "result",
-        frameData,
-        maxMagnitude: Math.max(maxMagnitude, 1),
-    };
-
-    self.postMessage(result);
+    const doneMsg: WorkerDoneMessage = { type: "done" };
+    self.postMessage(doneMsg);
 };
+
+export {};

@@ -24,7 +24,7 @@ function ResolutionUp(p: _p) {
             <div className="flex">
                 <button
                     onClick={handleResolutionUp}
-                    title="Resolution Up"
+                    title="Increase time+frequency analysis resolution"
                     className={`flex items-center gap-2 ${cls("button")}`}
                 >
                     <Image
