@@ -1,6 +1,7 @@
 "use client";
 
 import React, {
+    useCallback,
     createContext,
     useContext,
     useEffect,
@@ -180,28 +181,45 @@ export function AppSettingsProvider({
         localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     }, [settings]);
 
-    const value = useMemo<AppSettingsContextValue>(() => {
-        const effectiveShortcuts = normalizeShortcuts(settings.shortcuts);
+    const setShortcut = useCallback((action: ShortcutAction, combo: string) => {
+        setSettings((prev) => {
+            if (prev.shortcuts[action] === combo) {
+                return prev;
+            }
 
-        const setShortcut = (action: ShortcutAction, combo: string) => {
-            setSettings((prev) => ({
+            return {
                 ...prev,
                 shortcuts: {
                     ...prev.shortcuts,
                     [action]: combo,
                 },
-            }));
-        };
+            };
+        });
+    }, []);
 
-        const setTimeView = (next: Partial<TimeViewSettings>) => {
-            setSettings((prev) => ({
+    const setTimeView = useCallback((next: Partial<TimeViewSettings>) => {
+        setSettings((prev) => {
+            const normalized = normalizeTimeView({
+                ...prev.timeView,
+                ...next,
+            });
+
+            if (
+                prev.timeView.currentTime === normalized.currentTime &&
+                prev.timeView.timeMultiplier === normalized.timeMultiplier
+            ) {
+                return prev;
+            }
+
+            return {
                 ...prev,
-                timeView: normalizeTimeView({
-                    ...prev.timeView,
-                    ...next,
-                }),
-            }));
-        };
+                timeView: normalized,
+            };
+        });
+    }, []);
+
+    const value = useMemo<AppSettingsContextValue>(() => {
+        const effectiveShortcuts = normalizeShortcuts(settings.shortcuts);
 
         const matchesShortcut: AppSettingsContextValue["matchesShortcut"] = (
             action,
@@ -227,7 +245,13 @@ export function AppSettingsProvider({
             setTimeView,
             matchesShortcut,
         };
-    }, [hasHydratedSettings, settings]);
+    }, [
+        hasHydratedSettings,
+        setShortcut,
+        setTimeView,
+        settings.shortcuts,
+        settings.timeView,
+    ]);
 
     return (
         <AppSettingsCtx.Provider value={value}>

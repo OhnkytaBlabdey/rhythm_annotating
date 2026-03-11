@@ -83,9 +83,15 @@ export default function WorkArea() {
         setProject((prev) => {
             const currentSpan = getVisibleSpan(duration, prev.timeMultiplier);
             const currentMaxStart = Math.max(0, duration - currentSpan);
+            const nextCurrentTime = clamp(newt, 0, currentMaxStart);
+
+            if (prev.currentTime === nextCurrentTime) {
+                return prev;
+            }
+
             return {
                 ...prev,
-                currentTime: clamp(newt, 0, currentMaxStart),
+                currentTime: nextCurrentTime,
             };
         });
     }
@@ -127,14 +133,25 @@ export default function WorkArea() {
 
     useEffect(() => {
         if (!hasHydratedSettings) return;
+        if (objProject.isPlaying) return;
+        if (
+            timeView.currentTime === objProject.currentTime &&
+            timeView.timeMultiplier === objProject.timeMultiplier
+        ) {
+            return;
+        }
+
         setTimeView({
             currentTime: objProject.currentTime,
             timeMultiplier: objProject.timeMultiplier,
         });
     }, [
         hasHydratedSettings,
+        objProject.isPlaying,
         objProject.currentTime,
         objProject.timeMultiplier,
+        timeView.currentTime,
+        timeView.timeMultiplier,
         setTimeView,
     ]);
 

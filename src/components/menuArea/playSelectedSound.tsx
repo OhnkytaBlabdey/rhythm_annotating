@@ -164,7 +164,7 @@ function PlaySelected(prop: _p) {
             startTime.current = null;
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [prop.refIsPlaying, audios, prop.refCurrentTime]);
+    }, [prop.refIsPlaying, audios]);
 
     // 组件卸载时清理资源
     useEffect(() => {
