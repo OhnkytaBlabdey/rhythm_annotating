@@ -47,8 +47,8 @@ function mixDownToMono(audioBuffer: AudioBuffer): Float32Array {
 function SpectrumLane(p: _p) {
     const CANVAS_WIDTH = 1200;
     const CANVAS_HEIGHT = 100;
-    const WINDOW_SIZE = 1024;
-    const HOP_SIZE = 256;
+    const WINDOW_SIZE = 4096;
+    const HOP_SIZE = Math.floor(WINDOW_SIZE * 0.25);
 
     const audioDataList = useContext(AudioDataCtx);
     const audioData = audioDataList.find((a) => a.id === p.audioId);
@@ -62,24 +62,14 @@ function SpectrumLane(p: _p) {
         (p.spectrumState as unknown as { contrast?: number }).contrast ?? 1;
 
     const logLUTRef = useRef<number[]>([]);
+    const logLUTRangeRef = useRef<{ minFreq: number; maxFreq: number } | null>(
+        null,
+    );
     const colorLUTRef = useRef<[number, number, number][]>([]);
 
     // ======== 初始化 LUT ========
 
     useEffect(() => {
-        // 频率对数映射 LUT
-        const lut: number[] = [];
-        const minFreq = 20;
-        const maxFreq = 20000;
-
-        for (let y = 0; y < CANVAS_HEIGHT; y++) {
-            const norm = y / CANVAS_HEIGHT;
-            const freq = minFreq * Math.pow(maxFreq / minFreq, norm);
-            lut.push(freq);
-        }
-
-        logLUTRef.current = lut;
-
         // 颜色 LUT（Inferno 高对比热力图）
         const colorLUT: [number, number, number][] = [];
         const stops: Array<[number, [number, number, number]]> = [
@@ -165,6 +155,27 @@ function SpectrumLane(p: _p) {
         if (!ctx) return;
 
         const { frameData, maxMagnitude, sampleRate } = cacheRef.current;
+        if (frameData.length === 0) return;
+        const nyquist = sampleRate / 2;
+        const minFreq = 20;
+        const maxFreq = Math.min(20000, nyquist);
+
+        const range = logLUTRangeRef.current;
+        if (
+            logLUTRef.current.length !== CANVAS_HEIGHT ||
+            !range ||
+            range.minFreq !== minFreq ||
+            range.maxFreq !== maxFreq
+        ) {
+            logLUTRef.current = Array.from(
+                { length: CANVAS_HEIGHT },
+                (_, y) => {
+                    const norm = y / (CANVAS_HEIGHT - 1);
+                    return minFreq * Math.pow(maxFreq / minFreq, norm);
+                },
+            );
+            logLUTRangeRef.current = { minFreq, maxFreq };
+        }
 
         const imageData = ctx.createImageData(CANVAS_WIDTH, CANVAS_HEIGHT);
         const data = imageData.data;
@@ -172,30 +183,44 @@ function SpectrumLane(p: _p) {
         const [tL, tR] = p.timeRange;
         const startFrame = Math.floor((tL * sampleRate) / HOP_SIZE);
         const endFrame = Math.floor((tR * sampleRate) / HOP_SIZE);
-        const frameCount = endFrame - startFrame;
+        const frameCount = Math.max(1, endFrame - startFrame);
 
         const safeMaxMagnitude = Math.max(maxMagnitude, 1e-12);
-        const minDb = -100;
+        const minDb = -80;
         const maxDb = 0;
         const gamma = Math.max(0.35, 1.15 - contrast * 0.6);
 
         for (let x = 0; x < CANVAS_WIDTH; x++) {
-            const frameIdx =
-                startFrame + Math.floor((x / CANVAS_WIDTH) * frameCount);
+            const framePos =
+                startFrame + (x / Math.max(1, CANVAS_WIDTH - 1)) * frameCount;
+            const frameIdx0 = Math.min(
+                frameData.length - 1,
+                Math.max(0, Math.floor(framePos)),
+            );
+            const frameIdx1 = Math.min(frameData.length - 1, frameIdx0 + 1);
+            const frameAlpha = Math.min(1, Math.max(0, framePos - frameIdx0));
 
-            if (frameIdx >= frameData.length) continue;
-
-            const spectrum = frameData[frameIdx];
+            const spectrum0 = frameData[frameIdx0];
+            const spectrum1 = frameData[frameIdx1];
+            const spectrumLen = spectrum0.length;
 
             for (let y = 0; y < CANVAS_HEIGHT; y++) {
                 const freq = logLUTRef.current[y];
-                const bin = Math.floor(
-                    (freq / (sampleRate / 2)) * spectrum.length,
+                const binPos = Math.min(
+                    spectrumLen - 1,
+                    Math.max(0, (freq / nyquist) * (spectrumLen - 1)),
                 );
+                const bin0 = Math.floor(binPos);
+                const bin1 = Math.min(spectrumLen - 1, bin0 + 1);
+                const binAlpha = binPos - bin0;
 
-                if (bin >= spectrum.length) continue;
-
-                const magnitude = spectrum[bin];
+                const mag0 =
+                    spectrum0[bin0] +
+                    (spectrum0[bin1] - spectrum0[bin0]) * binAlpha;
+                const mag1 =
+                    spectrum1[bin0] +
+                    (spectrum1[bin1] - spectrum1[bin0]) * binAlpha;
+                const magnitude = mag0 + (mag1 - mag0) * frameAlpha;
                 const db =
                     20 *
                     Math.log10(Math.max(magnitude / safeMaxMagnitude, 1e-12));
