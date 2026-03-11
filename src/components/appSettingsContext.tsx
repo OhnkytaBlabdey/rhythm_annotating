@@ -24,10 +24,16 @@ export interface TimeViewSettings {
     timeMultiplier: number;
 }
 
+export interface SpectrumViewSettings {
+    brightnessOffset: number;
+    resolutionScale: number;
+}
+
 interface PersistedSettings {
     version: 1;
     shortcuts: ShortcutMap;
     timeView: TimeViewSettings;
+    spectrumView: SpectrumViewSettings;
 }
 
 const DEFAULT_SHORTCUTS: ShortcutMap = {
@@ -42,18 +48,27 @@ const DEFAULT_TIME_VIEW: TimeViewSettings = {
     timeMultiplier: 1,
 };
 
+const DEFAULT_SPECTRUM_VIEW: SpectrumViewSettings = {
+    brightnessOffset: 0,
+    resolutionScale: 1,
+};
+
 const DEFAULT_SETTINGS: PersistedSettings = {
     version: 1,
     shortcuts: DEFAULT_SHORTCUTS,
     timeView: DEFAULT_TIME_VIEW,
+    spectrumView: DEFAULT_SPECTRUM_VIEW,
 };
 
 interface AppSettingsContextValue {
     shortcuts: ShortcutMap;
     timeView: TimeViewSettings;
+    spectrumView: SpectrumViewSettings;
     hasHydratedSettings: boolean;
     setShortcut: (action: ShortcutAction, combo: string) => void;
     setTimeView: (next: Partial<TimeViewSettings>) => void;
+    setSpectrumBrightnessOffset: (offset: number) => void;
+    setSpectrumResolutionScale: (scale: number) => void;
     matchesShortcut: (
         action: ShortcutAction,
         event: Pick<
@@ -66,9 +81,12 @@ interface AppSettingsContextValue {
 const AppSettingsCtx = createContext<AppSettingsContextValue>({
     shortcuts: DEFAULT_SHORTCUTS,
     timeView: DEFAULT_TIME_VIEW,
+    spectrumView: DEFAULT_SPECTRUM_VIEW,
     hasHydratedSettings: false,
     setShortcut: () => undefined,
     setTimeView: () => undefined,
+    setSpectrumBrightnessOffset: () => undefined,
+    setSpectrumResolutionScale: () => undefined,
     matchesShortcut: () => false,
 });
 
@@ -121,6 +139,26 @@ function normalizeTimeView(input: unknown): TimeViewSettings {
     };
 }
 
+function clampNumber(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
+}
+
+function normalizeSpectrumView(input: unknown): SpectrumViewSettings {
+    if (!isObject(input)) return DEFAULT_SPECTRUM_VIEW;
+
+    const rawBrightness = Number(input.brightnessOffset);
+    const rawResolution = Number(input.resolutionScale);
+
+    return {
+        brightnessOffset: Number.isFinite(rawBrightness)
+            ? clampNumber(rawBrightness, -20, 20)
+            : DEFAULT_SPECTRUM_VIEW.brightnessOffset,
+        resolutionScale: Number.isFinite(rawResolution)
+            ? clampNumber(rawResolution, 0.5, 2)
+            : DEFAULT_SPECTRUM_VIEW.resolutionScale,
+    };
+}
+
 function normalizeSettings(input: unknown): PersistedSettings {
     if (!isObject(input) || Number(input.version) !== 1) {
         return DEFAULT_SETTINGS;
@@ -130,6 +168,7 @@ function normalizeSettings(input: unknown): PersistedSettings {
         version: 1,
         shortcuts: normalizeShortcuts(input.shortcuts),
         timeView: normalizeTimeView(input.timeView),
+        spectrumView: normalizeSpectrumView(input.spectrumView),
     };
 }
 
@@ -218,6 +257,47 @@ export function AppSettingsProvider({
         });
     }, []);
 
+    const setSpectrumBrightnessOffset = useCallback((offset: number) => {
+        setSettings((prev) => {
+            const normalized = normalizeSpectrumView({
+                ...prev.spectrumView,
+                brightnessOffset: offset,
+            });
+
+            if (
+                prev.spectrumView.brightnessOffset ===
+                normalized.brightnessOffset
+            ) {
+                return prev;
+            }
+
+            return {
+                ...prev,
+                spectrumView: normalized,
+            };
+        });
+    }, []);
+
+    const setSpectrumResolutionScale = useCallback((scale: number) => {
+        setSettings((prev) => {
+            const normalized = normalizeSpectrumView({
+                ...prev.spectrumView,
+                resolutionScale: scale,
+            });
+
+            if (
+                prev.spectrumView.resolutionScale === normalized.resolutionScale
+            ) {
+                return prev;
+            }
+
+            return {
+                ...prev,
+                spectrumView: normalized,
+            };
+        });
+    }, []);
+
     const value = useMemo<AppSettingsContextValue>(() => {
         const effectiveShortcuts = normalizeShortcuts(settings.shortcuts);
 
@@ -237,20 +317,30 @@ export function AppSettingsProvider({
             return false;
         };
 
+        const effectiveSpectrumView = normalizeSpectrumView(
+            settings.spectrumView,
+        );
+
         return {
             shortcuts: effectiveShortcuts,
             timeView: settings.timeView,
+            spectrumView: effectiveSpectrumView,
             hasHydratedSettings,
             setShortcut,
             setTimeView,
+            setSpectrumBrightnessOffset,
+            setSpectrumResolutionScale,
             matchesShortcut,
         };
     }, [
         hasHydratedSettings,
         setShortcut,
         setTimeView,
+        setSpectrumBrightnessOffset,
+        setSpectrumResolutionScale,
         settings.shortcuts,
         settings.timeView,
+        settings.spectrumView,
     ]);
 
     return (

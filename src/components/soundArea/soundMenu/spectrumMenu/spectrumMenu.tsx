@@ -2,7 +2,10 @@ import React from "react";
 import FoldSpectrum from "./foldSpectrum";
 import BrightnessUp from "./brightnessUp";
 import BrightnessDown from "./brightnessDown";
+import ResolutionUp from "./resolutionUp";
+import ResolutionDown from "./resolutionDown";
 import { SpectrumLaneState } from "@/interface/audioData";
+import { useAppSettings } from "@/components/appSettingsContext";
 
 interface _p {
     audioId: string;
@@ -11,6 +14,11 @@ interface _p {
 }
 
 function SpectrumMenu(p: _p) {
+    const { setSpectrumBrightnessOffset, setSpectrumResolutionScale } =
+        useAppSettings();
+    const brightnessOffset = p.spectrumState.brightnessOffset ?? 0;
+    const resolutionScale = p.spectrumState.resolutionScale ?? 1;
+
     return (
         <div>
             <div className="flex flex-col">
@@ -28,8 +36,9 @@ function SpectrumMenu(p: _p) {
                 </div>
                 <BrightnessUp
                     audioId={p.audioId}
-                    brightnessOffset={p.spectrumState.brightnessOffset}
+                    brightnessOffset={brightnessOffset}
                     setBrightnessOffset={(brightnessOffset) => {
+                        setSpectrumBrightnessOffset(brightnessOffset);
                         p.setSpectrumState({
                             ...p.spectrumState,
                             brightnessOffset,
@@ -38,11 +47,34 @@ function SpectrumMenu(p: _p) {
                 />
                 <BrightnessDown
                     audioId={p.audioId}
-                    brightnessOffset={p.spectrumState.brightnessOffset}
+                    brightnessOffset={brightnessOffset}
                     setBrightnessOffset={(brightnessOffset) => {
+                        setSpectrumBrightnessOffset(brightnessOffset);
                         p.setSpectrumState({
                             ...p.spectrumState,
                             brightnessOffset,
+                        });
+                    }}
+                />
+                <ResolutionUp
+                    audioId={p.audioId}
+                    resolutionScale={resolutionScale}
+                    setResolutionScale={(resolutionScale) => {
+                        setSpectrumResolutionScale(resolutionScale);
+                        p.setSpectrumState({
+                            ...p.spectrumState,
+                            resolutionScale,
+                        });
+                    }}
+                />
+                <ResolutionDown
+                    audioId={p.audioId}
+                    resolutionScale={resolutionScale}
+                    setResolutionScale={(resolutionScale) => {
+                        setSpectrumResolutionScale(resolutionScale);
+                        p.setSpectrumState({
+                            ...p.spectrumState,
+                            resolutionScale,
                         });
                     }}
                 />

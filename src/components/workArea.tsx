@@ -19,8 +19,13 @@ import {
 const WHEEL_PAN_RATIO = 0.05;
 
 export default function WorkArea() {
-    const { hasHydratedSettings, matchesShortcut, setTimeView, timeView } =
-        useAppSettings();
+    const {
+        hasHydratedSettings,
+        matchesShortcut,
+        setTimeView,
+        timeView,
+        spectrumView,
+    } = useAppSettings();
     const [objProject, setProject] = useState<project>(() => ({
         ...defaultProject(),
         currentTime: timeView.currentTime,
@@ -106,10 +111,13 @@ export default function WorkArea() {
     function addAudioData(audioData: AudioData) {
         setAudioDataList([...audioDataList, audioData]);
         // 同时添加一个新的 SoundLaneState
-        setSoundLaneStates([
-            ...objProject.soundLaneStates,
-            defaultSoundLaneState(audioData.id),
-        ]);
+        const nextLane = defaultSoundLaneState(audioData.id);
+        nextLane.spectrumLane = {
+            ...nextLane.spectrumLane,
+            brightnessOffset: spectrumView.brightnessOffset,
+            resolutionScale: spectrumView.resolutionScale,
+        };
+        setSoundLaneStates([...objProject.soundLaneStates, nextLane]);
     }
 
     // 计算总时长

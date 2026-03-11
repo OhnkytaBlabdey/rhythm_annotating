@@ -19,6 +19,10 @@ function clamp01(v: number): number {
     return Math.min(1, Math.max(0, v));
 }
 
+function clampNumber(v: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, v));
+}
+
 function mixDownToMono(audioBuffer: AudioBuffer): Float32Array {
     const channelCount = audioBuffer.numberOfChannels;
     const length = audioBuffer.length;
@@ -61,11 +65,14 @@ function SpectrumLane(p: _p) {
     const contrast =
         (p.spectrumState as unknown as { contrast?: number }).contrast ?? 1;
     const brightnessOffset = p.spectrumState.brightnessOffset ?? 0;
+    const resolutionScale = p.spectrumState.resolutionScale ?? 1;
 
     const logLUTRef = useRef<number[]>([]);
-    const logLUTRangeRef = useRef<{ minFreq: number; maxFreq: number } | null>(
-        null,
-    );
+    const logLUTRangeRef = useRef<{
+        minFreq: number;
+        maxFreq: number;
+        height: number;
+    } | null>(null);
     const colorLUTRef = useRef<[number, number, number][]>([]);
 
     // ======== 初始化 LUT ========
@@ -160,25 +167,33 @@ function SpectrumLane(p: _p) {
         const nyquist = sampleRate / 2;
         const minFreq = 20;
         const maxFreq = Math.min(20000, nyquist);
+        const spectrumLen = frameData[0].length;
+        const baseBinsPerPixel = 16;
+        const binsPerPixel = Math.max(4, baseBinsPerPixel / resolutionScale);
+        const desiredHeight = Math.round(spectrumLen / binsPerPixel);
+        const renderHeight = clampNumber(desiredHeight, 80, 320);
+
+        if (canvasRef.current.height !== renderHeight) {
+            canvasRef.current.height = renderHeight;
+            canvasRef.current.style.height = `${renderHeight}px`;
+        }
 
         const range = logLUTRangeRef.current;
         if (
-            logLUTRef.current.length !== CANVAS_HEIGHT ||
+            logLUTRef.current.length !== renderHeight ||
             !range ||
             range.minFreq !== minFreq ||
-            range.maxFreq !== maxFreq
+            range.maxFreq !== maxFreq ||
+            range.height !== renderHeight
         ) {
-            logLUTRef.current = Array.from(
-                { length: CANVAS_HEIGHT },
-                (_, y) => {
-                    const norm = y / (CANVAS_HEIGHT - 1);
-                    return minFreq * Math.pow(maxFreq / minFreq, norm);
-                },
-            );
-            logLUTRangeRef.current = { minFreq, maxFreq };
+            logLUTRef.current = Array.from({ length: renderHeight }, (_, y) => {
+                const norm = (y + 0.5) / renderHeight;
+                return minFreq * Math.pow(maxFreq / minFreq, norm);
+            });
+            logLUTRangeRef.current = { minFreq, maxFreq, height: renderHeight };
         }
 
-        const imageData = ctx.createImageData(CANVAS_WIDTH, CANVAS_HEIGHT);
+        const imageData = ctx.createImageData(CANVAS_WIDTH, renderHeight);
         const data = imageData.data;
 
         const [tL, tR] = p.timeRange;
@@ -205,7 +220,7 @@ function SpectrumLane(p: _p) {
             const spectrum1 = frameData[frameIdx1];
             const spectrumLen = spectrum0.length;
 
-            for (let y = 0; y < CANVAS_HEIGHT; y++) {
+            for (let y = 0; y < renderHeight; y++) {
                 const freq = logLUTRef.current[y];
                 const binPos = Math.min(
                     spectrumLen - 1,
@@ -236,7 +251,7 @@ function SpectrumLane(p: _p) {
 
                 const [r, g, b] = colorLUTRef.current[lutIndex];
 
-                const row = CANVAS_HEIGHT - y - 1;
+                const row = renderHeight - y - 1;
                 const idx = (row * CANVAS_WIDTH + x) * 4;
 
                 data[idx] = r;
@@ -247,7 +262,7 @@ function SpectrumLane(p: _p) {
         }
 
         ctx.putImageData(imageData, 0, 0);
-    }, [p.timeRange, ready, contrast, brightnessOffset]);
+    }, [p.timeRange, ready, contrast, brightnessOffset, resolutionScale]);
 
     return (
         <canvas

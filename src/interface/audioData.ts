@@ -45,6 +45,7 @@ export interface SpectrumLaneState {
     paletteSchema: string;
     isFolded: boolean;
     brightnessOffset: number;
+    resolutionScale: number;
 }
 
 export function defaultSoundLaneState(audioId: string): SoundLaneState {
@@ -78,6 +79,7 @@ export function defaultSpectrumLaneState(): SpectrumLaneState {
         paletteSchema: "default",
         isFolded: false,
         brightnessOffset: 0,
+        resolutionScale: 1,
     };
 }
 
