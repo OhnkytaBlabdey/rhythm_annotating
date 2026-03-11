@@ -30,7 +30,7 @@ function TimeRangeController(p: _p) {
         setTimeMultiplier,
     } = p;
     const { matchesShortcut } = useAppSettings();
-    const trackRef = useRef<HTMLDivElement | null>(null);
+    const viewportRef = useRef<HTMLDivElement | null>(null);
     const dragModeRef = useRef<DragMode>(null);
     const dragStartXRef = useRef(0);
     const dragStartCurrentRef = useRef(0);
@@ -71,10 +71,10 @@ function TimeRangeController(p: _p) {
         if (!isDragging) return;
 
         const onPointerMove = (event: PointerEvent) => {
-            const track = trackRef.current;
-            if (!track || duration <= 0) return;
+            const viewport = viewportRef.current;
+            if (!viewport || duration <= 0) return;
 
-            const rect = track.getBoundingClientRect();
+            const rect = viewport.getBoundingClientRect();
             if (rect.width <= 0) return;
 
             const deltaX = event.clientX - dragStartXRef.current;
@@ -181,32 +181,33 @@ function TimeRangeController(p: _p) {
     return (
         <div className={cls("wrap", { disabled: duration <= 0 })}>
             <div
-                ref={trackRef}
                 className={cls("track")}
                 title="时间范围"
                 aria-label="时间范围"
                 onWheel={handleWheel}
             >
-                {/* TODO: 可替换为完整时长长条图标资源 */}
-                <div
-                    className={cls("visibleRange")}
-                    style={{
-                        left: `${leftPercent}%`,
-                        width: `${widthPercent}%`,
-                    }}
-                    onPointerDown={(e) => startDrag("thumb", e)}
-                >
-                    {/* TODO: 可替换为当前窗口时长长条图标资源 */}
-                    <span
-                        className={cls("handle", "handleHead")}
-                        onPointerDown={(e) => startDrag("head", e)}
-                    />
-                    {/* TODO: 可替换为头部圆点图标资源 */}
-                    <span
-                        className={cls("handle", "handleTail")}
-                        onPointerDown={(e) => startDrag("tail", e)}
-                    />
-                    {/* TODO: 可替换为尾部圆点图标资源 */}
+                <div ref={viewportRef} className={cls("rangeViewport")}>
+                    {/* TODO: 可替换为完整时长长条图标资源 */}
+                    <div
+                        className={cls("visibleRange")}
+                        style={{
+                            left: `${leftPercent}%`,
+                            width: `${widthPercent}%`,
+                        }}
+                        onPointerDown={(e) => startDrag("thumb", e)}
+                    >
+                        {/* TODO: 可替换为当前窗口时长长条图标资源 */}
+                        <span
+                            className={cls("handle", "handleHead")}
+                            onPointerDown={(e) => startDrag("head", e)}
+                        />
+                        {/* TODO: 可替换为头部圆点图标资源 */}
+                        <span
+                            className={cls("handle", "handleTail")}
+                            onPointerDown={(e) => startDrag("tail", e)}
+                        />
+                        {/* TODO: 可替换为尾部圆点图标资源 */}
+                    </div>
                 </div>
             </div>
         </div>
