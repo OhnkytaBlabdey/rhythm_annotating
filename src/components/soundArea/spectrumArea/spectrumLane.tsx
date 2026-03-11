@@ -80,16 +80,18 @@ function SpectrumLane(p: _p) {
 
         logLUTRef.current = lut;
 
-        // 颜色 LUT（增强亮部和中间层次）
+        // 颜色 LUT（Inferno 高对比热力图）
         const colorLUT: [number, number, number][] = [];
         const stops: Array<[number, [number, number, number]]> = [
-            [0.0, [0, 0, 0]],
-            [0.14, [20, 32, 96]],
-            [0.32, [40, 140, 220]],
-            [0.52, [90, 230, 150]],
-            [0.72, [245, 222, 90]],
-            [0.88, [255, 126, 40]],
-            [1.0, [255, 245, 220]],
+            [0.0, [0, 0, 4]],
+            [0.13, [31, 12, 72]],
+            [0.25, [85, 15, 109]],
+            [0.38, [136, 34, 106]],
+            [0.5, [186, 54, 85]],
+            [0.63, [227, 89, 51]],
+            [0.75, [249, 140, 10]],
+            [0.88, [252, 195, 64]],
+            [1.0, [252, 255, 164]],
         ];
 
         for (let i = 0; i < 1024; i++) {
@@ -172,8 +174,9 @@ function SpectrumLane(p: _p) {
         const endFrame = Math.floor((tR * sampleRate) / HOP_SIZE);
         const frameCount = endFrame - startFrame;
 
-        const safeMaxMagnitude = Math.max(maxMagnitude, 1e-8);
-        const minDb = -95;
+        const safeMaxMagnitude = Math.max(maxMagnitude, 1e-12);
+        const minDb = -100;
+        const maxDb = 0;
         const gamma = Math.max(0.35, 1.15 - contrast * 0.6);
 
         for (let x = 0; x < CANVAS_WIDTH; x++) {
@@ -192,11 +195,13 @@ function SpectrumLane(p: _p) {
 
                 if (bin >= spectrum.length) continue;
 
-                const linear = spectrum[bin] / safeMaxMagnitude;
-                const db = 20 * Math.log10(Math.max(linear, 1e-8));
-                const normalized = clamp01((db - minDb) / -minDb);
-                const smoothed = normalized * normalized * (3 - 2 * normalized);
-                const enhanced = Math.pow(smoothed, gamma);
+                const magnitude = spectrum[bin];
+                const db =
+                    20 *
+                    Math.log10(Math.max(magnitude / safeMaxMagnitude, 1e-12));
+                const clamped = Math.max(minDb, Math.min(maxDb, db));
+                const normalized = clamp01((clamped - minDb) / (maxDb - minDb));
+                const enhanced = Math.pow(normalized, gamma);
                 const lutIndex = Math.max(
                     0,
                     Math.min(1023, Math.floor(enhanced * 1023)),

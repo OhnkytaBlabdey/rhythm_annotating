@@ -11,59 +11,10 @@ interface _p {
 
 interface WaveformCache {
     audioBuffer: AudioBuffer;
-    mixedData: Float32Array;
+    channelData: Float32Array[];
     sampleRate: number;
-}
-
-interface RenderedWaveCache {
-    amplitudeMultiplier: number;
-    fullWavePoints: Array<{ y: number }>;
-}
-
-interface UpdateTask {
-    abortController: AbortController;
-    amplitudeMultiplier: number;
-}
-
-/**
- * 多通道混合为单通道（初始化阶段一次性执行）
- */
-function mixDownToMono(audioBuffer: AudioBuffer): Float32Array {
-    const channelCount = audioBuffer.numberOfChannels;
-    const length = audioBuffer.length;
-
-    if (channelCount === 1) {
-        return audioBuffer.getChannelData(0).slice();
-    }
-
-    const mixed = new Float32Array(length);
-
-    for (let c = 0; c < channelCount; c++) {
-        const channelData = audioBuffer.getChannelData(c);
-        for (let i = 0; i < length; i++) {
-            mixed[i] += channelData[i];
-        }
-    }
-
-    const inv = 1 / channelCount;
-    for (let i = 0; i < length; i++) {
-        mixed[i] *= inv;
-    }
-
-    return mixed;
-}
-
-/**
- * 计算全分辨率波形点（每采样点一个y值，缩放/移动时仅重绘）
- */
-function computeFullWavePoints(
-    mixedData: Float32Array,
-    canvasHeight: number,
-    amplitudeMultiplier: number,
-): { y: number }[] {
-    const centerY = canvasHeight / 2;
-    const scale = (canvasHeight / 2) * amplitudeMultiplier;
-    return Array.from(mixedData, (v) => ({ y: centerY - v * scale }));
+    channelCount: number;
+    length: number;
 }
 
 /**
@@ -71,10 +22,13 @@ function computeFullWavePoints(
  */
 function renderWaveToCanvas(
     ctx: CanvasRenderingContext2D,
-    fullWavePoints: { y: number }[],
+    channelData: Float32Array[],
+    channelCount: number,
     timeRange: [number, number],
     sampleRate: number,
-    mixedDataLength: number,
+    length: number,
+    rowHeight: number,
+    amplitudeMultiplier: number,
 ) {
     const canvas = ctx.canvas;
     const width = canvas.width;
@@ -85,52 +39,58 @@ function renderWaveToCanvas(
     ctx.fillRect(0, 0, width, height);
 
     const startSample = Math.max(0, Math.floor(t_left * sampleRate));
-    const endSample = Math.min(
-        mixedDataLength,
-        Math.ceil(t_right * sampleRate),
-    );
+    const endSample = Math.min(length, Math.ceil(t_right * sampleRate));
     const rangeLength = endSample - startSample;
     if (rangeLength <= 1) return;
-
-    ctx.strokeStyle = "#0066cc";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    // 降采样优化：每像素只取一个点（极值点）
     const step = Math.max(1, Math.floor(rangeLength / width));
-    for (let canvasI = 0; canvasI < width; canvasI++) {
-        // 计算采样区间
-        const sampleStart = startSample + canvasI * step;
-        const sampleEnd = Math.min(startSample + (canvasI + 1) * step, endSample);
-        let minY = height, maxY = 0;
-        for (let idx = Math.floor(sampleStart); idx < Math.floor(sampleEnd); idx++) {
-            if (idx < 0 || idx >= fullWavePoints.length) continue;
-            const y = fullWavePoints[idx].y;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
-        }
-        // 画极值点（可选：画线段）
-        const y = (minY + maxY) / 2;
-        if (canvasI === 0) {
-            ctx.moveTo(canvasI, y);
-        } else {
-            ctx.lineTo(canvasI, y);
-        }
-    }
-    ctx.stroke();
 
-    // 绘制中线
-    const centerY = height / 2;
-    ctx.strokeStyle = "#cccccc";
-    ctx.lineWidth = 0.5;
-    ctx.beginPath();
-    ctx.moveTo(0, centerY);
-    ctx.lineTo(width, centerY);
-    ctx.stroke();
+    for (let c = 0; c < channelCount; c++) {
+        const channel = channelData[c];
+        const rowTop = c * rowHeight;
+        const centerY = rowTop + rowHeight / 2;
+        const scale = (rowHeight / 2) * amplitudeMultiplier;
+
+        ctx.strokeStyle = "#0066cc";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        // 降采样优化：每像素只取极值（包络线）
+        for (let x = 0; x < width; x++) {
+            const sampleStart = startSample + x * step;
+            const sampleEnd = Math.min(startSample + (x + 1) * step, endSample);
+            let min = 1;
+            let max = -1;
+            const startIdx = Math.floor(sampleStart);
+            const endIdx = Math.floor(sampleEnd);
+            for (let idx = startIdx; idx < endIdx; idx++) {
+                if (idx < 0 || idx >= channel.length) continue;
+                const v = channel[idx];
+                if (v < min) min = v;
+                if (v > max) max = v;
+            }
+            if (startIdx >= endIdx) {
+                min = 0;
+                max = 0;
+            }
+            const yMax = centerY - max * scale;
+            const yMin = centerY - min * scale;
+            const xPos = x + 0.5;
+            ctx.moveTo(xPos, yMax);
+            ctx.lineTo(xPos, yMin);
+        }
+        ctx.stroke();
+
+        ctx.strokeStyle = "#cccccc";
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(0, centerY);
+        ctx.lineTo(width, centerY);
+        ctx.stroke();
+    }
 }
 
 function WaveLane(p: _p) {
     const CANVAS_PHYSICAL_WIDTH = 1200;
-    const CANVAS_HEIGHT = 100;
+    const CANVAS_BASE_HEIGHT = 100;
 
     const audioDataList = useContext(AudioDataCtx);
     const audioData = audioDataList.find((a) => a.id === p.audioId);
@@ -138,26 +98,8 @@ function WaveLane(p: _p) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const waveformCacheRef = useRef<WaveformCache | null>(null);
-    const renderedWaveCacheRef = useRef<RenderedWaveCache | null>(null);
-    // 已不再需要 updateTaskRef
     const [isCacheReady, setIsCacheReady] = useState(false);
     // 波形缓存后无需异步setState，直接重绘即可
-
-    /**
-     * 只在amplitudeMultiplier变化时重算全分辨率波形，缩放/移动仅重绘
-     */
-    const updateFullWaveCache = (amplitudeMultiplier: number) => {
-        if (!waveformCacheRef.current) return;
-        const { mixedData } = waveformCacheRef.current;
-        renderedWaveCacheRef.current = {
-            amplitudeMultiplier,
-            fullWavePoints: computeFullWavePoints(
-                mixedData,
-                CANVAS_HEIGHT,
-                amplitudeMultiplier,
-            ),
-        };
-    };
 
     /**
      * 解码音频并初始化缓存（只做一次重计算）
@@ -178,11 +120,16 @@ function WaveLane(p: _p) {
 
         // 如果已有 decodedBuffer，直接使用
         if (audioData.decodedBuffer) {
-            const mixedData = mixDownToMono(audioData.decodedBuffer);
+            const channelCount = audioData.decodedBuffer.numberOfChannels;
+            const channelData = Array.from({ length: channelCount }, (_, i) =>
+                audioData.decodedBuffer.getChannelData(i).slice(),
+            );
             waveformCacheRef.current = {
                 audioBuffer: audioData.decodedBuffer,
-                mixedData,
+                channelData,
                 sampleRate: audioData.decodedBuffer.sampleRate,
+                channelCount,
+                length: audioData.decodedBuffer.length,
             };
             Promise.resolve().then(() => setIsCacheReady(true));
             return;
@@ -193,12 +140,18 @@ function WaveLane(p: _p) {
         audioContextRef.current.decodeAudioData(
             arrayBufferCopy,
             (audioBuffer) => {
-                const mixedData = mixDownToMono(audioBuffer);
+                const channelCount = audioBuffer.numberOfChannels;
+                const channelData = Array.from(
+                    { length: channelCount },
+                    (_, i) => audioBuffer.getChannelData(i).slice(),
+                );
 
                 waveformCacheRef.current = {
                     audioBuffer,
-                    mixedData,
+                    channelData,
                     sampleRate: audioBuffer.sampleRate,
+                    channelCount,
+                    length: audioBuffer.length,
                 };
 
                 setIsCacheReady(true);
@@ -215,36 +168,30 @@ function WaveLane(p: _p) {
      */
     useEffect(() => {
         if (!canvasRef.current) return;
+        if (!waveformCacheRef.current) return;
         canvasRef.current.width = CANVAS_PHYSICAL_WIDTH;
-        canvasRef.current.height = CANVAS_HEIGHT;
-    }, []);
+        canvasRef.current.height =
+            CANVAS_BASE_HEIGHT * waveformCacheRef.current.channelCount;
+    }, [isCacheReady]);
 
     /**
      * 幅度倍数变化时，触发缓存更新
      */
     useEffect(() => {
         if (!isCacheReady) return;
-        if (
-            !renderedWaveCacheRef.current ||
-            renderedWaveCacheRef.current.amplitudeMultiplier !==
-                p.waveState.amplitudeMultiplier
-        ) {
-            updateFullWaveCache(p.waveState.amplitudeMultiplier);
-        }
         // 只要依赖变化就强制重绘
-        if (
-            canvasRef.current &&
-            renderedWaveCacheRef.current?.fullWavePoints &&
-            waveformCacheRef.current
-        ) {
+        if (canvasRef.current && waveformCacheRef.current) {
             const ctx = canvasRef.current.getContext("2d");
             if (ctx) {
                 renderWaveToCanvas(
                     ctx,
-                    renderedWaveCacheRef.current.fullWavePoints,
+                    waveformCacheRef.current.channelData,
+                    waveformCacheRef.current.channelCount,
                     p.timeRange,
                     waveformCacheRef.current.sampleRate,
-                    waveformCacheRef.current.mixedData.length,
+                    waveformCacheRef.current.length,
+                    CANVAS_BASE_HEIGHT,
+                    p.waveState.amplitudeMultiplier,
                 );
             }
         }
@@ -262,7 +209,7 @@ function WaveLane(p: _p) {
                     <canvas
                         ref={canvasRef}
                         width={CANVAS_PHYSICAL_WIDTH}
-                        height={CANVAS_HEIGHT}
+                        height={CANVAS_BASE_HEIGHT}
                         style={{
                             border: "1px solid #ccc",
                             width: "100%",
