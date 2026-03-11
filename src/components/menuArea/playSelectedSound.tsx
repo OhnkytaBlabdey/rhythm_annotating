@@ -2,6 +2,8 @@
 import React, { useEffect, useRef, useContext } from "react";
 import { AudioDataCtx } from "../audioContext";
 
+const UI_UPDATE_INTERVAL_MS = 33;
+
 interface _p {
     refCurrentTime: number;
     setCurrentTime: (_: number) => void;
@@ -19,6 +21,7 @@ function PlaySelected(prop: _p) {
     const maxDurationRef = useRef<number>(0);
     const onCompleteRef = useRef<(() => void) | null>(null);
     const initialTimeRef = useRef<number>(0);
+    const lastUiUpdateRef = useRef<number>(0);
     const tickRef = useRef<((timestamp: number) => void) | null>(null);
     const propRef = useRef(prop);
 
@@ -113,13 +116,16 @@ function PlaySelected(prop: _p) {
 
             if (!startTime.current) {
                 startTime.current = timestamp;
+                lastUiUpdateRef.current = timestamp - UI_UPDATE_INTERVAL_MS;
                 console.log("started at " + startTime.current);
             }
 
             const elapsedTime = (timestamp - startTime.current) / 1000;
-            propRef.current.setCurrentTime(
-                initialTimeRef.current + elapsedTime,
-            );
+            const nextCurrentTime = initialTimeRef.current + elapsedTime;
+            if (timestamp - lastUiUpdateRef.current >= UI_UPDATE_INTERVAL_MS) {
+                propRef.current.setCurrentTime(nextCurrentTime);
+                lastUiUpdateRef.current = timestamp;
+            }
 
             if (
                 maxDurationRef.current > 0 &&
@@ -162,6 +168,7 @@ function PlaySelected(prop: _p) {
                 rafRef.current = null;
             }
             startTime.current = null;
+            lastUiUpdateRef.current = 0;
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [prop.refIsPlaying, audios]);
@@ -191,6 +198,7 @@ function PlaySelected(prop: _p) {
     function onStop() {
         prop.setIsPlaying(false);
         prop.setCurrentTime(0);
+        lastUiUpdateRef.current = 0;
     }
 
     return (

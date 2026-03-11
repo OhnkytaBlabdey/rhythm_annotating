@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { defaultProject, project } from "@/interface/project";
 import SoundLane from "./soundArea/soundLane";
 import WorkMenu from "./menuArea/workMenu";
@@ -32,6 +32,7 @@ export default function WorkArea() {
         timeMultiplier: timeView.timeMultiplier,
     }));
     const [audioDataList, setAudioDataList] = useState<AudioData[]>([]);
+    const workAreaRef = useRef<HTMLDivElement | null>(null);
 
     function setIndexSoundLaneState(index: number, laneState: SoundLaneState) {
         setProject((prev) => {
@@ -197,6 +198,50 @@ export default function WorkArea() {
         };
     }, [duration]);
 
+    useEffect(() => {
+        const isEditableTarget = (target: EventTarget | null) => {
+            const el = target as HTMLElement | null;
+            if (!el) return false;
+            return (
+                el.tagName === "INPUT" ||
+                el.tagName === "TEXTAREA" ||
+                el.tagName === "SELECT" ||
+                el.isContentEditable
+            );
+        };
+
+        const onNativeWheel = (event: WheelEvent) => {
+            const root = workAreaRef.current;
+            if (!root) return;
+            const target = event.target as Node | null;
+            if (!target || !root.contains(target)) return;
+            event.preventDefault();
+        };
+
+        const onAltKey = (event: KeyboardEvent) => {
+            if (event.key !== "Alt") return;
+            const root = workAreaRef.current;
+            if (!root) return;
+            const target = event.target as Node | null;
+            if (!target || !root.contains(target)) return;
+            if (isEditableTarget(event.target)) return;
+            event.preventDefault();
+        };
+
+        window.addEventListener("wheel", onNativeWheel, {
+            passive: false,
+            capture: true,
+        });
+        window.addEventListener("keydown", onAltKey, true);
+        window.addEventListener("keyup", onAltKey, true);
+
+        return () => {
+            window.removeEventListener("wheel", onNativeWheel, true);
+            window.removeEventListener("keydown", onAltKey, true);
+            window.removeEventListener("keyup", onAltKey, true);
+        };
+    }, []);
+
     function handleLaneWheel(event: React.WheelEvent<HTMLDivElement>) {
         if (duration <= 0) return;
 
@@ -250,7 +295,13 @@ export default function WorkArea() {
 
     return (
         <AudioDataCtx.Provider value={audioDataList}>
-            <div className="WorkArea">
+            <div
+                className="WorkArea"
+                ref={workAreaRef}
+                onWheelCapture={(event) => {
+                    event.preventDefault();
+                }}
+            >
                 <div className="flex flex-col">
                     {/* Menu */}
                     <div className="flex px-12 py-2 ">

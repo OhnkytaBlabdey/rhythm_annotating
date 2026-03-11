@@ -2,6 +2,10 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { AudioDataCtx } from "../../audioContext";
 import { SpectrumLaneState } from "@/interface/audioData";
 
+const MAX_INTERNAL_CANVAS_WIDTH = 1800;
+const MAX_RENDER_HEIGHT = 320;
+const MIN_REDRAW_PIXEL_SHIFT = 1;
+
 interface _p {
     timeRange: [number, number];
     audioId: string;
@@ -149,6 +153,16 @@ function SpectrumLane(p: _p) {
         height: number;
     } | null>(null);
     const colorLUTRef = useRef<[number, number, number][]>([]);
+    const prevDrawRef = useRef<{
+        tL: number;
+        tR: number;
+        layerId: string;
+        canvasWidth: number;
+        renderHeight: number;
+        contrast: number;
+        brightnessOffset: number;
+        resolutionScale: number;
+    } | null>(null);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -163,7 +177,11 @@ function SpectrumLane(p: _p) {
                 typeof window === "undefined"
                     ? 1
                     : window.devicePixelRatio || 1;
-            const nextWidth = Math.max(320, Math.round(cssWidth * dpr));
+            const nextWidth = clampNumber(
+                Math.round(cssWidth * dpr),
+                320,
+                MAX_INTERNAL_CANVAS_WIDTH,
+            );
             setCanvasWidth((prev) => (prev === nextWidth ? prev : nextWidth));
         };
 
@@ -319,7 +337,27 @@ function SpectrumLane(p: _p) {
             10,
         );
         const desiredHeight = Math.round(spectrumLen / binsPerPixel);
-        const renderHeight = clampNumber(desiredHeight, 80, 420);
+        const renderHeight = clampNumber(desiredHeight, 80, MAX_RENDER_HEIGHT);
+
+        const [tL, tR] = p.timeRange;
+        const prevDraw = prevDrawRef.current;
+        if (
+            prevDraw &&
+            prevDraw.layerId === selectedLayer.id &&
+            prevDraw.canvasWidth === canvasWidth &&
+            prevDraw.renderHeight === renderHeight &&
+            prevDraw.contrast === contrast &&
+            prevDraw.brightnessOffset === brightnessOffset &&
+            prevDraw.resolutionScale === resolutionScale
+        ) {
+            const prevSpan = Math.max(1e-6, prevDraw.tR - prevDraw.tL);
+            const pixelShift = Math.abs(
+                ((tL - prevDraw.tL) / prevSpan) * canvasWidth,
+            );
+            if (pixelShift < MIN_REDRAW_PIXEL_SHIFT) {
+                return;
+            }
+        }
 
         if (canvasRef.current.width !== canvasWidth) {
             canvasRef.current.width = canvasWidth;
@@ -347,7 +385,6 @@ function SpectrumLane(p: _p) {
         const imageData = ctx.createImageData(canvasWidth, renderHeight);
         const data = imageData.data;
 
-        const [tL, tR] = p.timeRange;
         const startFrame = Math.floor((tL * sampleRate) / hopSize);
         const endFrame = Math.floor((tR * sampleRate) / hopSize);
         const frameCount = Math.max(1, endFrame - startFrame);
@@ -413,6 +450,16 @@ function SpectrumLane(p: _p) {
         }
 
         ctx.putImageData(imageData, 0, 0);
+        prevDrawRef.current = {
+            tL,
+            tR,
+            layerId: selectedLayer.id,
+            canvasWidth,
+            renderHeight,
+            contrast,
+            brightnessOffset,
+            resolutionScale,
+        };
     }, [
         p.timeRange,
         ready,
