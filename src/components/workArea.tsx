@@ -155,6 +155,40 @@ export default function WorkArea() {
         setTimeView,
     ]);
 
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.code !== "Space" && event.key !== " ") {
+                return;
+            }
+
+            const target = event.target as HTMLElement | null;
+            if (
+                target &&
+                (target.tagName === "INPUT" ||
+                    target.tagName === "TEXTAREA" ||
+                    target.tagName === "SELECT" ||
+                    target.isContentEditable)
+            ) {
+                return;
+            }
+
+            if (duration <= 0) {
+                return;
+            }
+
+            event.preventDefault();
+            setProject((prev) => ({
+                ...prev,
+                isPlaying: !prev.isPlaying,
+            }));
+        };
+
+        window.addEventListener("keydown", onKeyDown);
+        return () => {
+            window.removeEventListener("keydown", onKeyDown);
+        };
+    }, [duration]);
+
     function handleLaneWheel(event: React.WheelEvent<HTMLDivElement>) {
         if (duration <= 0) return;
 
