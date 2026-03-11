@@ -22,7 +22,7 @@
     border-radius: 9999px;
     background: #4f87d9;
     cursor: grab;
-    min-width: 14px;
+    min-width: 0;
 }
 
 .visibleRange:active {

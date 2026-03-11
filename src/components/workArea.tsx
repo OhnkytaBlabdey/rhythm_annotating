@@ -68,17 +68,26 @@ export default function WorkArea() {
     }
 
     function setTimeMultiplier(newm: number) {
-        setProject((prev) => ({
-            ...prev,
-            timeMultiplier: newm,
-        }));
+        setProject((prev) => {
+            const nextSpan = getVisibleSpan(duration, newm);
+            const nextMaxStart = Math.max(0, duration - nextSpan);
+            return {
+                ...prev,
+                timeMultiplier: newm,
+                currentTime: clamp(prev.currentTime, 0, nextMaxStart),
+            };
+        });
     }
 
     function setCurrentTime(newt: number) {
-        setProject((prev) => ({
-            ...prev,
-            currentTime: newt,
-        }));
+        setProject((prev) => {
+            const currentSpan = getVisibleSpan(duration, prev.timeMultiplier);
+            const currentMaxStart = Math.max(0, duration - currentSpan);
+            return {
+                ...prev,
+                currentTime: clamp(newt, 0, currentMaxStart),
+            };
+        });
     }
 
     function setIsPlaying(p: boolean) {
@@ -105,6 +114,19 @@ export default function WorkArea() {
                 0,
             ),
         [audioDataList],
+    );
+
+    const visibleSpan = useMemo(
+        () => getVisibleSpan(duration, objProject.timeMultiplier),
+        [duration, objProject.timeMultiplier],
+    );
+    const maxStart = useMemo(
+        () => Math.max(0, duration - visibleSpan),
+        [duration, visibleSpan],
+    );
+    const clampedCurrentTime = useMemo(
+        () => clamp(objProject.currentTime, 0, maxStart),
+        [objProject.currentTime, maxStart],
     );
 
     useEffect(() => {
@@ -184,7 +206,7 @@ export default function WorkArea() {
                                 refSoundLaneStates={objProject.soundLaneStates}
                                 refTimeMultiplier={objProject.timeMultiplier}
                                 setTimeMultiplier={setTimeMultiplier}
-                                refCurrentTime={objProject.currentTime}
+                                refCurrentTime={clampedCurrentTime}
                                 setCurrentTime={setCurrentTime}
                                 isPlaying={objProject.isPlaying}
                                 setIsPlaying={setIsPlaying}
@@ -216,9 +238,8 @@ export default function WorkArea() {
                                             setIndexSoundLaneState
                                         }
                                         timeRange={[
-                                            objProject.currentTime,
-                                            objProject.currentTime +
-                                                objProject.timeMultiplier * 2.0,
+                                            clampedCurrentTime,
+                                            clampedCurrentTime + visibleSpan,
                                         ]}
                                     />
                                 ))}
