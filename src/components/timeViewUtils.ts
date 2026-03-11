@@ -23,7 +23,7 @@ export function getNextTimeMultiplierByWheel(
 
     const minSpan = Math.min(MIN_VISIBLE_SPAN, duration);
     const visibleSpan = getVisibleSpan(duration, timeMultiplier);
-    const factor = deltaY < 0 ? EXPAND_FACTOR : SHRINK_FACTOR;
+    const factor = deltaY < 0 ? SHRINK_FACTOR : EXPAND_FACTOR;
     const nextSpan = clamp(visibleSpan * factor, minSpan, duration);
     return nextSpan / 2;
 }
