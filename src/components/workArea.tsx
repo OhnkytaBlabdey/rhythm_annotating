@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { defaultProject, project } from "@/interface/project";
 import SoundLane from "./soundArea/soundLane";
 import WorkMenu from "./menuArea/workMenu";
@@ -9,9 +9,17 @@ import {
     AudioData,
 } from "@/interface/audioData";
 import { AudioDataCtx } from "./audioContext";
+import { useAppSettings } from "./appSettingsContext";
+import { getNextTimeMultiplierByWheel, getVisibleSpan } from "./timeViewUtils";
 
 export default function WorkArea() {
-    const [objProject, setProject] = useState<project>(defaultProject());
+    const { hasHydratedSettings, matchesShortcut, setTimeView, timeView } =
+        useAppSettings();
+    const [objProject, setProject] = useState<project>(() => ({
+        ...defaultProject(),
+        currentTime: timeView.currentTime,
+        timeMultiplier: timeView.timeMultiplier,
+    }));
     const [audioDataList, setAudioDataList] = useState<AudioData[]>([]);
 
     function setIndexSoundLaneState(index: number, laneState: SoundLaneState) {
@@ -84,12 +92,54 @@ export default function WorkArea() {
     }
 
     // 计算总时长
-    const getDuration = () => {
-        return audioDataList.reduce(
-            (max, audio) => Math.max(max, audio.duration),
-            0,
+    const duration = useMemo(
+        () =>
+            audioDataList.reduce(
+                (max, audio) => Math.max(max, audio.duration),
+                0,
+            ),
+        [audioDataList],
+    );
+
+    useEffect(() => {
+        if (!hasHydratedSettings) return;
+        setTimeView({
+            currentTime: objProject.currentTime,
+            timeMultiplier: objProject.timeMultiplier,
+        });
+    }, [
+        hasHydratedSettings,
+        objProject.currentTime,
+        objProject.timeMultiplier,
+        setTimeView,
+    ]);
+
+    function handleLaneWheel(event: React.WheelEvent<HTMLDivElement>) {
+        if (duration <= 0) return;
+        if (
+            !matchesShortcut("timeRange.zoomIn", event) &&
+            !matchesShortcut("timeRange.zoomOut", event)
+        ) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const nextMultiplier = getNextTimeMultiplierByWheel(
+            duration,
+            objProject.timeMultiplier,
+            event.deltaY,
         );
-    };
+        const nextSpan = getVisibleSpan(duration, nextMultiplier);
+        const maxStart = Math.max(0, duration - nextSpan);
+
+        setProject((prev) => ({
+            ...prev,
+            timeMultiplier: nextMultiplier,
+            currentTime: Math.min(Math.max(0, prev.currentTime), maxStart),
+        }));
+    }
 
     return (
         <AudioDataCtx.Provider value={audioDataList}>
@@ -108,7 +158,7 @@ export default function WorkArea() {
                                 setCurrentTime={setCurrentTime}
                                 isPlaying={objProject.isPlaying}
                                 setIsPlaying={setIsPlaying}
-                                Duration={getDuration()}
+                                Duration={duration}
                                 addAudioData={addAudioData}
                                 removeAudioData={removeAudioData}
                                 removeMultipleAudioData={
@@ -118,7 +168,10 @@ export default function WorkArea() {
                         </div>
                     </div>
                     {/* Sound Lanes */}
-                    <div className="flex flex-col gap-4 px-10 py-2">
+                    <div
+                        className="flex flex-col gap-4 px-10 py-2"
+                        onWheel={handleLaneWheel}
+                    >
                         <div className="rounded-lg border border-gray-300 p-4">
                             <div className="w-7/8 mx-auto">
                                 {audioDataList.map((audio, index) => (

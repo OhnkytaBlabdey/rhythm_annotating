@@ -1,6 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import style from "./timeRangeController.module.css";
 import classNames from "classnames/bind";
+import { useAppSettings } from "@/components/appSettingsContext";
+import {
+    clamp,
+    getNextTimeMultiplierByWheel,
+    getVisibleSpan,
+    MIN_VISIBLE_SPAN,
+} from "@/components/timeViewUtils";
 
 const cls = classNames.bind(style);
 
@@ -14,14 +21,6 @@ interface _p {
     setCurrentTime: (_: number) => void;
 }
 
-const MIN_VISIBLE_SPAN = 0.05;
-
-function clamp(v: number, min: number, max: number) {
-    if (!Number.isFinite(v)) return min;
-    if (max < min) return min;
-    return Math.min(max, Math.max(min, v));
-}
-
 function TimeRangeController(p: _p) {
     const {
         refTimeMultiplier,
@@ -30,6 +29,7 @@ function TimeRangeController(p: _p) {
         setCurrentTime,
         setTimeMultiplier,
     } = p;
+    const { matchesShortcut } = useAppSettings();
     const trackRef = useRef<HTMLDivElement | null>(null);
     const dragModeRef = useRef<DragMode>(null);
     const dragStartXRef = useRef(0);
@@ -45,10 +45,8 @@ function TimeRangeController(p: _p) {
     }, [duration]);
 
     const visibleSpan = useMemo(() => {
-        const rawSpan = Math.max(0, refTimeMultiplier * 2);
-        if (duration <= 0) return 0;
-        return clamp(rawSpan, minVisibleSpan, duration);
-    }, [duration, minVisibleSpan, refTimeMultiplier]);
+        return getVisibleSpan(duration, refTimeMultiplier);
+    }, [duration, refTimeMultiplier]);
 
     const maxStart = useMemo(
         () => Math.max(0, duration - visibleSpan),
@@ -156,6 +154,30 @@ function TimeRangeController(p: _p) {
         setIsDragging(true);
     }
 
+    function handleWheel(event: React.WheelEvent<HTMLDivElement>) {
+        if (duration <= 0) return;
+        if (
+            !matchesShortcut("timeRange.zoomIn", event) &&
+            !matchesShortcut("timeRange.zoomOut", event)
+        ) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const nextMultiplier = getNextTimeMultiplierByWheel(
+            duration,
+            refTimeMultiplier,
+            event.deltaY,
+        );
+        const nextSpan = getVisibleSpan(duration, nextMultiplier);
+        const maxStart = Math.max(0, duration - nextSpan);
+
+        setTimeMultiplier(nextMultiplier);
+        setCurrentTime(clamp(start, 0, maxStart));
+    }
+
     return (
         <div className={cls("wrap", { disabled: duration <= 0 })}>
             <div
@@ -163,6 +185,7 @@ function TimeRangeController(p: _p) {
                 className={cls("track")}
                 title="时间范围"
                 aria-label="时间范围"
+                onWheel={handleWheel}
             >
                 {/* TODO: 可替换为完整时长长条图标资源 */}
                 <div
