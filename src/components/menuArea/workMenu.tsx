@@ -1,7 +1,7 @@
 import React from "react";
 import AddSound from "./addSound";
 import { AudioData, SoundLaneState } from "@/interface/audioData";
-import TimeScale from "./adjustTimeScale";
+import TimeRangeController from "./timeRangeController";
 import DeleteActiveSound from "./removeActiveSound";
 import PlaySelected from "./playSelectedSound";
 
@@ -30,7 +30,7 @@ function WorkMenu(prop: _prop) {
                     refSoundLaneStates={prop.refSoundLaneStates}
                     removeMultipleAudioData={prop.removeMultipleAudioData}
                 />
-                <TimeScale
+                <TimeRangeController
                     key={"time scale"}
                     refTimeMultiplier={prop.refTimeMultiplier}
                     setTimeMultiplier={prop.setTimeMultiplier}
