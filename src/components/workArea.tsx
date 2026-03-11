@@ -15,19 +15,21 @@ export default function WorkArea() {
     const [audioDataList, setAudioDataList] = useState<AudioData[]>([]);
 
     function setIndexSoundLaneState(index: number, laneState: SoundLaneState) {
-        const lanes = [...objProject.soundLaneStates];
-        lanes[index] = laneState;
-        setProject({
-            ...objProject,
-            soundLaneStates: lanes,
+        setProject((prev) => {
+            const lanes = [...prev.soundLaneStates];
+            lanes[index] = laneState;
+            return {
+                ...prev,
+                soundLaneStates: lanes,
+            };
         });
     }
 
     function setSoundLaneStates(newlanes: SoundLaneState[]) {
-        setProject({
-            ...objProject,
+        setProject((prev) => ({
+            ...prev,
             soundLaneStates: newlanes,
-        });
+        }));
     }
 
     function removeAudioData(audioId: string) {
@@ -52,24 +54,24 @@ export default function WorkArea() {
     }
 
     function setTimeMultiplier(newm: number) {
-        setProject({
-            ...objProject,
+        setProject((prev) => ({
+            ...prev,
             timeMultiplier: newm,
-        });
+        }));
     }
 
     function setCurrentTime(newt: number) {
-        setProject({
-            ...objProject,
+        setProject((prev) => ({
+            ...prev,
             currentTime: newt,
-        });
+        }));
     }
 
     function setIsPlaying(p: boolean) {
-        setProject({
-            ...objProject,
+        setProject((prev) => ({
+            ...prev,
             isPlaying: p,
-        });
+        }));
     }
 
     function addAudioData(audioData: AudioData) {
