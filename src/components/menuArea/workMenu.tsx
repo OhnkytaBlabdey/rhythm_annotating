@@ -44,6 +44,7 @@ function WorkMenu(prop: _prop) {
                     refIsPlaying={prop.isPlaying}
                     setCurrentTime={prop.setCurrentTime}
                     setIsPlaying={prop.setIsPlaying}
+                    refSoundLaneStates={prop.refSoundLaneStates}
                 />
             </div>
         </div>

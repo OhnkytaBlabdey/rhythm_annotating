@@ -1,14 +1,27 @@
 // PlaySelected.tsx
-import React, { useEffect, useRef, useContext } from "react";
+import React, { useEffect, useMemo, useRef, useContext } from "react";
 import { AudioDataCtx } from "../audioContext";
+import { SoundLaneState } from "@/interface/audioData";
 
 const UI_UPDATE_INTERVAL_MS = 33;
+const PLAY_ALL_KEY = "__PLAY_ALL__";
 
 interface _p {
     refCurrentTime: number;
     setCurrentTime: (_: number) => void;
     refIsPlaying: boolean;
     setIsPlaying: (_: boolean) => void;
+    refSoundLaneStates: SoundLaneState[];
+}
+
+function getSelectionKey(soundLaneStates: SoundLaneState[]): string {
+    const selectedIds = soundLaneStates
+        .filter((state) => state.isActive)
+        .map((state) => state.audioId)
+        .sort();
+
+    if (selectedIds.length === 0) return PLAY_ALL_KEY;
+    return selectedIds.join("|");
 }
 
 function PlaySelected(prop: _p) {
@@ -24,6 +37,11 @@ function PlaySelected(prop: _p) {
     const lastUiUpdateRef = useRef<number>(0);
     const tickRef = useRef<((timestamp: number) => void) | null>(null);
     const propRef = useRef(prop);
+    const playingSelectionKeyRef = useRef<string>("");
+    const selectionKey = useMemo(
+        () => getSelectionKey(prop.refSoundLaneStates),
+        [prop.refSoundLaneStates],
+    );
 
     // 保持 propRef 同步
     useEffect(() => {
@@ -53,9 +71,19 @@ function PlaySelected(prop: _p) {
         maxDurationRef.current = 0;
     }
 
+    function stopPlaybackRuntime() {
+        stopAll();
+        if (rafRef.current) {
+            cancelAnimationFrame(rafRef.current);
+            rafRef.current = null;
+        }
+        startTime.current = null;
+        lastUiUpdateRef.current = 0;
+        playingSelectionKeyRef.current = "";
+    }
+
     async function playAll(
         audioBuffers: ArrayBuffer[],
-        offsets: number[],
         currentTime: number = 0,
         onComplete?: () => void,
     ) {
@@ -147,10 +175,36 @@ function PlaySelected(prop: _p) {
 
     // 监听播放状态变化
     useEffect(() => {
+        if (
+            prop.refIsPlaying &&
+            rafRef.current &&
+            playingSelectionKeyRef.current &&
+            playingSelectionKeyRef.current !== selectionKey
+        ) {
+            stopPlaybackRuntime();
+            prop.setIsPlaying(false);
+            return;
+        }
+
         if (prop.refIsPlaying && !rafRef.current) {
-            const audioBuffers = audios.map((audio) => audio.buffer);
-            const offsets = audios.map(() => 0);
-            void playAll(audioBuffers, offsets, prop.refCurrentTime, () => {
+            const selectedSet =
+                selectionKey === PLAY_ALL_KEY
+                    ? null
+                    : new Set(selectionKey.split("|"));
+            const targetAudios =
+                selectedSet === null
+                    ? audios
+                    : audios.filter((audio) => selectedSet.has(audio.id));
+
+            if (targetAudios.length === 0) {
+                prop.setIsPlaying(false);
+                return;
+            }
+
+            playingSelectionKeyRef.current = selectionKey;
+            const audioBuffers = targetAudios.map((audio) => audio.buffer);
+
+            void playAll(audioBuffers, prop.refCurrentTime, () => {
                 console.log("All audios completed");
             }).then(() => {
                 if (
@@ -162,16 +216,10 @@ function PlaySelected(prop: _p) {
                 }
             });
         } else if (!prop.refIsPlaying && rafRef.current) {
-            stopAll();
-            if (rafRef.current) {
-                cancelAnimationFrame(rafRef.current);
-                rafRef.current = null;
-            }
-            startTime.current = null;
-            lastUiUpdateRef.current = 0;
+            stopPlaybackRuntime();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [prop.refIsPlaying, audios]);
+    }, [prop.refIsPlaying, audios, selectionKey]);
 
     // 组件卸载时清理资源
     useEffect(() => {
