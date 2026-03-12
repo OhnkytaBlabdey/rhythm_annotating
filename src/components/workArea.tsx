@@ -9,12 +9,26 @@ import {
     AudioData,
 } from "@/interface/audioData";
 import { AudioDataCtx } from "./audioContext";
-import { useAppSettings } from "./appSettingsContext";
+import {
+    SpectrumViewSettings,
+    TimeViewSettings,
+    useAppSettings,
+} from "./appSettingsContext";
 import {
     clamp,
     getNextTimeMultiplierByWheel,
     getVisibleSpan,
 } from "./timeViewUtils";
+import {
+    hydrateProjectSnapshot,
+    saveProjectSnapshot,
+} from "@/lib/persistence/projectSnapshot";
+import { clearPersistence } from "@/lib/persistence/indexedDb";
+import {
+    applyPersistSliceStates,
+    collectPersistSliceStates,
+    registerPersistSlice,
+} from "@/lib/persistence/sliceRegistry";
 
 const WHEEL_PAN_RATIO = 0.05;
 
@@ -22,6 +36,8 @@ export default function WorkArea() {
     const {
         hasHydratedSettings,
         matchesShortcut,
+        resetProjectScopedSettings,
+        setSpectrumView,
         setTimeView,
         timeView,
         spectrumView,
@@ -32,7 +48,144 @@ export default function WorkArea() {
         timeMultiplier: timeView.timeMultiplier,
     }));
     const [audioDataList, setAudioDataList] = useState<AudioData[]>([]);
+    const [hasHydratedProject, setHasHydratedProject] = useState(false);
     const workAreaRef = useRef<HTMLDivElement | null>(null);
+    const latestProjectRef = useRef<project>(objProject);
+    const latestAudioDataRef = useRef<AudioData[]>(audioDataList);
+    const latestTimeViewRef = useRef<TimeViewSettings>(timeView);
+    const latestSpectrumViewRef = useRef<SpectrumViewSettings>(spectrumView);
+
+    useEffect(() => {
+        latestProjectRef.current = objProject;
+    }, [objProject]);
+
+    useEffect(() => {
+        latestAudioDataRef.current = audioDataList;
+    }, [audioDataList]);
+
+    useEffect(() => {
+        latestTimeViewRef.current = timeView;
+    }, [timeView]);
+
+    useEffect(() => {
+        latestSpectrumViewRef.current = spectrumView;
+    }, [spectrumView]);
+
+    useEffect(() => {
+        const unregisterTimeView = registerPersistSlice<TimeViewSettings>({
+            key: "timeView",
+            getState: () => latestTimeViewRef.current,
+            applyState: (state) => {
+                setTimeView(state);
+            },
+            deserialize: (raw) => {
+                if (!raw || typeof raw !== "object") {
+                    return latestTimeViewRef.current;
+                }
+                const candidate = raw as Partial<TimeViewSettings>;
+                return {
+                    currentTime:
+                        typeof candidate.currentTime === "number" &&
+                        Number.isFinite(candidate.currentTime) &&
+                        candidate.currentTime >= 0
+                            ? candidate.currentTime
+                            : latestTimeViewRef.current.currentTime,
+                    timeMultiplier:
+                        typeof candidate.timeMultiplier === "number" &&
+                        Number.isFinite(candidate.timeMultiplier) &&
+                        candidate.timeMultiplier > 0
+                            ? candidate.timeMultiplier
+                            : latestTimeViewRef.current.timeMultiplier,
+                };
+            },
+        });
+
+        const unregisterSpectrumView =
+            registerPersistSlice<SpectrumViewSettings>({
+                key: "spectrumView",
+                getState: () => latestSpectrumViewRef.current,
+                applyState: (state) => {
+                    setSpectrumView(state);
+                },
+                deserialize: (raw) => {
+                    if (!raw || typeof raw !== "object") {
+                        return latestSpectrumViewRef.current;
+                    }
+                    const candidate = raw as Partial<SpectrumViewSettings>;
+                    return {
+                        brightnessOffset:
+                            typeof candidate.brightnessOffset === "number" &&
+                            Number.isFinite(candidate.brightnessOffset)
+                                ? candidate.brightnessOffset
+                                : latestSpectrumViewRef.current
+                                      .brightnessOffset,
+                        resolutionScale:
+                            typeof candidate.resolutionScale === "number" &&
+                            Number.isFinite(candidate.resolutionScale) &&
+                            candidate.resolutionScale > 0
+                                ? candidate.resolutionScale
+                                : latestSpectrumViewRef.current.resolutionScale,
+                    };
+                },
+            });
+
+        return () => {
+            unregisterTimeView();
+            unregisterSpectrumView();
+        };
+    }, [setSpectrumView, setTimeView]);
+
+    useEffect(() => {
+        let isCancelled = false;
+
+        const hydrate = async () => {
+            try {
+                const restored = await hydrateProjectSnapshot();
+                if (!restored || isCancelled) {
+                    return;
+                }
+
+                setProject(restored.projectState);
+                setAudioDataList(restored.audioDataList);
+                applyPersistSliceStates(restored.slices);
+            } catch (error) {
+                console.error("Hydrating persisted project failed", error);
+            } finally {
+                if (!isCancelled) {
+                    setHasHydratedProject(true);
+                }
+            }
+        };
+
+        void hydrate();
+
+        return () => {
+            isCancelled = true;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!hasHydratedProject) {
+            return;
+        }
+
+        const timeoutId = window.setTimeout(() => {
+            void saveProjectSnapshot({
+                projectState: {
+                    ...latestProjectRef.current,
+                    isPlaying: false,
+                },
+                audioDataList: latestAudioDataRef.current,
+                slices: collectPersistSliceStates(),
+            }).catch((error) => {
+                console.error("Saving project snapshot failed", error);
+            });
+        }, 350);
+
+        return () => {
+            window.clearTimeout(timeoutId);
+        };
+    }, [hasHydratedProject, objProject, audioDataList, timeView, spectrumView]);
 
     function setIndexSoundLaneState(index: number, laneState: SoundLaneState) {
         setProject((prev) => {
@@ -54,23 +207,25 @@ export default function WorkArea() {
 
     function removeAudioData(audioId: string) {
         // 删除音频和对应的状态
-        setAudioDataList(audioDataList.filter((a) => a.id !== audioId));
-        setSoundLaneStates(
-            objProject.soundLaneStates.filter(
+        setAudioDataList((prev) => prev.filter((a) => a.id !== audioId));
+        setProject((prev) => ({
+            ...prev,
+            soundLaneStates: prev.soundLaneStates.filter(
                 (state) => state.audioId !== audioId,
             ),
-        );
+        }));
     }
 
     function removeMultipleAudioData(audioIds: string[]) {
         // 删除多个音频和对应的状态
         const idsSet = new Set(audioIds);
-        setAudioDataList(audioDataList.filter((a) => !idsSet.has(a.id)));
-        setSoundLaneStates(
-            objProject.soundLaneStates.filter(
+        setAudioDataList((prev) => prev.filter((a) => !idsSet.has(a.id)));
+        setProject((prev) => ({
+            ...prev,
+            soundLaneStates: prev.soundLaneStates.filter(
                 (state) => !idsSet.has(state.audioId),
             ),
-        );
+        }));
     }
 
     function setTimeMultiplier(newm: number) {
@@ -110,7 +265,8 @@ export default function WorkArea() {
     }
 
     function addAudioData(audioData: AudioData) {
-        setAudioDataList([...audioDataList, audioData]);
+        setAudioDataList((prev) => [...prev, audioData]);
+
         // 同时添加一个新的 SoundLaneState
         const nextLane = defaultSoundLaneState(audioData.id);
         nextLane.spectrumLane = {
@@ -118,7 +274,20 @@ export default function WorkArea() {
             brightnessOffset: spectrumView.brightnessOffset,
             resolutionScale: spectrumView.resolutionScale,
         };
-        setSoundLaneStates([...objProject.soundLaneStates, nextLane]);
+        setProject((prev) => ({
+            ...prev,
+            soundLaneStates: [...prev.soundLaneStates, nextLane],
+        }));
+    }
+
+    function resetEditor() {
+        setProject(defaultProject());
+        setAudioDataList([]);
+        resetProjectScopedSettings();
+
+        void clearPersistence().catch((error: unknown) => {
+            console.error("Clearing persisted project failed", error);
+        });
     }
 
     // 计算总时长
@@ -142,6 +311,7 @@ export default function WorkArea() {
 
     useEffect(() => {
         if (!hasHydratedSettings) return;
+        if (!hasHydratedProject) return;
         if (objProject.isPlaying) return;
         if (
             timeView.currentTime === objProject.currentTime &&
@@ -156,6 +326,7 @@ export default function WorkArea() {
         });
     }, [
         hasHydratedSettings,
+        hasHydratedProject,
         objProject.isPlaying,
         objProject.currentTime,
         objProject.timeMultiplier,
@@ -322,6 +493,7 @@ export default function WorkArea() {
                                 removeMultipleAudioData={
                                     removeMultipleAudioData
                                 }
+                                resetEditor={resetEditor}
                             />
                         </div>
                     </div>

@@ -67,8 +67,10 @@ interface AppSettingsContextValue {
     hasHydratedSettings: boolean;
     setShortcut: (action: ShortcutAction, combo: string) => void;
     setTimeView: (next: Partial<TimeViewSettings>) => void;
+    setSpectrumView: (next: Partial<SpectrumViewSettings>) => void;
     setSpectrumBrightnessOffset: (offset: number) => void;
     setSpectrumResolutionScale: (scale: number) => void;
+    resetProjectScopedSettings: () => void;
     matchesShortcut: (
         action: ShortcutAction,
         event: Pick<
@@ -85,8 +87,10 @@ const AppSettingsCtx = createContext<AppSettingsContextValue>({
     hasHydratedSettings: false,
     setShortcut: () => undefined,
     setTimeView: () => undefined,
+    setSpectrumView: () => undefined,
     setSpectrumBrightnessOffset: () => undefined,
     setSpectrumResolutionScale: () => undefined,
+    resetProjectScopedSettings: () => undefined,
     matchesShortcut: () => false,
 });
 
@@ -278,6 +282,32 @@ export function AppSettingsProvider({
         });
     }, []);
 
+    const setSpectrumView = useCallback(
+        (next: Partial<SpectrumViewSettings>) => {
+            setSettings((prev) => {
+                const normalized = normalizeSpectrumView({
+                    ...prev.spectrumView,
+                    ...next,
+                });
+
+                if (
+                    prev.spectrumView.brightnessOffset ===
+                        normalized.brightnessOffset &&
+                    prev.spectrumView.resolutionScale ===
+                        normalized.resolutionScale
+                ) {
+                    return prev;
+                }
+
+                return {
+                    ...prev,
+                    spectrumView: normalized,
+                };
+            });
+        },
+        [],
+    );
+
     const setSpectrumResolutionScale = useCallback((scale: number) => {
         setSettings((prev) => {
             const normalized = normalizeSpectrumView({
@@ -295,6 +325,29 @@ export function AppSettingsProvider({
                 ...prev,
                 spectrumView: normalized,
             };
+        });
+    }, []);
+
+    const resetProjectScopedSettings = useCallback(() => {
+        setSettings((prev) => {
+            const next = {
+                ...prev,
+                timeView: DEFAULT_TIME_VIEW,
+                spectrumView: DEFAULT_SPECTRUM_VIEW,
+            };
+
+            if (
+                prev.timeView.currentTime === next.timeView.currentTime &&
+                prev.timeView.timeMultiplier === next.timeView.timeMultiplier &&
+                prev.spectrumView.brightnessOffset ===
+                    next.spectrumView.brightnessOffset &&
+                prev.spectrumView.resolutionScale ===
+                    next.spectrumView.resolutionScale
+            ) {
+                return prev;
+            }
+
+            return next;
         });
     }, []);
 
@@ -328,16 +381,20 @@ export function AppSettingsProvider({
             hasHydratedSettings,
             setShortcut,
             setTimeView,
+            setSpectrumView,
             setSpectrumBrightnessOffset,
             setSpectrumResolutionScale,
+            resetProjectScopedSettings,
             matchesShortcut,
         };
     }, [
         hasHydratedSettings,
         setShortcut,
         setTimeView,
+        setSpectrumView,
         setSpectrumBrightnessOffset,
         setSpectrumResolutionScale,
+        resetProjectScopedSettings,
         settings.shortcuts,
         settings.timeView,
         settings.spectrumView,

@@ -4,6 +4,7 @@ import { AudioData, SoundLaneState } from "@/interface/audioData";
 import TimeRangeController from "./timeRangeController";
 import DeleteActiveSound from "./removeActiveSound";
 import PlaySelected from "./playSelectedSound";
+import ResetEditor from "./resetEditor";
 
 interface _prop {
     refSoundLaneStates: SoundLaneState[];
@@ -18,6 +19,7 @@ interface _prop {
     addAudioData: (audioData: AudioData) => void;
     removeAudioData: (audioId: string) => void;
     removeMultipleAudioData: (audioIds: string[]) => void;
+    resetEditor: () => void;
 }
 
 function WorkMenu(prop: _prop) {
@@ -45,6 +47,10 @@ function WorkMenu(prop: _prop) {
                     setCurrentTime={prop.setCurrentTime}
                     setIsPlaying={prop.setIsPlaying}
                     refSoundLaneStates={prop.refSoundLaneStates}
+                />
+                <ResetEditor
+                    key={"reset editor"}
+                    resetEditor={prop.resetEditor}
                 />
             </div>
         </div>
