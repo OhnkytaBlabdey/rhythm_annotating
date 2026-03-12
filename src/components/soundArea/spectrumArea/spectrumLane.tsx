@@ -1,6 +1,7 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { AudioDataCtx } from "../../audioContext";
 import { SpectrumLaneState } from "@/interface/audioData";
+import { createSpectrumWorker } from "./createSpectrumWorker";
 
 const MAX_INTERNAL_CANVAS_WIDTH = 1800;
 const MAX_RENDER_HEIGHT = 110;
@@ -261,9 +262,7 @@ function SpectrumLane(p: _p) {
                 workerRef.current = null;
             }
 
-            workerRef.current = new Worker(
-                new URL("./spectrumWorker.ts", import.meta.url),
-            );
+            workerRef.current = createSpectrumWorker();
 
             workerRef.current.onmessage = (e) => {
                 if (isCancelled) return;
