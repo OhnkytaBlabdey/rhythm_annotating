@@ -27,3 +27,10 @@ export interface RawChartSegment {
     measures?: ChartMeasure[];
     beats?: ChartMeasure[];
 }
+
+export interface NoteLaneData {
+    id: string;
+    division: number;
+    defaultBpm: number;
+    chartData: ChartSegment[];
+}

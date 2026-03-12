@@ -7,18 +7,25 @@ import SpectrumLane from "./spectrumArea/spectrumLane";
 import WaveMenu from "./soundMenu/waveMenu/waveMenu";
 import SpectrumMenu from "./soundMenu/spectrumMenu/spectrumMenu";
 import NoteMenu from "./noteArea/noteMenu/noteMenu";
-import { useContext, useMemo, useCallback, useState } from "react";
+import { useContext, useCallback, useMemo, useState } from "react";
 import { AudioDataCtx } from "../audioContext";
-import { SoundLaneState } from "@/interface/audioData";
+import { SoundLaneState, defaultNoteLaneData } from "@/interface/audioData";
 import NoteLane from "./noteArea/noteLane";
-import testChartRaw from "../../../test/test_chart.json";
-import { normalizeChartSegments } from "./noteArea/chartAdapter";
-import { RawChartSegment, ChartSegment } from "./noteArea/chartTypes";
+import {
+    ChartSegment,
+    ChartMeasure,
+    ChartNote,
+    NoteLaneData,
+} from "./noteArea/chartTypes";
 import {
     defaultNoteEditState,
     EditMode,
     NoteEditState,
 } from "./noteArea/noteState";
+import {
+    validateChartData,
+    validateNoteLaneData,
+} from "./noteArea/chartAdapter";
 
 const MAX_UNDO = 50;
 
@@ -33,15 +40,86 @@ interface _prop {
 export default function SoundLane(prop: _prop) {
     const audioDataList = useContext(AudioDataCtx);
     const audioData = audioDataList.find((a) => a.id === prop.audioId);
+    const noteLanes = useMemo(
+        () =>
+            Array.isArray(prop.refSoundLaneState.noteLanes) &&
+            prop.refSoundLaneState.noteLanes.length > 0
+                ? prop.refSoundLaneState.noteLanes
+                : [defaultNoteLaneData()],
+        [prop.refSoundLaneState.noteLanes],
+    );
 
-    const initialChartData = useMemo(
-        () => normalizeChartSegments(testChartRaw as RawChartSegment[]),
+    const [laneEditStateMap, setLaneEditStateMap] = useState<
+        Record<string, NoteEditState>
+    >({});
+    const [laneErrorMap, setLaneErrorMap] = useState<Record<string, string>>(
+        {},
+    );
+
+    const setLaneError = useCallback((laneId: string, message: string) => {
+        setLaneErrorMap((prev) => ({
+            ...prev,
+            [laneId]: message,
+        }));
+    }, []);
+
+    const clearLaneError = useCallback((laneId: string) => {
+        setLaneErrorMap((prev) => {
+            if (!prev[laneId]) return prev;
+            const next = { ...prev };
+            delete next[laneId];
+            return next;
+        });
+    }, []);
+
+    const setLaneEditState = useCallback(
+        (laneId: string, updater: (prev: NoteEditState) => NoteEditState) => {
+            setLaneEditStateMap((prev) => {
+                const base = prev[laneId] ?? defaultNoteEditState();
+                return {
+                    ...prev,
+                    [laneId]: updater(base),
+                };
+            });
+        },
         [],
     );
-    const [chartData, setChartDataRaw] =
-        useState<ChartSegment[]>(initialChartData);
-    const [editState, setEditState] =
-        useState<NoteEditState>(defaultNoteEditState);
+
+    const updateLaneData = useCallback(
+        (
+            laneId: string,
+            updater: (lane: NoteLaneData) => NoteLaneData | null,
+        ) => {
+            const nextLanes = noteLanes
+                .map((lane: NoteLaneData) => {
+                    if (lane.id !== laneId) return lane;
+                    return updater(lane);
+                })
+                .filter(
+                    (lane: NoteLaneData | null): lane is NoteLaneData =>
+                        lane !== null,
+                );
+
+            prop.setSoundLaneState(prop.index, {
+                ...prop.refSoundLaneState,
+                noteLanes:
+                    nextLanes.length > 0 ? nextLanes : [defaultNoteLaneData()],
+            });
+        },
+        [noteLanes, prop],
+    );
+
+    const handleAddNoteLane = useCallback(() => {
+        const nextLane = defaultNoteLaneData();
+        prop.setSoundLaneState(prop.index, {
+            ...prop.refSoundLaneState,
+            noteLanes: [...noteLanes, nextLane],
+        });
+        setLaneEditStateMap((prev) => ({
+            ...prev,
+            [nextLane.id]: defaultNoteEditState(nextLane.defaultBpm),
+        }));
+    }, [noteLanes, prop]);
 
     /** Deep-clone chartData for undo snapshot */
     const cloneChart = useCallback(
@@ -52,108 +130,6 @@ export default function SoundLane(prop: _prop) {
             })),
         [],
     );
-
-    const pushUndo = useCallback(
-        (before: ChartSegment[]) => {
-            setEditState((prev) => {
-                const stack = [cloneChart(before), ...prev.undoStack].slice(
-                    0,
-                    MAX_UNDO,
-                );
-                return { ...prev, undoStack: stack, redoStack: [] };
-            });
-        },
-        [cloneChart],
-    );
-
-    const setChartData = useCallback(
-        (next: ChartSegment[], saveUndo = true) => {
-            if (saveUndo) {
-                setChartDataRaw((prev) => {
-                    pushUndo(prev);
-                    return next;
-                });
-            } else {
-                setChartDataRaw(next);
-            }
-        },
-        [pushUndo],
-    );
-
-    const handleUndo = useCallback(() => {
-        if (editState.undoStack.length === 0) return;
-        const [top, ...rest] = editState.undoStack;
-        const current = cloneChart(chartData);
-        setChartDataRaw(top);
-        setEditState((prev) => ({
-            ...prev,
-            undoStack: rest,
-            redoStack: [current, ...prev.redoStack].slice(0, MAX_UNDO),
-        }));
-    }, [chartData, cloneChart, editState.undoStack]);
-
-    const handleRedo = useCallback(() => {
-        if (editState.redoStack.length === 0) return;
-        const [top, ...rest] = editState.redoStack;
-        const current = cloneChart(chartData);
-        setChartDataRaw(top);
-        setEditState((prev) => ({
-            ...prev,
-            redoStack: rest,
-            undoStack: [current, ...prev.undoStack].slice(0, MAX_UNDO),
-        }));
-    }, [chartData, cloneChart, editState.redoStack]);
-
-    const handleCopy = useCallback(() => {
-        setEditState((prev) => {
-            if (prev.selectedIds.size === 0) return prev;
-            const copied = chartData
-                .flatMap((seg) => seg.measures)
-                .flatMap((m) => m.notes)
-                .filter((n) => prev.selectedIds.has(n.id));
-            return { ...prev, clipboard: copied };
-        });
-    }, [chartData]);
-
-    const handleCut = useCallback(() => {
-        setEditState((prev) => {
-            if (prev.selectedIds.size === 0) return prev;
-            const copied = chartData
-                .flatMap((seg) => seg.measures)
-                .flatMap((m) => m.notes)
-                .filter((n) => prev.selectedIds.has(n.id));
-            const ids = prev.selectedIds;
-            const next = chartData.map((seg) => ({
-                ...seg,
-                measures: seg.measures.map((m) => ({
-                    notes: m.notes.filter((n) => !ids.has(n.id)),
-                })),
-            }));
-            pushUndo(chartData);
-            setChartDataRaw(next);
-            return {
-                ...prev,
-                clipboard: copied,
-                selectedIds: new Set<string>(),
-            };
-        });
-    }, [chartData, pushUndo]);
-
-    const handleDelete = useCallback(() => {
-        setEditState((prev) => {
-            if (prev.selectedIds.size === 0) return prev;
-            const ids = prev.selectedIds;
-            const next = chartData.map((seg) => ({
-                ...seg,
-                measures: seg.measures.map((m) => ({
-                    notes: m.notes.filter((n) => !ids.has(n.id)),
-                })),
-            }));
-            pushUndo(chartData);
-            setChartDataRaw(next);
-            return { ...prev, selectedIds: new Set<string>() };
-        });
-    }, [chartData, pushUndo]);
 
     if (!audioData) {
         return <div>Audio not found</div>;
@@ -179,7 +155,11 @@ export default function SoundLane(prop: _prop) {
                 />
             </div>
             <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-                <SoundMenu audioId={prop.audioId} timeRange={prop.timeRange} />
+                <SoundMenu
+                    audioId={prop.audioId}
+                    timeRange={prop.timeRange}
+                    onAddNoteLane={handleAddNoteLane}
+                />
             </div>
             <div className="flex flex-col flex-1 gap-2 mt-2">
                 <div className="flex items-start gap-3">
@@ -250,54 +230,254 @@ export default function SoundLane(prop: _prop) {
                     </div>
                 </div>
 
-                <div
-                    className="flex items-start gap-3"
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <div className="w-[150px] shrink-0 self-stretch border border-slate-700 rounded-md overflow-hidden bg-slate-900">
-                        <NoteMenu
-                            mode={editState.mode}
-                            setMode={(m: EditMode) =>
-                                setEditState((prev) => ({
-                                    ...prev,
-                                    mode: m,
-                                    lnHeadTime: null,
-                                }))
+                {noteLanes.map((lane: NoteLaneData) => {
+                    const editState =
+                        laneEditStateMap[lane.id] ??
+                        defaultNoteEditState(lane.defaultBpm);
+
+                    const pushUndo = (before: ChartSegment[]) => {
+                        setLaneEditState(lane.id, (prev) => {
+                            const stack = [
+                                cloneChart(before),
+                                ...prev.undoStack,
+                            ].slice(0, MAX_UNDO);
+                            return { ...prev, undoStack: stack, redoStack: [] };
+                        });
+                    };
+
+                    const setChartData = (
+                        next: ChartSegment[],
+                        saveUndo = true,
+                    ) => {
+                        const error = validateChartData(next);
+                        if (error) {
+                            setLaneError(lane.id, error);
+                            return;
+                        }
+
+                        clearLaneError(lane.id);
+                        if (saveUndo) {
+                            pushUndo(lane.chartData);
+                        }
+                        updateLaneData(lane.id, (prevLane) => ({
+                            ...prevLane,
+                            chartData: next,
+                        }));
+                    };
+
+                    const handleUndo = () => {
+                        if (editState.undoStack.length === 0) return;
+                        const [top, ...rest] = editState.undoStack;
+                        const current = cloneChart(lane.chartData);
+                        updateLaneData(lane.id, (prevLane) => ({
+                            ...prevLane,
+                            chartData: top,
+                        }));
+                        setLaneEditState(lane.id, (prev) => ({
+                            ...prev,
+                            undoStack: rest,
+                            redoStack: [current, ...prev.redoStack].slice(
+                                0,
+                                MAX_UNDO,
+                            ),
+                        }));
+                    };
+
+                    const handleRedo = () => {
+                        if (editState.redoStack.length === 0) return;
+                        const [top, ...rest] = editState.redoStack;
+                        const current = cloneChart(lane.chartData);
+                        updateLaneData(lane.id, (prevLane) => ({
+                            ...prevLane,
+                            chartData: top,
+                        }));
+                        setLaneEditState(lane.id, (prev) => ({
+                            ...prev,
+                            redoStack: rest,
+                            undoStack: [current, ...prev.undoStack].slice(
+                                0,
+                                MAX_UNDO,
+                            ),
+                        }));
+                    };
+
+                    const handleCopy = () => {
+                        setLaneEditState(lane.id, (prev) => {
+                            if (prev.selectedIds.size === 0) return prev;
+                            const copied = lane.chartData
+                                .flatMap((seg: ChartSegment) => seg.measures)
+                                .flatMap((m: ChartMeasure) => m.notes)
+                                .filter((n: ChartNote) =>
+                                    prev.selectedIds.has(n.id),
+                                );
+                            return { ...prev, clipboard: copied };
+                        });
+                    };
+
+                    const handleCut = () => {
+                        setLaneEditState(lane.id, (prev) => {
+                            if (prev.selectedIds.size === 0) return prev;
+                            const copied = lane.chartData
+                                .flatMap((seg: ChartSegment) => seg.measures)
+                                .flatMap((m: ChartMeasure) => m.notes)
+                                .filter((n: ChartNote) =>
+                                    prev.selectedIds.has(n.id),
+                                );
+                            const ids = prev.selectedIds;
+                            const next = lane.chartData.map((seg) => ({
+                                ...seg,
+                                measures: seg.measures.map(
+                                    (m: ChartMeasure) => ({
+                                        notes: m.notes.filter(
+                                            (n: ChartNote) => !ids.has(n.id),
+                                        ),
+                                    }),
+                                ),
+                            }));
+                            const error = validateChartData(next);
+                            if (error) {
+                                setLaneError(lane.id, error);
+                                return prev;
                             }
-                            canUndo={editState.undoStack.length > 0}
-                            canRedo={editState.redoStack.length > 0}
-                            hasSelection={editState.selectedIds.size > 0}
-                            hasClipboard={editState.clipboard.length > 0}
-                            currentBpm={editState.currentBpm}
-                            setCurrentBpm={(bpm) =>
-                                setEditState((prev) => ({
-                                    ...prev,
-                                    currentBpm: bpm,
-                                }))
+                            clearLaneError(lane.id);
+                            pushUndo(lane.chartData);
+                            updateLaneData(lane.id, (prevLane) => ({
+                                ...prevLane,
+                                chartData: next,
+                            }));
+                            return {
+                                ...prev,
+                                clipboard: copied,
+                                selectedIds: new Set<string>(),
+                            };
+                        });
+                    };
+
+                    const handleDelete = () => {
+                        setLaneEditState(lane.id, (prev) => {
+                            if (prev.selectedIds.size === 0) return prev;
+                            const ids = prev.selectedIds;
+                            const next = lane.chartData.map((seg) => ({
+                                ...seg,
+                                measures: seg.measures.map(
+                                    (m: ChartMeasure) => ({
+                                        notes: m.notes.filter(
+                                            (n: ChartNote) => !ids.has(n.id),
+                                        ),
+                                    }),
+                                ),
+                            }));
+                            const error = validateChartData(next);
+                            if (error) {
+                                setLaneError(lane.id, error);
+                                return prev;
                             }
-                            onDelete={handleDelete}
-                            onCopy={handleCopy}
-                            onCut={handleCut}
-                            onUndo={handleUndo}
-                            onRedo={handleRedo}
-                        />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <NoteLane
-                            chartData={chartData}
-                            setChartData={setChartData}
-                            timeRange={prop.timeRange}
-                            beatSubdivision={4}
-                            height={120}
-                            editState={editState}
-                            setEditState={setEditState}
-                            songDuration={audioData.duration ?? 0}
-                            onPushUndo={() => pushUndo(chartData)}
-                            onUndo={handleUndo}
-                            onRedo={handleRedo}
-                        />
-                    </div>
-                </div>
+                            clearLaneError(lane.id);
+                            pushUndo(lane.chartData);
+                            updateLaneData(lane.id, (prevLane) => ({
+                                ...prevLane,
+                                chartData: next,
+                            }));
+                            return {
+                                ...prev,
+                                selectedIds: new Set<string>(),
+                            };
+                        });
+                    };
+
+                    const exportError = validateNoteLaneData(lane);
+                    const exportPayload = exportError
+                        ? {
+                              error: exportError,
+                              lane,
+                          }
+                        : lane;
+
+                    return (
+                        <div
+                            key={lane.id}
+                            className="flex items-start gap-3"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="w-[150px] shrink-0 self-stretch border border-slate-300 rounded-md overflow-hidden bg-white">
+                                <NoteMenu
+                                    mode={editState.mode}
+                                    setMode={(m: EditMode) =>
+                                        setLaneEditState(lane.id, (prev) => ({
+                                            ...prev,
+                                            mode: m,
+                                            lnHeadTime: null,
+                                        }))
+                                    }
+                                    canUndo={editState.undoStack.length > 0}
+                                    canRedo={editState.redoStack.length > 0}
+                                    hasSelection={
+                                        editState.selectedIds.size > 0
+                                    }
+                                    hasClipboard={
+                                        editState.clipboard.length > 0
+                                    }
+                                    currentBpm={lane.defaultBpm}
+                                    setCurrentBpm={(bpm) => {
+                                        setLaneEditState(lane.id, (prev) => ({
+                                            ...prev,
+                                            currentBpm: bpm,
+                                        }));
+                                        updateLaneData(lane.id, (prevLane) => ({
+                                            ...prevLane,
+                                            defaultBpm: bpm,
+                                        }));
+                                    }}
+                                    division={lane.division}
+                                    setDivision={(division) =>
+                                        updateLaneData(lane.id, (prevLane) => ({
+                                            ...prevLane,
+                                            division: Math.max(
+                                                1,
+                                                Math.floor(division),
+                                            ),
+                                        }))
+                                    }
+                                    onDelete={handleDelete}
+                                    onCopy={handleCopy}
+                                    onCut={handleCut}
+                                    onUndo={handleUndo}
+                                    onRedo={handleRedo}
+                                    onDeleteLane={() => {
+                                        updateLaneData(lane.id, () => null);
+                                    }}
+                                    exportText={JSON.stringify(
+                                        exportPayload,
+                                        null,
+                                        2,
+                                    )}
+                                    lastError={laneErrorMap[lane.id] ?? null}
+                                />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <NoteLane
+                                    chartData={lane.chartData}
+                                    setChartData={setChartData}
+                                    timeRange={prop.timeRange}
+                                    beatSubdivision={lane.division}
+                                    height={120}
+                                    editState={editState}
+                                    setEditState={(updater) => {
+                                        setLaneEditState(lane.id, (prev) =>
+                                            typeof updater === "function"
+                                                ? updater(prev)
+                                                : updater,
+                                        );
+                                    }}
+                                    songDuration={audioData.duration ?? 0}
+                                    onPushUndo={() => pushUndo(lane.chartData)}
+                                    onUndo={handleUndo}
+                                    onRedo={handleRedo}
+                                />
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );

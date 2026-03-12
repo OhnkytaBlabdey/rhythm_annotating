@@ -1,3 +1,5 @@
+import { NoteLaneData } from "@/components/soundArea/noteArea/chartTypes";
+
 /**
  * 完整的音频文件数据，存储在全局 context 中
  */
@@ -17,6 +19,7 @@ export interface SoundLaneState {
     isActive: boolean;
     offset: number;
     isPlayComplete: boolean;
+    noteLanes: NoteLaneData[];
     waveLane: WaveLaneState;
     spectrumLane: SpectrumLaneState;
 }
@@ -26,8 +29,8 @@ export interface SoundLaneState {
  */
 export interface NoteLaneState {
     id: string;
-    isActive: boolean;
-    startTime: number;
+    defaultBpm: number;
+    division: number;
 }
 
 /**
@@ -54,6 +57,7 @@ export function defaultSoundLaneState(audioId: string): SoundLaneState {
         isActive: false,
         offset: 0,
         isPlayComplete: false,
+        noteLanes: [defaultNoteLaneData()],
         waveLane: defaultWaveLaneState(),
         spectrumLane: defaultSpectrumLaneState(),
     };
@@ -62,8 +66,24 @@ export function defaultSoundLaneState(audioId: string): SoundLaneState {
 export function defaultNoteLaneState(): NoteLaneState {
     return {
         id: generateId(),
-        isActive: false,
-        startTime: 0,
+        defaultBpm: 120,
+        division: 4,
+    };
+}
+
+export function defaultNoteLaneData(): NoteLaneData {
+    const lane = defaultNoteLaneState();
+    return {
+        id: lane.id,
+        defaultBpm: lane.defaultBpm,
+        division: lane.division,
+        chartData: [
+            {
+                time: 0,
+                tempo: lane.defaultBpm,
+                measures: [{ notes: [] }],
+            },
+        ],
     };
 }
 
@@ -88,3 +108,13 @@ export const generateId = (): string => {
     const random = Math.floor(Math.random() * 1000000);
     return `${timestamp}${random}`;
 };
+
+export function normalizeSoundLaneState(raw: SoundLaneState): SoundLaneState {
+    return {
+        ...raw,
+        noteLanes:
+            Array.isArray(raw.noteLanes) && raw.noteLanes.length > 0
+                ? raw.noteLanes
+                : [defaultNoteLaneData()],
+    };
+}

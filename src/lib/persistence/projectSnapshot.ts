@@ -1,4 +1,4 @@
-import { AudioData } from "@/interface/audioData";
+import { AudioData, normalizeSoundLaneState } from "@/interface/audioData";
 import { defaultProject, project } from "@/interface/project";
 import {
     DEFAULT_SNAPSHOT_KEY,
@@ -40,7 +40,9 @@ function normalizeProject(input: unknown): project {
                 ? candidate.playSpeed
                 : base.playSpeed,
         soundLaneStates: Array.isArray(candidate.soundLaneStates)
-            ? candidate.soundLaneStates
+            ? candidate.soundLaneStates.map((lane) =>
+                  normalizeSoundLaneState(lane),
+              )
             : base.soundLaneStates,
     };
 }

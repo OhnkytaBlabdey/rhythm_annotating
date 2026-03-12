@@ -5,6 +5,7 @@ import React from "react";
 interface _prop {
     audioId: string;
     timeRange: [number, number];
+    onAddNoteLane: () => void;
 }
 
 function SoundMenu(prop: _prop) {
@@ -16,7 +17,10 @@ function SoundMenu(prop: _prop) {
                     {prop.timeRange[0].toFixed(4)} -{" "}
                     {prop.timeRange[1].toFixed(4)} | {duration.toFixed(4)}s
                 </span>
-                <AddNoteLane audioId={prop.audioId} />
+                <AddNoteLane
+                    audioId={prop.audioId}
+                    onAdd={prop.onAddNoteLane}
+                />
             </div>
         </div>
     );

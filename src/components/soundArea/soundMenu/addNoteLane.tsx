@@ -7,18 +7,19 @@ const cls = classNames.bind(style);
 
 interface _prop {
     audioId: string;
+    onAdd: () => void;
 }
 
 function AddNoteLane(prop: _prop) {
     const handleAddNoteLane = () => {
-        // TODO: 通过 audioId 添加 NoteLane 到该音频
+        prop.onAdd();
     };
 
     return (
         <div>
             <button
                 onClick={handleAddNoteLane}
-                title="Click to AddNoteLane"
+                title={`在 ${prop.audioId} 中添加 NoteLane`}
                 className={`${cls("icon-button")} flex items-center gap-2`}
             >
                 <Image

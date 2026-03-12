@@ -29,14 +29,14 @@ export interface NoteEditState {
     lnHeadTime: number | null;
 }
 
-export function defaultNoteEditState(): NoteEditState {
+export function defaultNoteEditState(currentBpm = 120): NoteEditState {
     return {
         mode: "browse",
         selectedIds: new Set(),
         clipboard: [],
         undoStack: [],
         redoStack: [],
-        currentBpm: 120,
+        currentBpm,
         lnHeadTime: null,
     };
 }

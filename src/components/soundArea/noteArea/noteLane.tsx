@@ -13,7 +13,7 @@ import {
 } from "react";
 import style from "./noteLane.module.css";
 import { ChartNote, ChartSegment, Fraction } from "./chartTypes";
-import { generateNoteId } from "./chartAdapter";
+import { generateNoteId, normalizeFraction } from "./chartAdapter";
 import { NoteEditState } from "./noteState";
 
 interface NoteLaneProps {
@@ -113,6 +113,12 @@ function colorByType(type: number): string {
     return TYPE_COLORS[idx];
 }
 
+function fractionKey(input: Fraction | undefined): string | null {
+    const f = normalizeFraction(input);
+    if (!f) return null;
+    return `${f.a}/${f.b}`;
+}
+
 export default function NoteLane({
     chartData,
     setChartData,
@@ -191,9 +197,7 @@ export default function NoteLane({
                 ? last.tempo
                 : Math.max(1, editState.currentBpm);
         const beatDuration = 60 / virtualTempo;
-        const virtualStart = last
-            ? last.time + last.measures.length * (60 / last.tempo)
-            : 0;
+        const virtualStart = 0;
 
         for (
             let measureStart = virtualStart;
@@ -323,6 +327,27 @@ export default function NoteLane({
                 next.push({
                     time: 0,
                     tempo: Math.max(1, editState.currentBpm),
+                    measures: [{ notes: [] }],
+                });
+            }
+
+            if (next[0].time > 0) {
+                next[0].time = 0;
+            }
+
+            const tailSegment = next[next.length - 1];
+            const tailBeatDuration = 60 / Math.max(1, tailSegment.tempo);
+            const tailEndTime =
+                tailSegment.time +
+                tailSegment.measures.length * tailBeatDuration;
+            const desiredTempo = Math.max(1, editState.currentBpm);
+            if (
+                absoluteTime >= tailEndTime &&
+                Math.abs(tailSegment.tempo - desiredTempo) > 1e-6
+            ) {
+                next.push({
+                    time: tailEndTime,
+                    tempo: desiredTempo,
                     measures: [{ notes: [] }],
                 });
             }
@@ -496,6 +521,7 @@ export default function NoteLane({
         }
 
         const centerY = height / 2;
+        let globalBeatIndex = 0;
         for (const segment of segments) {
             if (!Number.isFinite(segment.tempo) || segment.tempo <= 0) {
                 continue;
@@ -509,6 +535,20 @@ export default function NoteLane({
             ) {
                 const measureStart = segment.time + measureIndex * beatDuration;
                 const measure = segment.measures[measureIndex];
+
+                if (measureStart >= rangeStart && measureStart <= rangeEnd) {
+                    const x = mapTimeToX(measureStart);
+                    ctx.fillStyle = "#cbd5e1";
+                    ctx.font = "10px sans-serif";
+                    ctx.textAlign = "left";
+                    ctx.fillText(`#${globalBeatIndex}`, x + 2, 11);
+                    ctx.fillStyle = "#94a3b8";
+                    ctx.fillText(
+                        `${Math.round(segment.tempo)} bpm`,
+                        x + 2,
+                        height - 4,
+                    );
+                }
 
                 for (const note of measure.notes) {
                     const anchors = toAnchors(note, measureStart, beatDuration);
@@ -566,6 +606,8 @@ export default function NoteLane({
                         }
                     }
                 }
+
+                globalBeatIndex += 1;
             }
         }
 
@@ -671,6 +713,7 @@ export default function NoteLane({
     const handleLeftClickAtSnap = useCallback(
         (time: number) => {
             if (editState.mode === "browse") return;
+            if (time < 0) return;
 
             if (
                 editState.mode === "insert-strong" ||
@@ -682,6 +725,17 @@ export default function NoteLane({
                     type: editState.mode === "insert-strong" ? 0 : 1,
                     head: { a: Math.round(target.beat * 10000), b: 10000 },
                 };
+                const insertKey = fractionKey(note.head);
+                const occupied = new Set(
+                    target.chart[target.segmentIndex].measures[
+                        target.measureIndex
+                    ].notes
+                        .map((n) => fractionKey(n.head))
+                        .filter((k): k is string => k !== null),
+                );
+                if (insertKey && occupied.has(insertKey)) {
+                    return;
+                }
                 target.chart[target.segmentIndex].measures[
                     target.measureIndex
                 ].notes.push(note);
@@ -710,6 +764,18 @@ export default function NoteLane({
                         b: 10000,
                     },
                 };
+                const insertKey = fractionKey(note.head);
+                const occupied = new Set(
+                    target.chart[target.segmentIndex].measures[
+                        target.measureIndex
+                    ].notes
+                        .map((n) => fractionKey(n.head))
+                        .filter((k): k is string => k !== null),
+                );
+                if (insertKey && occupied.has(insertKey)) {
+                    setEditState((prev) => ({ ...prev, lnHeadTime: null }));
+                    return;
+                }
                 target.chart[target.segmentIndex].measures[
                     target.measureIndex
                 ].notes.push(note);

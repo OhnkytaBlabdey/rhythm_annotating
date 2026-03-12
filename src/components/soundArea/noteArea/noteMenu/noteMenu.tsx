@@ -15,11 +15,16 @@ interface _p {
     hasClipboard: boolean;
     currentBpm: number;
     setCurrentBpm: (bpm: number) => void;
+    division: number;
+    setDivision: (division: number) => void;
     onDelete: () => void;
     onCopy: () => void;
     onCut: () => void;
     onUndo: () => void;
     onRedo: () => void;
+    onDeleteLane: () => void;
+    exportText: string;
+    lastError: string | null;
 }
 
 interface ModeButtonProps {
@@ -62,6 +67,8 @@ function ActionButton({ label, onClick, disabled, title }: ActionButtonProps) {
 }
 
 export default function NoteMenu(p: _p) {
+    const [isExportOpen, setIsExportOpen] = React.useState(false);
+
     const MODES: { mode: EditMode; label: string; title: string }[] = [
         { mode: "browse", label: "浏览", title: "浏览模式 (只读)" },
         { mode: "insert-strong", label: "强拍", title: "插入强拍 (type 0)" },
@@ -145,6 +152,73 @@ export default function NoteMenu(p: _p) {
                 />
                 <span className={cls("bpm-unit")}>bpm</span>
             </div>
+
+            <div className={cls("section-label")}>等分</div>
+            <div className={cls("bpm-row")}>
+                <input
+                    type="number"
+                    min={1}
+                    max={64}
+                    step={1}
+                    value={p.division}
+                    onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (v >= 1 && Number.isFinite(v)) p.setDivision(v);
+                    }}
+                    className={cls("bpm-input")}
+                    title="当前 NoteLane 的单拍等分"
+                />
+                <span className={cls("bpm-unit")}>n</span>
+            </div>
+
+            <div className={cls("section-label")}>Lane</div>
+            <div className={cls("button-group")}>
+                <ActionButton
+                    label="导出文本"
+                    title="导出当前 NoteLane 的 JSON"
+                    onClick={() => setIsExportOpen(true)}
+                />
+                <ActionButton
+                    label="删除本Lane"
+                    title="删除当前 NoteLane"
+                    onClick={p.onDeleteLane}
+                />
+            </div>
+
+            {p.lastError && <div className={cls("error")}>{p.lastError}</div>}
+
+            {isExportOpen && (
+                <div className={cls("modal-backdrop")}>
+                    <div className={cls("modal")}>
+                        <div className={cls("modal-title")}>
+                            导出 NoteLane JSON
+                        </div>
+                        <textarea
+                            readOnly
+                            className={cls("modal-text")}
+                            value={p.exportText}
+                        />
+                        <div className={cls("modal-actions")}>
+                            <button
+                                className={cls("button")}
+                                onClick={() => {
+                                    void navigator.clipboard.writeText(
+                                        p.exportText,
+                                    );
+                                }}
+                            >
+                                复制
+                            </button>
+                            <button
+                                className={cls("button")}
+                                onClick={() => setIsExportOpen(false)}
+                            >
+                                关闭
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
