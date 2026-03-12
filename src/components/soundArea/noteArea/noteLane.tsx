@@ -18,14 +18,13 @@ import { NoteEditState } from "./noteState";
 
 interface NoteLaneProps {
     chartData: ChartSegment[];
-    setChartData: (next: ChartSegment[], saveUndo?: boolean) => void;
+    setChartData: (next: ChartSegment[], saveUndo?: boolean) => boolean;
     timeRange: [number, number];
     beatSubdivision?: number;
     height?: number;
     editState: NoteEditState;
     setEditState: Dispatch<SetStateAction<NoteEditState>>;
     songDuration: number;
-    onPushUndo: () => void;
     onUndo: () => void;
     onRedo: () => void;
 }
@@ -128,7 +127,6 @@ export default function NoteLane({
     editState,
     setEditState,
     songDuration,
-    onPushUndo,
     onUndo,
     onRedo,
 }: NoteLaneProps) {
@@ -234,6 +232,42 @@ export default function NoteLane({
     ]);
 
     const gridTicks = useMemo(() => buildGridTicks(), [buildGridTicks]);
+
+    const majorTicks = useMemo(() => {
+        const unique: number[] = [];
+        for (const tick of gridTicks) {
+            if (!tick.major) continue;
+            const last = unique.at(-1);
+            if (last === undefined || Math.abs(last - tick.time) > 1e-6) {
+                unique.push(tick.time);
+            }
+        }
+        return unique;
+    }, [gridTicks]);
+
+    const getTempoAtTime = useCallback(
+        (time: number): number => {
+            const sorted = [...segments].sort((a, b) => a.time - b.time);
+            for (let i = 0; i < sorted.length; i++) {
+                const seg = sorted[i];
+                if (!Number.isFinite(seg.tempo) || seg.tempo <= 0) continue;
+                const beatDuration = 60 / seg.tempo;
+                const end = seg.time + seg.measures.length * beatDuration;
+                if (time >= seg.time - 1e-6 && time < end - 1e-6) {
+                    return seg.tempo;
+                }
+            }
+            return Math.max(1, editState.currentBpm);
+        },
+        [editState.currentBpm, segments],
+    );
+
+    const commitChart = useCallback(
+        (next: ChartSegment[], saveUndo = true): boolean => {
+            return setChartData(next, saveUndo);
+        },
+        [setChartData],
+    );
 
     const noteHits = useMemo<NoteHit[]>(() => {
         const out: NoteHit[] = [];
@@ -387,14 +421,14 @@ export default function NoteLane({
                     notes: measure.notes.filter((note) => !ids.has(note.id)),
                 })),
             }));
-            onPushUndo();
-            setChartData(next, false);
-            setEditState((prev) => ({
-                ...prev,
-                selectedIds: new Set<string>(),
-            }));
+            if (commitChart(next, true)) {
+                setEditState((prev) => ({
+                    ...prev,
+                    selectedIds: new Set<string>(),
+                }));
+            }
         },
-        [onPushUndo, segments, setChartData, setEditState],
+        [commitChart, segments, setEditState],
     );
 
     useEffect(() => {
@@ -521,7 +555,20 @@ export default function NoteLane({
         }
 
         const centerY = height / 2;
-        let globalBeatIndex = 0;
+
+        for (let i = 0; i < majorTicks.length; i++) {
+            const beatStart = majorTicks[i];
+            if (beatStart < rangeStart || beatStart > rangeEnd) continue;
+            const x = mapTimeToX(beatStart);
+            const bpm = Math.round(getTempoAtTime(beatStart));
+            ctx.fillStyle = "#cbd5e1";
+            ctx.font = "10px sans-serif";
+            ctx.textAlign = "left";
+            ctx.fillText(`#${i}`, x + 2, 11);
+            ctx.fillStyle = "#94a3b8";
+            ctx.fillText(`♪${bpm}`, x + 2, height - 4);
+        }
+
         for (const segment of segments) {
             if (!Number.isFinite(segment.tempo) || segment.tempo <= 0) {
                 continue;
@@ -535,20 +582,6 @@ export default function NoteLane({
             ) {
                 const measureStart = segment.time + measureIndex * beatDuration;
                 const measure = segment.measures[measureIndex];
-
-                if (measureStart >= rangeStart && measureStart <= rangeEnd) {
-                    const x = mapTimeToX(measureStart);
-                    ctx.fillStyle = "#cbd5e1";
-                    ctx.font = "10px sans-serif";
-                    ctx.textAlign = "left";
-                    ctx.fillText(`#${globalBeatIndex}`, x + 2, 11);
-                    ctx.fillStyle = "#94a3b8";
-                    ctx.fillText(
-                        `${Math.round(segment.tempo)} bpm`,
-                        x + 2,
-                        height - 4,
-                    );
-                }
 
                 for (const note of measure.notes) {
                     const anchors = toAnchors(note, measureStart, beatDuration);
@@ -606,8 +639,6 @@ export default function NoteLane({
                         }
                     }
                 }
-
-                globalBeatIndex += 1;
             }
         }
 
@@ -620,11 +651,13 @@ export default function NoteLane({
             }
         }
     }, [
+        majorTicks,
         editState.clipboard,
         editState.currentBpm,
         editState.lnHeadTime,
         editState.mode,
         editState.selectedIds,
+        getTempoAtTime,
         gridTicks,
         height,
         hoverNoteId,
@@ -739,8 +772,7 @@ export default function NoteLane({
                 target.chart[target.segmentIndex].measures[
                     target.measureIndex
                 ].notes.push(note);
-                onPushUndo();
-                setChartData(target.chart, false);
+                commitChart(target.chart, true);
                 return;
             }
 
@@ -779,9 +811,9 @@ export default function NoteLane({
                 target.chart[target.segmentIndex].measures[
                     target.measureIndex
                 ].notes.push(note);
-                onPushUndo();
-                setChartData(target.chart, false);
-                setEditState((prev) => ({ ...prev, lnHeadTime: null }));
+                if (commitChart(target.chart, true)) {
+                    setEditState((prev) => ({ ...prev, lnHeadTime: null }));
+                }
                 return;
             }
 
@@ -820,21 +852,20 @@ export default function NoteLane({
                         target.measureStart + headBeat * target.beatDuration,
                     );
                 }
-                onPushUndo();
-                setChartData(target.chart, false);
-                setLastPastedGhostTimes(pastedTimes);
+                if (commitChart(target.chart, true)) {
+                    setLastPastedGhostTimes(pastedTimes);
+                }
                 return;
             }
         },
         [
+            commitChart,
             editState.clipboard,
             editState.lnHeadTime,
             editState.mode,
-            onPushUndo,
             resolveInsertTarget,
             safeSubdivision,
             segments,
-            setChartData,
             setEditState,
         ],
     );
@@ -845,10 +876,10 @@ export default function NoteLane({
             if (dragState && time !== null) {
                 const delta = time - dragState.startSnapTime;
                 const moved = moveSelectedNotes(dragState.baseChartData, delta);
-                setChartData(moved, false);
+                commitChart(moved, false);
             }
         },
-        [dragState, moveSelectedNotes, setChartData, updatePointer],
+        [commitChart, dragState, moveSelectedNotes, updatePointer],
     );
 
     const handleMouseDown = useCallback(
@@ -902,7 +933,6 @@ export default function NoteLane({
                     }
 
                     if (editState.selectedIds.has(note.id)) {
-                        onPushUndo();
                         setDragState({
                             startSnapTime: time,
                             baseChartData: cloneChart(segments),
@@ -926,7 +956,6 @@ export default function NoteLane({
             editState.selectedIds,
             handleLeftClickAtSnap,
             noteHits,
-            onPushUndo,
             segments,
             setEditState,
             updatePointer,
@@ -935,9 +964,14 @@ export default function NoteLane({
 
     const handleMouseUp = useCallback(() => {
         if (dragState) {
+            const moved = moveSelectedNotes(
+                dragState.baseChartData,
+                (snapTime ?? dragState.startSnapTime) - dragState.startSnapTime,
+            );
+            commitChart(moved, true);
             setDragState(null);
         }
-    }, [dragState]);
+    }, [commitChart, dragState, moveSelectedNotes, snapTime]);
 
     const handleContextMenu = useCallback(
         (e: MouseEvent<HTMLCanvasElement>) => {

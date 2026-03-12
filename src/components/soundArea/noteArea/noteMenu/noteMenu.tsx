@@ -23,6 +23,7 @@ interface _p {
     onUndo: () => void;
     onRedo: () => void;
     onDeleteLane: () => void;
+    onClearLane: () => void;
     exportText: string;
     lastError: string | null;
 }
@@ -82,7 +83,7 @@ export default function NoteMenu(p: _p) {
         <div className={cls("menu")}>
             {/* Mode group */}
             <div className={cls("section-label")}>模式</div>
-            <div className={cls("button-group")}>
+            <div className={cls("button-group", "mode-grid")}>
                 {MODES.map(({ mode, label, title }) => (
                     <ModeButton
                         key={mode}
@@ -96,7 +97,7 @@ export default function NoteMenu(p: _p) {
 
             {/* Edit actions */}
             <div className={cls("section-label")}>编辑</div>
-            <div className={cls("button-group")}>
+            <div className={cls("button-group", "edit-grid")}>
                 <ActionButton
                     label="删除"
                     title="删除选中 Note (Del)"
@@ -173,6 +174,11 @@ export default function NoteMenu(p: _p) {
 
             <div className={cls("section-label")}>Lane</div>
             <div className={cls("button-group")}>
+                <ActionButton
+                    label="清空本Lane"
+                    title="清空当前 NoteLane 数据"
+                    onClick={p.onClearLane}
+                />
                 <ActionButton
                     label="导出文本"
                     title="导出当前 NoteLane 的 JSON"

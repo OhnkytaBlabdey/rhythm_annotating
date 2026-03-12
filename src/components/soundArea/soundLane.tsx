@@ -131,6 +131,42 @@ export default function SoundLane(prop: _prop) {
         [],
     );
 
+    const retimeChartByBpm = useCallback(
+        (data: ChartSegment[], bpm: number) => {
+            const safeBpm = Math.max(1, Math.floor(bpm));
+            const beatDuration = 60 / safeBpm;
+            let cursor = 0;
+            const next = data
+                .map((seg) => ({
+                    ...seg,
+                    time: 0,
+                    tempo: safeBpm,
+                    measures: seg.measures.map((m) => ({
+                        notes: [...m.notes],
+                    })),
+                }))
+                .sort((a, b) => a.time - b.time);
+
+            for (const seg of next) {
+                seg.time = cursor;
+                cursor += seg.measures.length * beatDuration;
+            }
+
+            if (next.length === 0) {
+                return [
+                    {
+                        time: 0,
+                        tempo: safeBpm,
+                        measures: [{ notes: [] }],
+                    },
+                ];
+            }
+
+            return next;
+        },
+        [],
+    );
+
     if (!audioData) {
         return <div>Audio not found</div>;
     }
@@ -248,11 +284,11 @@ export default function SoundLane(prop: _prop) {
                     const setChartData = (
                         next: ChartSegment[],
                         saveUndo = true,
-                    ) => {
+                    ): boolean => {
                         const error = validateChartData(next);
                         if (error) {
                             setLaneError(lane.id, error);
-                            return;
+                            return false;
                         }
 
                         clearLaneError(lane.id);
@@ -263,6 +299,7 @@ export default function SoundLane(prop: _prop) {
                             ...prevLane,
                             chartData: next,
                         }));
+                        return true;
                     };
 
                     const handleUndo = () => {
@@ -419,13 +456,21 @@ export default function SoundLane(prop: _prop) {
                                     }
                                     currentBpm={lane.defaultBpm}
                                     setCurrentBpm={(bpm) => {
+                                        const safeBpm = Math.max(
+                                            1,
+                                            Math.floor(bpm),
+                                        );
                                         setLaneEditState(lane.id, (prev) => ({
                                             ...prev,
-                                            currentBpm: bpm,
+                                            currentBpm: safeBpm,
                                         }));
                                         updateLaneData(lane.id, (prevLane) => ({
                                             ...prevLane,
-                                            defaultBpm: bpm,
+                                            defaultBpm: safeBpm,
+                                            chartData: retimeChartByBpm(
+                                                prevLane.chartData,
+                                                safeBpm,
+                                            ),
                                         }));
                                     }}
                                     division={lane.division}
@@ -445,6 +490,28 @@ export default function SoundLane(prop: _prop) {
                                     onRedo={handleRedo}
                                     onDeleteLane={() => {
                                         updateLaneData(lane.id, () => null);
+                                    }}
+                                    onClearLane={() => {
+                                        const resetBpm = Math.max(
+                                            1,
+                                            Math.floor(lane.defaultBpm),
+                                        );
+                                        updateLaneData(lane.id, (prevLane) => ({
+                                            ...prevLane,
+                                            chartData: [
+                                                {
+                                                    time: 0,
+                                                    tempo: resetBpm,
+                                                    measures: [{ notes: [] }],
+                                                },
+                                            ],
+                                        }));
+                                        setLaneEditState(lane.id, (prev) => ({
+                                            ...prev,
+                                            selectedIds: new Set<string>(),
+                                            lnHeadTime: null,
+                                        }));
+                                        clearLaneError(lane.id);
                                     }}
                                     exportText={JSON.stringify(
                                         exportPayload,
@@ -470,7 +537,6 @@ export default function SoundLane(prop: _prop) {
                                         );
                                     }}
                                     songDuration={audioData.duration ?? 0}
-                                    onPushUndo={() => pushUndo(lane.chartData)}
                                     onUndo={handleUndo}
                                     onRedo={handleRedo}
                                 />

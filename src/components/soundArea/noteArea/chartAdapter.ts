@@ -100,8 +100,48 @@ function fractionKey(input: Fraction | undefined): string | null {
     return `${f.a}/${f.b}`;
 }
 
+export function compareFractions(a: Fraction, b: Fraction): number {
+    const left = a.a * b.b;
+    const right = b.a * a.b;
+    if (left < right) return -1;
+    if (left > right) return 1;
+    return 0;
+}
+
+function collectAnchors(note: ChartNote): Fraction[] {
+    const out: Fraction[] = [];
+    const head = normalizeFraction(note.head);
+    if (head) out.push(head);
+    if (Array.isArray(note.body)) {
+        for (const p of note.body) {
+            const n = normalizeFraction(p);
+            if (n) out.push(n);
+        }
+    }
+    const tail = normalizeFraction(note.tail);
+    if (tail) out.push(tail);
+    return out;
+}
+
+function isStrictlyBetween(x: Fraction, a: Fraction, b: Fraction): boolean {
+    return compareFractions(x, a) > 0 && compareFractions(x, b) < 0;
+}
+
+function rangesOverlap(
+    aStart: Fraction,
+    aEnd: Fraction,
+    bStart: Fraction,
+    bEnd: Fraction,
+): boolean {
+    return (
+        compareFractions(aStart, bEnd) < 0 && compareFractions(bStart, aEnd) < 0
+    );
+}
+
 function validateMeasureNotes(notes: ChartNote[]): string | null {
     const occupiedHead = new Set<string>();
+
+    const lnRanges: Array<{ id: string; head: Fraction; tail: Fraction }> = [];
     for (const note of notes) {
         const head = fractionKey(note.head);
         if (!head) {
@@ -125,8 +165,37 @@ function validateMeasureNotes(notes: ChartNote[]): string | null {
             if (h.a * t.b > t.a * h.b) {
                 return "长条 note 的 tail 不能早于 head";
             }
+            if (compareFractions(h, t) === 0) {
+                return "长条 note 的 head/tail 不能重合";
+            }
+            lnRanges.push({ id: note.id, head: h, tail: t });
         }
     }
+
+    for (const ln of lnRanges) {
+        for (const note of notes) {
+            if (note.id === ln.id) continue;
+
+            const anchors = collectAnchors(note);
+            for (const anchor of anchors) {
+                if (isStrictlyBetween(anchor, ln.head, ln.tail)) {
+                    return "长条 note 不能横跨其它 note";
+                }
+            }
+
+            if (note.type === 2) {
+                const head = normalizeFraction(note.head);
+                const tail = normalizeFraction(note.tail);
+                if (!head || !tail) {
+                    return "长条 note 的 head/tail 非法";
+                }
+                if (rangesOverlap(ln.head, ln.tail, head, tail)) {
+                    return "长条 note 之间不能重叠";
+                }
+            }
+        }
+    }
+
     return null;
 }
 
