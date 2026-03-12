@@ -244,7 +244,7 @@ function SpectrumLane(p: _p) {
     // ======== 启动 Worker FFT ========
 
     useEffect(() => {
-        if (!audioData?.decodedBuffer) return;
+        if (!audioData?.buffer) return;
 
         cacheRef.current = {};
         setLayerVersion(0);
@@ -252,46 +252,65 @@ function SpectrumLane(p: _p) {
         setWorkerDone(false);
         let isCancelled = false;
 
-        const decoded = audioData.decodedBuffer;
-        const mono = mixDownToMono(decoded);
-
-        if (workerRef.current) {
-            workerRef.current.terminate();
-            workerRef.current = null;
-        }
-
-        workerRef.current = new Worker(
-            new URL("./spectrumWorker.ts", import.meta.url),
-        );
-
-        workerRef.current.onmessage = (e) => {
+        const launchWorker = (decoded: AudioBuffer) => {
             if (isCancelled) return;
-            if (e.data.type === "layer") {
-                const layer: SpectrumFrameCache = {
-                    id: e.data.layer.id,
-                    frameData: e.data.layer.frameData,
-                    maxMagnitude: e.data.layer.maxMagnitude,
-                    sampleRate: e.data.layer.sampleRate,
-                    windowSize: e.data.layer.windowSize,
-                    hopSize: e.data.layer.hopSize,
-                    minTimeMs: e.data.layer.minTimeMs,
-                    minFreqHz: e.data.layer.minFreqHz,
-                };
+            const mono = mixDownToMono(decoded);
 
-                cacheRef.current[layer.id] = layer;
-                setLayerVersion((v) => v + 1);
-                setReady(true);
+            if (workerRef.current) {
+                workerRef.current.terminate();
+                workerRef.current = null;
             }
-            if (e.data.type === "done") setWorkerDone(true);
+
+            workerRef.current = new Worker(
+                new URL("./spectrumWorker.ts", import.meta.url),
+            );
+
+            workerRef.current.onmessage = (e) => {
+                if (isCancelled) return;
+                if (e.data.type === "layer") {
+                    const layer: SpectrumFrameCache = {
+                        id: e.data.layer.id,
+                        frameData: e.data.layer.frameData,
+                        maxMagnitude: e.data.layer.maxMagnitude,
+                        sampleRate: e.data.layer.sampleRate,
+                        windowSize: e.data.layer.windowSize,
+                        hopSize: e.data.layer.hopSize,
+                        minTimeMs: e.data.layer.minTimeMs,
+                        minFreqHz: e.data.layer.minFreqHz,
+                    };
+
+                    cacheRef.current[layer.id] = layer;
+                    setLayerVersion((v) => v + 1);
+                    setReady(true);
+                }
+                if (e.data.type === "done") setWorkerDone(true);
+            };
+
+            const msg = {
+                type: "init" as const,
+                audio: mono,
+                sampleRate: decoded.sampleRate,
+                profiles: getSpectrumProfiles(),
+            };
+            workerRef.current.postMessage(msg, [mono.buffer]);
         };
 
-        const msg = {
-            type: "init" as const,
-            audio: mono,
-            sampleRate: decoded.sampleRate,
-            profiles: getSpectrumProfiles(),
-        };
-        workerRef.current.postMessage(msg, [mono.buffer]);
+        if (audioData.decodedBuffer) {
+            launchWorker(audioData.decodedBuffer);
+        } else {
+            const ctx = new AudioContext();
+            ctx.decodeAudioData(
+                audioData.buffer.slice(0),
+                (decoded) => {
+                    launchWorker(decoded);
+                    void ctx.close();
+                },
+                (err) => {
+                    console.error("Spectrum: audio decode failed", err);
+                    void ctx.close();
+                },
+            );
+        }
 
         return () => {
             isCancelled = true;
