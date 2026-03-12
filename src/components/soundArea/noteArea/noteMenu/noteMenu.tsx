@@ -177,26 +177,21 @@ export default function NoteMenu(p: _p) {
                     disabled={!p.canEditCurrentMeasureBpm}
                     onWheel={(e) => e.stopPropagation()}
                     onChange={(e) => {
-                        setMeasureBpmInput(e.target.value);
-                    }}
-                    className={cls("bpm-input")}
-                    title="当前光标所在小节 BPM"
-                />
-                <ActionButton
-                    label="改本小节"
-                    title="仅修改当前光标所在小节 BPM"
-                    disabled={
-                        !p.canEditCurrentMeasureBpm ||
-                        !Number.isFinite(Number(measureBpmInput)) ||
-                        Number(measureBpmInput) < 1
-                    }
-                    onClick={() => {
-                        const v = Number(measureBpmInput);
-                        if (v > 0 && Number.isFinite(v)) {
+                        const nextValue = e.target.value;
+                        setMeasureBpmInput(nextValue);
+                        const v = Number(nextValue);
+                        if (
+                            p.canEditCurrentMeasureBpm &&
+                            Number.isFinite(v) &&
+                            v >= 1
+                        ) {
                             p.setCurrentMeasureBpm(v);
                         }
                     }}
+                    className={cls("bpm-input")}
+                    title="当前选中小节 BPM"
                 />
+                <span className={cls("bpm-unit")}>bpm</span>
             </div>
 
             <div className={cls("section-label")}>等分</div>

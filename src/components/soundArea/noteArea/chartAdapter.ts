@@ -199,6 +199,125 @@ function validateMeasureNotes(notes: ChartNote[]): string | null {
     return null;
 }
 
+interface AbsoluteNote {
+    id: string;
+    type: number;
+    head: number;
+    tail?: number;
+    anchors: number[];
+}
+
+const TIME_EPS = 1e-6;
+
+function toAbsoluteNote(
+    note: ChartNote,
+    measureStart: number,
+    beatDuration: number,
+): AbsoluteNote | null {
+    const head = normalizeFraction(note.head);
+    if (!head) {
+        return null;
+    }
+    const headTime = measureStart + (head.a / head.b) * beatDuration;
+
+    const anchors: number[] = [headTime];
+    if (Array.isArray(note.body)) {
+        for (const point of note.body) {
+            const n = normalizeFraction(point);
+            if (!n) continue;
+            anchors.push(measureStart + (n.a / n.b) * beatDuration);
+        }
+    }
+
+    let tailTime: number | undefined;
+    if (note.tail) {
+        const tail = normalizeFraction(note.tail);
+        if (tail) {
+            tailTime = measureStart + (tail.a / tail.b) * beatDuration;
+            anchors.push(tailTime);
+        }
+    }
+
+    return {
+        id: note.id,
+        type: note.type,
+        head: headTime,
+        tail: tailTime,
+        anchors,
+    };
+}
+
+function collectAbsoluteNotes(chartData: ChartSegment[]): AbsoluteNote[] {
+    const out: AbsoluteNote[] = [];
+    const sorted = [...chartData].sort((a, b) => a.time - b.time);
+    for (const segment of sorted) {
+        if (!Number.isFinite(segment.tempo) || segment.tempo <= 0) {
+            continue;
+        }
+        const beatDuration = 60 / segment.tempo;
+        for (let m = 0; m < segment.measures.length; m++) {
+            const measureStart = segment.time + m * beatDuration;
+            const measure = segment.measures[m];
+            for (const note of measure.notes) {
+                const abs = toAbsoluteNote(note, measureStart, beatDuration);
+                if (abs) {
+                    out.push(abs);
+                }
+            }
+        }
+    }
+    return out;
+}
+
+function validateGlobalAbsoluteOverlaps(
+    chartData: ChartSegment[],
+): string | null {
+    const notes = collectAbsoluteNotes(chartData);
+
+    const heads = notes
+        .map((n) => ({ id: n.id, time: n.head }))
+        .sort((a, b) => a.time - b.time);
+    for (let i = 1; i < heads.length; i++) {
+        if (Math.abs(heads[i].time - heads[i - 1].time) <= TIME_EPS) {
+            return "存在重复时刻 note";
+        }
+    }
+
+    const lnRanges = notes
+        .filter((n) => n.type === 2 && n.tail !== undefined)
+        .map((n) => ({
+            id: n.id,
+            head: n.head,
+            tail: n.tail as number,
+        }));
+
+    for (let i = 0; i < lnRanges.length; i++) {
+        const ln = lnRanges[i];
+        for (const note of notes) {
+            if (note.id === ln.id) continue;
+            for (const anchor of note.anchors) {
+                if (
+                    anchor > ln.head + TIME_EPS &&
+                    anchor < ln.tail - TIME_EPS
+                ) {
+                    return "长条 note 不能横跨其它 note";
+                }
+            }
+        }
+        for (let j = i + 1; j < lnRanges.length; j++) {
+            const other = lnRanges[j];
+            if (
+                ln.head < other.tail - TIME_EPS &&
+                other.head < ln.tail - TIME_EPS
+            ) {
+                return "长条 note 之间不能重叠";
+            }
+        }
+    }
+
+    return null;
+}
+
 export function validateChartData(chartData: ChartSegment[]): string | null {
     for (const segment of chartData) {
         for (const measure of segment.measures) {
@@ -207,6 +326,10 @@ export function validateChartData(chartData: ChartSegment[]): string | null {
                 return msg;
             }
         }
+    }
+    const globalMsg = validateGlobalAbsoluteOverlaps(chartData);
+    if (globalMsg) {
+        return globalMsg;
     }
     return null;
 }

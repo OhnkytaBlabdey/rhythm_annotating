@@ -53,12 +53,53 @@ export default function SoundLane(prop: _prop) {
     const [laneEditStateMap, setLaneEditStateMap] = useState<
         Record<string, NoteEditState>
     >({});
-    const [laneCursorTimeMap, setLaneCursorTimeMap] = useState<
-        Record<string, number | null>
-    >({});
+    const [, setLaneCursorTimeMap] = useState<Record<string, number | null>>(
+        {},
+    );
+    const [laneSelectedMeasureTimeMap, setLaneSelectedMeasureTimeMap] =
+        useState<Record<string, number | null>>({});
     const [laneErrorMap, setLaneErrorMap] = useState<Record<string, string>>(
         {},
     );
+    const laneSnapHandlers = useMemo(() => {
+        const handlers: Record<string, (time: number | null) => void> = {};
+        for (const lane of noteLanes) {
+            const laneId = lane.id;
+            handlers[laneId] = (time: number | null) => {
+                setLaneCursorTimeMap((prev) => {
+                    const prevTime = prev[laneId] ?? null;
+                    if (prevTime === time) {
+                        return prev;
+                    }
+                    return {
+                        ...prev,
+                        [laneId]: time,
+                    };
+                });
+            };
+        }
+        return handlers;
+    }, [noteLanes]);
+
+    const laneMeasureSelectHandlers = useMemo(() => {
+        const handlers: Record<string, (time: number | null) => void> = {};
+        for (const lane of noteLanes) {
+            const laneId = lane.id;
+            handlers[laneId] = (time: number | null) => {
+                setLaneSelectedMeasureTimeMap((prev) => {
+                    const prevTime = prev[laneId] ?? null;
+                    if (prevTime === time) {
+                        return prev;
+                    }
+                    return {
+                        ...prev,
+                        [laneId]: time,
+                    };
+                });
+            };
+        }
+        return handlers;
+    }, [noteLanes]);
 
     const setLaneError = useCallback((laneId: string, message: string) => {
         setLaneErrorMap((prev) => ({
@@ -103,11 +144,43 @@ export default function SoundLane(prop: _prop) {
                     (lane: NoteLaneData | null): lane is NoteLaneData =>
                         lane !== null,
                 );
+            const finalLanes =
+                nextLanes.length > 0 ? nextLanes : [defaultNoteLaneData()];
 
             prop.setSoundLaneState(prop.index, {
                 ...prop.refSoundLaneState,
-                noteLanes:
-                    nextLanes.length > 0 ? nextLanes : [defaultNoteLaneData()],
+                noteLanes: finalLanes,
+            });
+
+            const activeIds = new Set(
+                finalLanes.map((lane: NoteLaneData) => lane.id),
+            );
+            setLaneEditStateMap((prev) => {
+                const next: Record<string, NoteEditState> = {};
+                for (const id of Object.keys(prev)) {
+                    if (activeIds.has(id)) {
+                        next[id] = prev[id];
+                    }
+                }
+                return next;
+            });
+            setLaneErrorMap((prev) => {
+                const next: Record<string, string> = {};
+                for (const id of Object.keys(prev)) {
+                    if (activeIds.has(id)) {
+                        next[id] = prev[id];
+                    }
+                }
+                return next;
+            });
+            setLaneSelectedMeasureTimeMap((prev) => {
+                const next: Record<string, number | null> = {};
+                for (const id of Object.keys(prev)) {
+                    if (activeIds.has(id)) {
+                        next[id] = prev[id];
+                    }
+                }
+                return next;
             });
         },
         [noteLanes, prop],
@@ -165,6 +238,7 @@ export default function SoundLane(prop: _prop) {
                             segmentIndex: s,
                             measureIndex: m,
                             tempo: segTempo,
+                            measureStart: start,
                         };
                     }
                 }
@@ -483,11 +557,15 @@ export default function SoundLane(prop: _prop) {
                     const editState =
                         laneEditStateMap[lane.id] ??
                         defaultNoteEditState(lane.defaultBpm);
-                    const cursorTime = laneCursorTimeMap[lane.id] ?? null;
-                    const cursorMeasure = locateMeasureAtTime(
+                    const selectedMeasureTime =
+                        laneSelectedMeasureTimeMap[lane.id] ?? null;
+                    const selectedMeasure = locateMeasureAtTime(
                         lane.chartData,
-                        cursorTime,
+                        selectedMeasureTime,
                     );
+                    const handleSnapTimeChange = laneSnapHandlers[lane.id];
+                    const handleSelectMeasure =
+                        laneMeasureSelectHandlers[lane.id];
 
                     const pushUndo = (before: ChartSegment[]) => {
                         setLaneEditState(lane.id, (prev) => {
@@ -692,10 +770,10 @@ export default function SoundLane(prop: _prop) {
                                         }));
                                     }}
                                     currentMeasureBpm={
-                                        cursorMeasure?.tempo ?? null
+                                        selectedMeasure?.tempo ?? null
                                     }
                                     canEditCurrentMeasureBpm={
-                                        cursorMeasure !== null
+                                        selectedMeasure !== null
                                     }
                                     setCurrentMeasureBpm={(bpm) => {
                                         const safeBpm = Math.max(
@@ -704,7 +782,7 @@ export default function SoundLane(prop: _prop) {
                                         );
                                         const next = retimeSingleMeasureByBpm(
                                             lane.chartData,
-                                            cursorTime,
+                                            selectedMeasureTime,
                                             safeBpm,
                                         );
                                         if (!next) {
@@ -788,19 +866,9 @@ export default function SoundLane(prop: _prop) {
                                     songDuration={audioData.duration ?? 0}
                                     onUndo={handleUndo}
                                     onRedo={handleRedo}
-                                    onSnapTimeChange={(time) => {
-                                        setLaneCursorTimeMap((prev) => {
-                                            const prevTime =
-                                                prev[lane.id] ?? null;
-                                            if (prevTime === time) {
-                                                return prev;
-                                            }
-                                            return {
-                                                ...prev,
-                                                [lane.id]: time,
-                                            };
-                                        });
-                                    }}
+                                    onSnapTimeChange={handleSnapTimeChange}
+                                    selectedMeasureTime={selectedMeasureTime}
+                                    onSelectMeasure={handleSelectMeasure}
                                 />
                             </div>
                         </div>

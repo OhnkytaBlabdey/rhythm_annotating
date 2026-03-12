@@ -28,6 +28,8 @@ interface NoteLaneProps {
     onUndo: () => void;
     onRedo: () => void;
     onSnapTimeChange?: (time: number | null) => void;
+    selectedMeasureTime?: number | null;
+    onSelectMeasure?: (time: number | null) => void;
 }
 
 interface NoteAnchor {
@@ -131,6 +133,8 @@ export default function NoteLane({
     onUndo,
     onRedo,
     onSnapTimeChange,
+    selectedMeasureTime,
+    onSelectMeasure,
 }: NoteLaneProps) {
     const wrapperRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -249,6 +253,41 @@ export default function NoteLane({
         }
         return unique;
     }, [gridTicks]);
+
+    const selectedMeasureRange = (() => {
+        if (selectedMeasureTime === null || selectedMeasureTime === undefined) {
+            return null;
+        }
+        for (const segment of segments) {
+            if (!Number.isFinite(segment.tempo) || segment.tempo <= 0) {
+                continue;
+            }
+            const beatDuration = 60 / segment.tempo;
+            for (
+                let measureIndex = 0;
+                measureIndex < segment.measures.length;
+                measureIndex++
+            ) {
+                const measureStart = segment.time + measureIndex * beatDuration;
+                const measureEnd = measureStart + beatDuration;
+                const isLastMeasure =
+                    segment === segments[segments.length - 1] &&
+                    measureIndex === segment.measures.length - 1;
+                if (
+                    selectedMeasureTime >= measureStart - 1e-6 &&
+                    (selectedMeasureTime < measureEnd - 1e-6 ||
+                        (isLastMeasure &&
+                            selectedMeasureTime <= measureEnd + 1e-6))
+                ) {
+                    return {
+                        start: measureStart,
+                        end: measureEnd,
+                    };
+                }
+            }
+        }
+        return null;
+    })();
 
     const getTempoAtTime = useCallback(
         (time: number): number => {
@@ -480,6 +519,13 @@ export default function NoteLane({
         ctx.fillStyle = "#0f172a";
         ctx.fillRect(0, 0, width, height);
 
+        if (selectedMeasureRange) {
+            const x1 = mapTimeToX(selectedMeasureRange.start);
+            const x2 = mapTimeToX(selectedMeasureRange.end);
+            ctx.fillStyle = "#1f2937";
+            ctx.fillRect(Math.min(x1, x2), 0, Math.abs(x2 - x1), height);
+        }
+
         ctx.strokeStyle = "#1e293b";
         ctx.lineWidth = 1;
         ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
@@ -670,6 +716,7 @@ export default function NoteLane({
         mapTimeToX,
         rangeEnd,
         rangeStart,
+        selectedMeasureRange,
         safeSubdivision,
         segments,
         snapTime,
@@ -896,6 +943,7 @@ export default function NoteLane({
             canvasRef.current?.focus();
             const { time, note } = updatePointer(e.clientX);
             if (time === null) return;
+            onSelectMeasure?.(time);
 
             if (editState.mode === "select") {
                 if (note) {
@@ -967,6 +1015,7 @@ export default function NoteLane({
             segments,
             setEditState,
             updatePointer,
+            onSelectMeasure,
         ],
     );
 
