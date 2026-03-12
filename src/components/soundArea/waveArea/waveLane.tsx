@@ -90,7 +90,7 @@ function renderWaveToCanvas(
 
 function WaveLane(p: _p) {
     const CANVAS_PHYSICAL_WIDTH = 1200;
-    const CANVAS_BASE_HEIGHT = 100;
+    const CANVAS_BASE_HEIGHT = 70;
 
     const audioDataList = useContext(AudioDataCtx);
     const audioData = audioDataList.find((a) => a.id === p.audioId);

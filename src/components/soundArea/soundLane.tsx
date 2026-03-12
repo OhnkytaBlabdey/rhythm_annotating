@@ -58,7 +58,10 @@ export default function SoundLane(prop: _prop) {
                 </div>
             </div>
             <div className="flex flex-1">
-                <div className="w-auto" onClick={(e) => e.stopPropagation()}>
+                <div
+                    className="w-[300px] shrink-0 pr-3"
+                    onClick={(e) => e.stopPropagation()}
+                >
                     <SoundMenu audioId={prop.audioId} />
                     <WaveMenu
                         audioId={prop.audioId}
@@ -81,7 +84,7 @@ export default function SoundLane(prop: _prop) {
                         }}
                     />
                 </div>
-                <div className="">
+                <div className="flex-1 min-w-0">
                     <WaveLane
                         audioId={prop.audioId}
                         timeRange={prop.timeRange}

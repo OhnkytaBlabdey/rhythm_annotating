@@ -3,7 +3,7 @@ import { AudioDataCtx } from "../../audioContext";
 import { SpectrumLaneState } from "@/interface/audioData";
 
 const MAX_INTERNAL_CANVAS_WIDTH = 1800;
-const MAX_RENDER_HEIGHT = 320;
+const MAX_RENDER_HEIGHT = 220;
 const MIN_REDRAW_PIXEL_SHIFT = 1;
 
 interface _p {
@@ -128,7 +128,7 @@ function mixDownToMono(audioBuffer: AudioBuffer): Float32Array {
 }
 
 function SpectrumLane(p: _p) {
-    const CANVAS_HEIGHT = 100;
+    const CANVAS_HEIGHT = 80;
 
     const audioDataList = useContext(AudioDataCtx);
     const audioData = audioDataList.find((a) => a.id === p.audioId);
@@ -156,6 +156,7 @@ function SpectrumLane(p: _p) {
     const prevDrawRef = useRef<{
         tL: number;
         tR: number;
+        span: number;
         layerId: string;
         canvasWidth: number;
         renderHeight: number;
@@ -337,7 +338,7 @@ function SpectrumLane(p: _p) {
             10,
         );
         const desiredHeight = Math.round(spectrumLen / binsPerPixel);
-        const renderHeight = clampNumber(desiredHeight, 80, MAX_RENDER_HEIGHT);
+        const renderHeight = clampNumber(desiredHeight, 64, MAX_RENDER_HEIGHT);
 
         const [tL, tR] = p.timeRange;
         const prevDraw = prevDrawRef.current;
@@ -351,10 +352,19 @@ function SpectrumLane(p: _p) {
             prevDraw.resolutionScale === resolutionScale
         ) {
             const prevSpan = Math.max(1e-6, prevDraw.tR - prevDraw.tL);
-            const pixelShift = Math.abs(
+            const leftPixelShift = Math.abs(
                 ((tL - prevDraw.tL) / prevSpan) * canvasWidth,
             );
-            if (pixelShift < MIN_REDRAW_PIXEL_SHIFT) {
+            const rightPixelShift = Math.abs(
+                ((tR - prevDraw.tR) / prevSpan) * canvasWidth,
+            );
+            const zoomShift = Math.abs(tR - tL - prevDraw.span);
+
+            if (
+                leftPixelShift < MIN_REDRAW_PIXEL_SHIFT &&
+                rightPixelShift < MIN_REDRAW_PIXEL_SHIFT &&
+                zoomShift < 1e-6
+            ) {
                 return;
             }
         }
@@ -453,6 +463,7 @@ function SpectrumLane(p: _p) {
         prevDrawRef.current = {
             tL,
             tR,
+            span: tR - tL,
             layerId: selectedLayer.id,
             canvasWidth,
             renderHeight,
@@ -476,7 +487,7 @@ function SpectrumLane(p: _p) {
             width={canvasWidth}
             height={CANVAS_HEIGHT}
             title={
-                workerDone
+                workerDone || ready
                     ? "Spectrum ready: multi-resolution STFT"
                     : "Computing multi-resolution spectrum"
             }
