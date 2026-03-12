@@ -19,6 +19,7 @@ interface _p {
     refCurrentTime: number;
     Duration: number;
     setCurrentTime: (_: number) => void;
+    isPlaying?: boolean;
 }
 
 function TimeRangeController(p: _p) {
@@ -143,6 +144,7 @@ function TimeRangeController(p: _p) {
         event: React.PointerEvent,
     ) {
         if (duration <= 0) return;
+        if (mode === "thumb" && p.isPlaying) return;
         event.preventDefault();
         event.stopPropagation();
 

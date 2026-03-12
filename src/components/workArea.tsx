@@ -50,6 +50,7 @@ export default function WorkArea() {
     const [audioDataList, setAudioDataList] = useState<AudioData[]>([]);
     const [hasHydratedProject, setHasHydratedProject] = useState(false);
     const workAreaRef = useRef<HTMLDivElement | null>(null);
+    const laneContainerRef = useRef<HTMLDivElement | null>(null);
     const latestProjectRef = useRef<project>(objProject);
     const latestAudioDataRef = useRef<AudioData[]>(audioDataList);
     const latestTimeViewRef = useRef<TimeViewSettings>(timeView);
@@ -382,19 +383,19 @@ export default function WorkArea() {
         };
 
         const onNativeWheel = (event: WheelEvent) => {
-            const root = workAreaRef.current;
-            if (!root) return;
+            const lanes = laneContainerRef.current;
+            if (!lanes) return;
             const target = event.target as Node | null;
-            if (!target || !root.contains(target)) return;
+            if (!target || !lanes.contains(target)) return;
             event.preventDefault();
         };
 
         const onAltKey = (event: KeyboardEvent) => {
             if (event.key !== "Alt") return;
-            const root = workAreaRef.current;
-            if (!root) return;
+            const lanes = laneContainerRef.current;
+            if (!lanes) return;
             const target = event.target as Node | null;
-            if (!target || !root.contains(target)) return;
+            if (!target || !lanes.contains(target)) return;
             if (isEditableTarget(event.target)) return;
             event.preventDefault();
         };
@@ -447,6 +448,9 @@ export default function WorkArea() {
             return;
         }
 
+        // Pan: skip when playing
+        if (objProject.isPlaying) return;
+
         const panDirection = isPanUp ? -1 : 1;
         setProject((prev) => {
             const visibleSpan = getVisibleSpan(duration, prev.timeMultiplier);
@@ -466,16 +470,10 @@ export default function WorkArea() {
 
     return (
         <AudioDataCtx.Provider value={audioDataList}>
-            <div
-                className="WorkArea"
-                ref={workAreaRef}
-                onWheelCapture={(event) => {
-                    event.preventDefault();
-                }}
-            >
+            <div className="WorkArea" ref={workAreaRef}>
                 <div className="flex flex-col">
                     {/* Menu */}
-                    <div className="flex px-12 py-2 ">
+                    <div className="sticky top-0 z-50 bg-white flex px-12 py-2 ">
                         <div className="rounded-lg border border-gray-300 p-4 w-7/8 mx-auto">
                             <WorkMenu
                                 key={"menu"}
@@ -499,6 +497,7 @@ export default function WorkArea() {
                     </div>
                     {/* Sound Lanes */}
                     <div
+                        ref={laneContainerRef}
                         className="flex flex-col gap-4 px-10 py-2"
                         onWheel={handleLaneWheel}
                     >

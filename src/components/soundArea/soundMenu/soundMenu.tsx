@@ -1,16 +1,21 @@
 "use client";
 import AddNoteLane from "./addNoteLane";
-import style from "./soundMenu.module.css";
 import React from "react";
 
 interface _prop {
     audioId: string;
+    timeRange: [number, number];
 }
 
 function SoundMenu(prop: _prop) {
+    const duration = prop.timeRange[1] - prop.timeRange[0];
     return (
         <div>
-            <div className="flex flex-col">
+            <div className="flex items-center gap-4">
+                <span className="text-sm text-gray-600 whitespace-nowrap">
+                    {prop.timeRange[0].toFixed(4)} -{" "}
+                    {prop.timeRange[1].toFixed(4)} | {duration.toFixed(4)}s
+                </span>
                 <AddNoteLane audioId={prop.audioId} />
             </div>
         </div>

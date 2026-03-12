@@ -244,55 +244,52 @@ function SpectrumLane(p: _p) {
     // ======== 启动 Worker FFT ========
 
     useEffect(() => {
-        if (!audioData?.buffer) return;
+        if (!audioData?.decodedBuffer) return;
 
         cacheRef.current = {};
-
-        const ctx = new AudioContext();
+        setLayerVersion(0);
+        setReady(false);
+        setWorkerDone(false);
         let isCancelled = false;
 
-        ctx.decodeAudioData(audioData.buffer.slice(0), (decoded) => {
+        const decoded = audioData.decodedBuffer;
+        const mono = mixDownToMono(decoded);
+
+        if (workerRef.current) {
+            workerRef.current.terminate();
+            workerRef.current = null;
+        }
+
+        workerRef.current = new Worker(
+            new URL("./spectrumWorker.ts", import.meta.url),
+        );
+
+        workerRef.current.onmessage = (e) => {
             if (isCancelled) return;
-            setLayerVersion(0);
-            setReady(false);
-            setWorkerDone(false);
-            const mono = mixDownToMono(decoded);
+            if (e.data.type === "layer") {
+                const layer: SpectrumFrameCache = {
+                    id: e.data.layer.id,
+                    frameData: e.data.layer.frameData,
+                    maxMagnitude: e.data.layer.maxMagnitude,
+                    sampleRate: e.data.layer.sampleRate,
+                    windowSize: e.data.layer.windowSize,
+                    hopSize: e.data.layer.hopSize,
+                    minTimeMs: e.data.layer.minTimeMs,
+                    minFreqHz: e.data.layer.minFreqHz,
+                };
 
-            if (workerRef.current) {
-                workerRef.current.terminate();
-                workerRef.current = null;
+                cacheRef.current[layer.id] = layer;
+                setLayerVersion((v) => v + 1);
+                setReady(true);
             }
+            if (e.data.type === "done") setWorkerDone(true);
+        };
 
-            workerRef.current = new Worker(
-                new URL("./spectrumWorker.ts", import.meta.url),
-            );
-
-            workerRef.current.onmessage = (e) => {
-                if (e.data.type === "layer") {
-                    const layer: SpectrumFrameCache = {
-                        id: e.data.layer.id,
-                        frameData: e.data.layer.frameData,
-                        maxMagnitude: e.data.layer.maxMagnitude,
-                        sampleRate: e.data.layer.sampleRate,
-                        windowSize: e.data.layer.windowSize,
-                        hopSize: e.data.layer.hopSize,
-                        minTimeMs: e.data.layer.minTimeMs,
-                        minFreqHz: e.data.layer.minFreqHz,
-                    };
-
-                    cacheRef.current[layer.id] = layer;
-                    setLayerVersion((v) => v + 1);
-                    setReady(true);
-                }
-                if (e.data.type === "done") setWorkerDone(true);
-            };
-
-            workerRef.current.postMessage({
-                type: "init",
-                audio: mono,
-                sampleRate: decoded.sampleRate,
-                profiles: getSpectrumProfiles(),
-            });
+        workerRef.current.postMessage({
+            type: "init",
+            audio: mono,
+            sampleRate: decoded.sampleRate,
+            profiles: getSpectrumProfiles(),
         });
 
         return () => {
@@ -301,7 +298,6 @@ function SpectrumLane(p: _p) {
                 workerRef.current.terminate();
                 workerRef.current = null;
             }
-            void ctx.close();
         };
     }, [audioData]);
 

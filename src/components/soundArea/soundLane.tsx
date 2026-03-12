@@ -52,13 +52,9 @@ export default function SoundLane(prop: _prop) {
                     soundFile={audioData.file}
                     isActive={prop.refSoundLaneState.isActive || false}
                 />
-                <div>
-                    {prop.timeRange[0].toFixed(4)} -{" "}
-                    {prop.timeRange[1].toFixed(4)} second
-                </div>
             </div>
             <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-                <SoundMenu audioId={prop.audioId} />
+                <SoundMenu audioId={prop.audioId} timeRange={prop.timeRange} />
             </div>
             <div className="flex flex-col flex-1 gap-2 mt-2">
                 <div className="flex items-start gap-3">
@@ -78,17 +74,19 @@ export default function SoundLane(prop: _prop) {
                         />
                     </div>
                     <div className="flex-1 min-w-0">
-                        <WaveLane
-                            audioId={prop.audioId}
-                            timeRange={prop.timeRange}
-                            waveState={prop.refSoundLaneState.waveLane}
-                            setWaveState={(waveLane) => {
-                                prop.setSoundLaneState(prop.index, {
-                                    ...prop.refSoundLaneState,
-                                    waveLane,
-                                });
-                            }}
-                        />
+                        {!prop.refSoundLaneState.waveLane.isFolded && (
+                            <WaveLane
+                                audioId={prop.audioId}
+                                timeRange={prop.timeRange}
+                                waveState={prop.refSoundLaneState.waveLane}
+                                setWaveState={(waveLane) => {
+                                    prop.setSoundLaneState(prop.index, {
+                                        ...prop.refSoundLaneState,
+                                        waveLane,
+                                    });
+                                }}
+                            />
+                        )}
                     </div>
                 </div>
 
@@ -109,17 +107,21 @@ export default function SoundLane(prop: _prop) {
                         />
                     </div>
                     <div className="flex-1 min-w-0">
-                        <SpectrumLane
-                            audioId={prop.audioId}
-                            timeRange={prop.timeRange}
-                            spectrumState={prop.refSoundLaneState.spectrumLane}
-                            setSpectrumState={(spectrumLane) => {
-                                prop.setSoundLaneState(prop.index, {
-                                    ...prop.refSoundLaneState,
-                                    spectrumLane,
-                                });
-                            }}
-                        />
+                        {!prop.refSoundLaneState.spectrumLane.isFolded && (
+                            <SpectrumLane
+                                audioId={prop.audioId}
+                                timeRange={prop.timeRange}
+                                spectrumState={
+                                    prop.refSoundLaneState.spectrumLane
+                                }
+                                setSpectrumState={(spectrumLane) => {
+                                    prop.setSoundLaneState(prop.index, {
+                                        ...prop.refSoundLaneState,
+                                        spectrumLane,
+                                    });
+                                }}
+                            />
+                        )}
                     </div>
                 </div>
 
