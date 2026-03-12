@@ -209,6 +209,10 @@ interface AbsoluteNote {
 
 const TIME_EPS = 1e-6;
 
+function nearlyEqual(a: number, b: number): boolean {
+    return Math.abs(a - b) <= TIME_EPS;
+}
+
 function toAbsoluteNote(
     note: ChartNote,
     measureStart: number,
@@ -296,6 +300,13 @@ function validateGlobalAbsoluteOverlaps(
         for (const note of notes) {
             if (note.id === ln.id) continue;
             for (const anchor of note.anchors) {
+                // LN endpoints touching any other note anchor is forbidden.
+                if (
+                    nearlyEqual(anchor, ln.head) ||
+                    nearlyEqual(anchor, ln.tail)
+                ) {
+                    return "长条 note 端点不能与其它 note 重合";
+                }
                 if (
                     anchor > ln.head + TIME_EPS &&
                     anchor < ln.tail - TIME_EPS
@@ -306,9 +317,10 @@ function validateGlobalAbsoluteOverlaps(
         }
         for (let j = i + 1; j < lnRanges.length; j++) {
             const other = lnRanges[j];
+            // Any overlap including endpoint contact is forbidden.
             if (
-                ln.head < other.tail - TIME_EPS &&
-                other.head < ln.tail - TIME_EPS
+                ln.head <= other.tail + TIME_EPS &&
+                other.head <= ln.tail + TIME_EPS
             ) {
                 return "长条 note 之间不能重叠";
             }
