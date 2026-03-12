@@ -4,6 +4,7 @@ export interface Fraction {
 }
 
 export interface ChartNote {
+    id: string;
     type: number;
     head?: Fraction;
     body?: Fraction[];

@@ -1,6 +1,83 @@
 .menu {
-    border: 1px dashed aliceblue;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px;
+    height: 100%;
+    overflow-y: auto;
 }
-.button:hover {
-    background-color: rgba(0, 0, 0, 0.1);
+
+.section-label {
+    font-size: 10px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 4px 2px 2px;
+    user-select: none;
+}
+
+.button-group {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin-bottom: 2px;
+}
+
+.button {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 3px 6px;
+    font-size: 12px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #e2e8f0;
+    cursor: pointer;
+    white-space: nowrap;
+    width: 100%;
+    transition: background 0.1s;
+}
+
+.button:hover:not(:disabled) {
+    background: rgba(148, 163, 184, 0.15);
+    border-color: #475569;
+}
+
+.button-active {
+    background: #1e40af !important;
+    border-color: #3b82f6 !important;
+    color: #eff6ff !important;
+}
+
+.button-active:hover {
+    background: #1d4ed8 !important;
+}
+
+.button-disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.bpm-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px;
+}
+
+.bpm-input {
+    width: 56px;
+    padding: 2px 4px;
+    font-size: 12px;
+    border-radius: 4px;
+    border: 1px solid #475569;
+    background: #0f172a;
+    color: #e2e8f0;
+    text-align: right;
+}
+
+.bpm-unit {
+    font-size: 11px;
+    color: #64748b;
 }
