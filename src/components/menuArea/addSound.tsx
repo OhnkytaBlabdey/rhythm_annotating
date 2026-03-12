@@ -1,6 +1,7 @@
 import { AudioData } from "@/interface/audioData";
 import Image from "@/components/Image";
-import React, { useRef } from "react";
+import React, { useContext, useRef, useState } from "react";
+import { AudioDataCtx } from "../audioContext";
 
 interface _prop {
     addAudioData: (audioData: AudioData) => void;
@@ -32,6 +33,15 @@ async function calculateSHA256(buffer: ArrayBuffer): Promise<string> {
 
 function AddSound(prop: _prop) {
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const audioDataList = useContext(AudioDataCtx);
+    const [warning, setWarning] = useState<string | null>(null);
+    const warningTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    function showWarning(msg: string) {
+        if (warningTimer.current) clearTimeout(warningTimer.current);
+        setWarning(msg);
+        warningTimer.current = setTimeout(() => setWarning(null), 3000);
+    }
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -53,6 +63,13 @@ function AddSound(prop: _prop) {
 
                 // 计算音频数据的SHA256值作为ID
                 const audioId = await calculateSHA256(arrayBuffer);
+
+                // 检查是否已存在相同hash的音频
+                if (audioDataList.some((a) => a.id === audioId)) {
+                    showWarning(`音频 "${fileName}" 已存在，无法重复添加`);
+                    audioContext.close();
+                    return;
+                }
 
                 prop.addAudioData({
                     id: audioId,
@@ -85,7 +102,7 @@ function AddSound(prop: _prop) {
     };
 
     return (
-        <div>
+        <div className="relative">
             <input
                 ref={fileInputRef}
                 type="file"
@@ -106,6 +123,11 @@ function AddSound(prop: _prop) {
                 />
                 <span>添加音频</span>
             </button>
+            {warning && (
+                <div className="absolute left-1/2 top-full z-50 mt-2 -translate-x-1/2 whitespace-nowrap rounded bg-yellow-500 px-3 py-1.5 text-sm text-white shadow">
+                    {warning}
+                </div>
+            )}
         </div>
     );
 }
