@@ -15,6 +15,9 @@ interface _p {
     hasClipboard: boolean;
     currentBpm: number;
     setCurrentBpm: (bpm: number) => void;
+    currentMeasureBpm: number | null;
+    canEditCurrentMeasureBpm: boolean;
+    setCurrentMeasureBpm: (bpm: number) => void;
     division: number;
     setDivision: (division: number) => void;
     onDelete: () => void;
@@ -69,6 +72,15 @@ function ActionButton({ label, onClick, disabled, title }: ActionButtonProps) {
 
 export default function NoteMenu(p: _p) {
     const [isExportOpen, setIsExportOpen] = React.useState(false);
+    const [measureBpmInput, setMeasureBpmInput] = React.useState<string>("");
+
+    React.useEffect(() => {
+        if (p.currentMeasureBpm === null) {
+            setMeasureBpmInput("");
+            return;
+        }
+        setMeasureBpmInput(String(p.currentMeasureBpm));
+    }, [p.currentMeasureBpm]);
 
     const MODES: { mode: EditMode; label: string; title: string }[] = [
         { mode: "browse", label: "浏览", title: "浏览模式 (只读)" },
@@ -144,6 +156,7 @@ export default function NoteMenu(p: _p) {
                     max={999}
                     step={1}
                     value={p.currentBpm}
+                    onWheel={(e) => e.stopPropagation()}
                     onChange={(e) => {
                         const v = Number(e.target.value);
                         if (v > 0 && Number.isFinite(v)) p.setCurrentBpm(v);
@@ -154,6 +167,38 @@ export default function NoteMenu(p: _p) {
                 <span className={cls("bpm-unit")}>bpm</span>
             </div>
 
+            <div className={cls("bpm-row")}>
+                <input
+                    type="number"
+                    min={1}
+                    max={999}
+                    step={1}
+                    value={measureBpmInput}
+                    disabled={!p.canEditCurrentMeasureBpm}
+                    onWheel={(e) => e.stopPropagation()}
+                    onChange={(e) => {
+                        setMeasureBpmInput(e.target.value);
+                    }}
+                    className={cls("bpm-input")}
+                    title="当前光标所在小节 BPM"
+                />
+                <ActionButton
+                    label="改本小节"
+                    title="仅修改当前光标所在小节 BPM"
+                    disabled={
+                        !p.canEditCurrentMeasureBpm ||
+                        !Number.isFinite(Number(measureBpmInput)) ||
+                        Number(measureBpmInput) < 1
+                    }
+                    onClick={() => {
+                        const v = Number(measureBpmInput);
+                        if (v > 0 && Number.isFinite(v)) {
+                            p.setCurrentMeasureBpm(v);
+                        }
+                    }}
+                />
+            </div>
+
             <div className={cls("section-label")}>等分</div>
             <div className={cls("bpm-row")}>
                 <input
@@ -162,6 +207,7 @@ export default function NoteMenu(p: _p) {
                     max={64}
                     step={1}
                     value={p.division}
+                    onWheel={(e) => e.stopPropagation()}
                     onChange={(e) => {
                         const v = Number(e.target.value);
                         if (v >= 1 && Number.isFinite(v)) p.setDivision(v);
@@ -203,6 +249,7 @@ export default function NoteMenu(p: _p) {
                             readOnly
                             className={cls("modal-text")}
                             value={p.exportText}
+                            onWheel={(e) => e.stopPropagation()}
                         />
                         <div className={cls("modal-actions")}>
                             <button

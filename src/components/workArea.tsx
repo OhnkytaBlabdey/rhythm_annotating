@@ -34,7 +34,7 @@ const WHEEL_PAN_RATIO = 0.05;
 
 type LaneWheelEvent = Pick<
     WheelEvent,
-    "deltaY" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey"
+    "deltaY" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey" | "target"
 > & {
     preventDefault: () => void;
     stopPropagation: () => void;
@@ -64,6 +64,17 @@ export default function WorkArea() {
     const latestAudioDataRef = useRef<AudioData[]>(audioDataList);
     const latestTimeViewRef = useRef<TimeViewSettings>(timeView);
     const latestSpectrumViewRef = useRef<SpectrumViewSettings>(spectrumView);
+
+    const isEditableTarget = useCallback((target: EventTarget | null) => {
+        const el = target as HTMLElement | null;
+        if (!el) return false;
+        return (
+            el.tagName === "INPUT" ||
+            el.tagName === "TEXTAREA" ||
+            el.tagName === "SELECT" ||
+            el.isContentEditable
+        );
+    }, []);
 
     useEffect(() => {
         latestProjectRef.current = objProject;
@@ -380,17 +391,6 @@ export default function WorkArea() {
     }, [duration]);
 
     useEffect(() => {
-        const isEditableTarget = (target: EventTarget | null) => {
-            const el = target as HTMLElement | null;
-            if (!el) return false;
-            return (
-                el.tagName === "INPUT" ||
-                el.tagName === "TEXTAREA" ||
-                el.tagName === "SELECT" ||
-                el.isContentEditable
-            );
-        };
-
         const onNativeWheel = (event: WheelEvent) => {
             const lanes = laneContainerRef.current;
             if (!lanes) return;
@@ -421,12 +421,13 @@ export default function WorkArea() {
             window.removeEventListener("keydown", onAltKey, true);
             window.removeEventListener("keyup", onAltKey, true);
         };
-    }, []);
+    }, [isEditableTarget]);
 
     const handleLaneWheel = useCallback(
         (event: LaneWheelEvent) => {
             if (duration <= 0) return;
             if (wheelUpdateGuardRef.current) return;
+            if (isEditableTarget(event.target)) return;
 
             const isZoomIn = matchesShortcut("timeRange.zoomIn", event);
             const isZoomOut = matchesShortcut("timeRange.zoomOut", event);
@@ -503,7 +504,7 @@ export default function WorkArea() {
                 };
             });
         },
-        [duration, matchesShortcut, objProject.isPlaying],
+        [duration, isEditableTarget, matchesShortcut, objProject.isPlaying],
     );
 
     useEffect(() => {

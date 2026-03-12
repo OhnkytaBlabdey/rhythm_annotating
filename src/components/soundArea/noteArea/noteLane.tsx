@@ -27,6 +27,7 @@ interface NoteLaneProps {
     songDuration: number;
     onUndo: () => void;
     onRedo: () => void;
+    onSnapTimeChange?: (time: number | null) => void;
 }
 
 interface NoteAnchor {
@@ -129,6 +130,7 @@ export default function NoteLane({
     songDuration,
     onUndo,
     onRedo,
+    onSnapTimeChange,
 }: NoteLaneProps) {
     const wrapperRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -195,7 +197,10 @@ export default function NoteLane({
                 ? last.tempo
                 : Math.max(1, editState.currentBpm);
         const beatDuration = 60 / virtualTempo;
-        const virtualStart = 0;
+        const virtualStart =
+            last && Number.isFinite(last.tempo) && last.tempo > 0
+                ? last.time + last.measures.length * beatDuration
+                : 0;
 
         for (
             let measureStart = virtualStart;
@@ -683,8 +688,11 @@ export default function NoteLane({
             const time = mapXToTime(Math.max(0, Math.min(rect.width, x)));
             const snapped = findNearestSnapTime(time);
             const nearest = findNearestNote(time);
-            setSnapTime(snapped);
-            setHoverNoteId(nearest?.id ?? null);
+            setSnapTime((prev) => (prev === snapped ? prev : snapped));
+            const nextHoverId = nearest?.id ?? null;
+            setHoverNoteId((prev) =>
+                prev === nextHoverId ? prev : nextHoverId,
+            );
             return { time: snapped, note: nearest };
         },
         [findNearestNote, findNearestSnapTime, mapXToTime],
@@ -1010,6 +1018,10 @@ export default function NoteLane({
         },
         [deleteById, editState.selectedIds, hoverNoteId, onRedo, onUndo],
     );
+
+    useEffect(() => {
+        onSnapTimeChange?.(snapTime);
+    }, [onSnapTimeChange, snapTime]);
 
     return (
         <div

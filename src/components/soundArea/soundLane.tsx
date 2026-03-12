@@ -25,6 +25,7 @@ import {
 import {
     validateChartData,
     validateNoteLaneData,
+    normalizeFraction,
 } from "./noteArea/chartAdapter";
 
 const MAX_UNDO = 50;
@@ -51,6 +52,9 @@ export default function SoundLane(prop: _prop) {
 
     const [laneEditStateMap, setLaneEditStateMap] = useState<
         Record<string, NoteEditState>
+    >({});
+    const [laneCursorTimeMap, setLaneCursorTimeMap] = useState<
+        Record<string, number | null>
     >({});
     const [laneErrorMap, setLaneErrorMap] = useState<Record<string, string>>(
         {},
@@ -131,28 +135,124 @@ export default function SoundLane(prop: _prop) {
         [],
     );
 
+    const locateMeasureAtTime = useCallback(
+        (data: ChartSegment[], time: number | null) => {
+            if (time === null || !Number.isFinite(time)) {
+                return null;
+            }
+
+            const sorted = cloneChart(data).sort((a, b) => a.time - b.time);
+            for (let s = 0; s < sorted.length; s++) {
+                const seg = sorted[s];
+                const segTempo =
+                    Number.isFinite(seg.tempo) && seg.tempo > 0
+                        ? seg.tempo
+                        : 120;
+                const beatDuration = 60 / segTempo;
+                for (let m = 0; m < seg.measures.length; m++) {
+                    const start = seg.time + m * beatDuration;
+                    const end = start + beatDuration;
+                    const isLastMeasure =
+                        s === sorted.length - 1 &&
+                        m === seg.measures.length - 1;
+                    if (
+                        time >= start - 1e-6 &&
+                        (time < end - 1e-6 ||
+                            (isLastMeasure && time <= end + 1e-6))
+                    ) {
+                        return {
+                            sorted,
+                            segmentIndex: s,
+                            measureIndex: m,
+                            tempo: segTempo,
+                        };
+                    }
+                }
+            }
+
+            return null;
+        },
+        [cloneChart],
+    );
+
+    const retimeSingleMeasureByBpm = useCallback(
+        (data: ChartSegment[], time: number | null, bpm: number) => {
+            const located = locateMeasureAtTime(data, time);
+            if (!located) {
+                return null;
+            }
+
+            const safeBpm = Math.max(1, Math.floor(bpm));
+            const { sorted, segmentIndex, measureIndex } = located;
+            const chunks: Array<{ tempo: number; measures: ChartMeasure[] }> =
+                [];
+
+            for (let s = 0; s < sorted.length; s++) {
+                const seg = sorted[s];
+                const segTempo = Math.max(1, Math.floor(seg.tempo));
+                if (seg.measures.length === 0) {
+                    continue;
+                }
+
+                if (s !== segmentIndex) {
+                    chunks.push({
+                        tempo: segTempo,
+                        measures: seg.measures,
+                    });
+                    continue;
+                }
+
+                const before = seg.measures.slice(0, measureIndex);
+                const current = seg.measures[measureIndex];
+                const after = seg.measures.slice(measureIndex + 1);
+
+                if (before.length > 0) {
+                    chunks.push({ tempo: segTempo, measures: before });
+                }
+                chunks.push({ tempo: safeBpm, measures: [current] });
+                if (after.length > 0) {
+                    chunks.push({ tempo: segTempo, measures: after });
+                }
+            }
+
+            const rebuilt: ChartSegment[] = [];
+            let nextTime = sorted[0]?.time ?? 0;
+            for (const chunk of chunks) {
+                if (chunk.measures.length === 0) {
+                    continue;
+                }
+                const safeTempo = Math.max(1, Math.floor(chunk.tempo));
+                const tail = rebuilt[rebuilt.length - 1];
+                if (tail && Math.abs(tail.tempo - safeTempo) < 1e-6) {
+                    tail.measures.push(...chunk.measures);
+                } else {
+                    rebuilt.push({
+                        time: nextTime,
+                        tempo: safeTempo,
+                        measures: chunk.measures,
+                    });
+                }
+                nextTime += chunk.measures.length * (60 / safeTempo);
+            }
+
+            return rebuilt;
+        },
+        [locateMeasureAtTime],
+    );
+
     const retimeChartByBpm = useCallback(
         (data: ChartSegment[], bpm: number) => {
             const safeBpm = Math.max(1, Math.floor(bpm));
-            const beatDuration = 60 / safeBpm;
-            let cursor = 0;
-            const next = data
+            const sorted = data
                 .map((seg) => ({
                     ...seg,
-                    time: 0,
-                    tempo: safeBpm,
                     measures: seg.measures.map((m) => ({
                         notes: [...m.notes],
                     })),
                 }))
                 .sort((a, b) => a.time - b.time);
 
-            for (const seg of next) {
-                seg.time = cursor;
-                cursor += seg.measures.length * beatDuration;
-            }
-
-            if (next.length === 0) {
+            if (sorted.length === 0) {
                 return [
                     {
                         time: 0,
@@ -162,7 +262,120 @@ export default function SoundLane(prop: _prop) {
                 ];
             }
 
-            return next;
+            const isEditableMeasure = (measure: { notes: ChartNote[] }) => {
+                if (measure.notes.length === 0) {
+                    return true;
+                }
+                return measure.notes.every((note) => {
+                    const head = normalizeFraction(note.head);
+                    if (!head) return false;
+                    const isZeroHead = head.a === 0;
+                    const hasTail = note.tail !== undefined;
+                    const hasBody =
+                        Array.isArray(note.body) && note.body.length > 0;
+                    return isZeroHead && !hasTail && !hasBody;
+                });
+            };
+
+            let boundarySeg = 0;
+            let boundaryMeasure = 0;
+            let foundBoundary = false;
+
+            for (let s = sorted.length - 1; s >= 0; s--) {
+                const seg = sorted[s];
+                for (let m = seg.measures.length - 1; m >= 0; m--) {
+                    if (isEditableMeasure(seg.measures[m])) {
+                        continue;
+                    }
+                    boundarySeg = s;
+                    boundaryMeasure = m + 1;
+                    foundBoundary = true;
+                    break;
+                }
+                if (foundBoundary) {
+                    break;
+                }
+            }
+
+            if (!foundBoundary) {
+                boundarySeg = 0;
+                boundaryMeasure = 0;
+            }
+
+            const prefix: ChartSegment[] = [];
+            const suffixMeasures: Array<{ notes: ChartNote[] }> = [];
+
+            for (let s = 0; s < sorted.length; s++) {
+                const seg = sorted[s];
+                if (s < boundarySeg) {
+                    prefix.push(seg);
+                    continue;
+                }
+
+                if (s === boundarySeg) {
+                    const keep = seg.measures.slice(0, boundaryMeasure);
+                    const rest = seg.measures.slice(boundaryMeasure);
+                    if (keep.length > 0) {
+                        prefix.push({
+                            ...seg,
+                            measures: keep,
+                        });
+                    }
+                    suffixMeasures.push(...rest);
+                    continue;
+                }
+
+                suffixMeasures.push(...seg.measures);
+            }
+
+            let suffixStart = 0;
+            if (prefix.length > 0) {
+                const tail = prefix[prefix.length - 1];
+                const tailBeatDuration = 60 / Math.max(1, tail.tempo);
+                suffixStart =
+                    tail.time + tail.measures.length * tailBeatDuration;
+            }
+
+            if (suffixMeasures.length === 0) {
+                if (
+                    prefix.length > 0 &&
+                    Math.abs(prefix[prefix.length - 1].tempo - safeBpm) < 1e-6
+                ) {
+                    return prefix;
+                }
+                return [
+                    ...prefix,
+                    {
+                        time: suffixStart,
+                        tempo: safeBpm,
+                        measures: [],
+                    },
+                ];
+            }
+
+            if (
+                prefix.length > 0 &&
+                Math.abs(prefix[prefix.length - 1].tempo - safeBpm) < 1e-6
+            ) {
+                const merged = [...prefix];
+                merged[merged.length - 1] = {
+                    ...merged[merged.length - 1],
+                    measures: [
+                        ...merged[merged.length - 1].measures,
+                        ...suffixMeasures,
+                    ],
+                };
+                return merged;
+            }
+
+            return [
+                ...prefix,
+                {
+                    time: suffixStart,
+                    tempo: safeBpm,
+                    measures: suffixMeasures,
+                },
+            ];
         },
         [],
     );
@@ -270,6 +483,11 @@ export default function SoundLane(prop: _prop) {
                     const editState =
                         laneEditStateMap[lane.id] ??
                         defaultNoteEditState(lane.defaultBpm);
+                    const cursorTime = laneCursorTimeMap[lane.id] ?? null;
+                    const cursorMeasure = locateMeasureAtTime(
+                        lane.chartData,
+                        cursorTime,
+                    );
 
                     const pushUndo = (before: ChartSegment[]) => {
                         setLaneEditState(lane.id, (prev) => {
@@ -473,6 +691,37 @@ export default function SoundLane(prop: _prop) {
                                             ),
                                         }));
                                     }}
+                                    currentMeasureBpm={
+                                        cursorMeasure?.tempo ?? null
+                                    }
+                                    canEditCurrentMeasureBpm={
+                                        cursorMeasure !== null
+                                    }
+                                    setCurrentMeasureBpm={(bpm) => {
+                                        const safeBpm = Math.max(
+                                            1,
+                                            Math.floor(bpm),
+                                        );
+                                        const next = retimeSingleMeasureByBpm(
+                                            lane.chartData,
+                                            cursorTime,
+                                            safeBpm,
+                                        );
+                                        if (!next) {
+                                            return;
+                                        }
+                                        const error = validateChartData(next);
+                                        if (error) {
+                                            setLaneError(lane.id, error);
+                                            return;
+                                        }
+                                        clearLaneError(lane.id);
+                                        pushUndo(lane.chartData);
+                                        updateLaneData(lane.id, (prevLane) => ({
+                                            ...prevLane,
+                                            chartData: next,
+                                        }));
+                                    }}
                                     division={lane.division}
                                     setDivision={(division) =>
                                         updateLaneData(lane.id, (prevLane) => ({
@@ -539,6 +788,19 @@ export default function SoundLane(prop: _prop) {
                                     songDuration={audioData.duration ?? 0}
                                     onUndo={handleUndo}
                                     onRedo={handleRedo}
+                                    onSnapTimeChange={(time) => {
+                                        setLaneCursorTimeMap((prev) => {
+                                            const prevTime =
+                                                prev[lane.id] ?? null;
+                                            if (prevTime === time) {
+                                                return prev;
+                                            }
+                                            return {
+                                                ...prev,
+                                                [lane.id]: time,
+                                            };
+                                        });
+                                    }}
                                 />
                             </div>
                         </div>
