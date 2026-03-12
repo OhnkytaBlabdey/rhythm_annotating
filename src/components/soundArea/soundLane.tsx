@@ -120,14 +120,23 @@ export default function SoundLane(prop: _prop) {
     const setLaneEditState = useCallback(
         (laneId: string, updater: (prev: NoteEditState) => NoteEditState) => {
             setLaneEditStateMap((prev) => {
-                const base = prev[laneId] ?? defaultNoteEditState();
+                const lane = noteLanes.find(
+                    (l: NoteLaneData) => l.id === laneId,
+                );
+                const base =
+                    prev[laneId] ??
+                    defaultNoteEditState(
+                        lane?.defaultBpm !== undefined
+                            ? Math.max(1, Math.floor(lane.defaultBpm))
+                            : 120,
+                    );
                 return {
                     ...prev,
                     [laneId]: updater(base),
                 };
             });
         },
-        [],
+        [noteLanes],
     );
 
     const updateLaneData = useCallback(
@@ -258,6 +267,15 @@ export default function SoundLane(prop: _prop) {
 
             const safeBpm = Math.max(1, Math.floor(bpm));
             const { sorted, segmentIndex, measureIndex } = located;
+            const tailVirtualTempo = (() => {
+                const last = sorted[sorted.length - 1];
+                if (!last || last.measures.length > 0) {
+                    return null;
+                }
+                return Number.isFinite(last.tempo) && last.tempo > 0
+                    ? Math.max(1, Math.floor(last.tempo))
+                    : null;
+            })();
             const chunks: Array<{ tempo: number; measures: ChartMeasure[] }> =
                 [];
 
@@ -307,6 +325,17 @@ export default function SoundLane(prop: _prop) {
                     });
                 }
                 nextTime += chunk.measures.length * (60 / safeTempo);
+            }
+
+            if (tailVirtualTempo !== null) {
+                const tail = rebuilt[rebuilt.length - 1];
+                if (!tail || Math.abs(tail.tempo - tailVirtualTempo) > 1e-6) {
+                    rebuilt.push({
+                        time: nextTime,
+                        tempo: tailVirtualTempo,
+                        measures: [],
+                    });
+                }
             }
 
             return rebuilt;
