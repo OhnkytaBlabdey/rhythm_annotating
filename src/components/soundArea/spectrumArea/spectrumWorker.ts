@@ -148,7 +148,10 @@ self.onmessage = (e: MessageEvent<WorkerInitMessage>) => {
             },
         };
 
-        self.postMessage(layerMsg);
+        const transferables = frameData.map(
+            (f) => f.buffer as unknown as Transferable,
+        );
+        (self as unknown as Worker).postMessage(layerMsg, transferables);
     }
 
     const doneMsg: WorkerDoneMessage = { type: "done" };

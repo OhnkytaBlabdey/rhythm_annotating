@@ -426,9 +426,6 @@ export default function WorkArea() {
             return;
         }
 
-        event.preventDefault();
-        event.stopPropagation();
-
         if (isZoomIn || isZoomOut) {
             setProject((prev) => {
                 const nextMultiplier = getNextTimeMultiplierByWheel(

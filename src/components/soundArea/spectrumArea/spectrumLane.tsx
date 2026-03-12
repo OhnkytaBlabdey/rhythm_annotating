@@ -285,12 +285,13 @@ function SpectrumLane(p: _p) {
             if (e.data.type === "done") setWorkerDone(true);
         };
 
-        workerRef.current.postMessage({
-            type: "init",
+        const msg = {
+            type: "init" as const,
             audio: mono,
             sampleRate: decoded.sampleRate,
             profiles: getSpectrumProfiles(),
-        });
+        };
+        workerRef.current.postMessage(msg, [mono.buffer]);
 
         return () => {
             isCancelled = true;
