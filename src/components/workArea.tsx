@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { defaultProject, project } from "@/interface/project";
 import SoundLane from "./soundArea/soundLane";
 import WorkMenu from "./menuArea/workMenu";
@@ -32,6 +32,14 @@ import {
 
 const WHEEL_PAN_RATIO = 0.05;
 
+type LaneWheelEvent = Pick<
+    WheelEvent,
+    "deltaY" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey"
+> & {
+    preventDefault: () => void;
+    stopPropagation: () => void;
+};
+
 export default function WorkArea() {
     const {
         hasHydratedSettings,
@@ -51,6 +59,7 @@ export default function WorkArea() {
     const [hasHydratedProject, setHasHydratedProject] = useState(false);
     const workAreaRef = useRef<HTMLDivElement | null>(null);
     const laneContainerRef = useRef<HTMLDivElement | null>(null);
+    const wheelUpdateGuardRef = useRef(false);
     const latestProjectRef = useRef<project>(objProject);
     const latestAudioDataRef = useRef<AudioData[]>(audioDataList);
     const latestTimeViewRef = useRef<TimeViewSettings>(timeView);
@@ -414,56 +423,105 @@ export default function WorkArea() {
         };
     }, []);
 
-    function handleLaneWheel(event: React.WheelEvent<HTMLDivElement>) {
-        if (duration <= 0) return;
+    const handleLaneWheel = useCallback(
+        (event: LaneWheelEvent) => {
+            if (duration <= 0) return;
+            if (wheelUpdateGuardRef.current) return;
 
-        const isZoomIn = matchesShortcut("timeRange.zoomIn", event);
-        const isZoomOut = matchesShortcut("timeRange.zoomOut", event);
-        const isPanUp = matchesShortcut("timeRange.panUp", event);
-        const isPanDown = matchesShortcut("timeRange.panDown", event);
+            const isZoomIn = matchesShortcut("timeRange.zoomIn", event);
+            const isZoomOut = matchesShortcut("timeRange.zoomOut", event);
+            const isPanUp = matchesShortcut("timeRange.panUp", event);
+            const isPanDown = matchesShortcut("timeRange.panDown", event);
 
-        if (!isZoomIn && !isZoomOut && !isPanUp && !isPanDown) {
-            return;
-        }
+            if (!isZoomIn && !isZoomOut && !isPanUp && !isPanDown) {
+                return;
+            }
 
-        if (isZoomIn || isZoomOut) {
+            // Default scroll prevention is handled by the native non-passive
+            // window wheel listener above; React onWheel may be passive.
+            event.stopPropagation();
+            wheelUpdateGuardRef.current = true;
+            queueMicrotask(() => {
+                wheelUpdateGuardRef.current = false;
+            });
+
+            if (isZoomIn || isZoomOut) {
+                setProject((prev) => {
+                    const nextMultiplier = getNextTimeMultiplierByWheel(
+                        duration,
+                        prev.timeMultiplier,
+                        event.deltaY,
+                    );
+                    const nextSpan = getVisibleSpan(duration, nextMultiplier);
+                    const maxStart = Math.max(0, duration - nextSpan);
+                    const nextCurrentTime = clamp(
+                        prev.currentTime,
+                        0,
+                        maxStart,
+                    );
+
+                    if (
+                        prev.timeMultiplier === nextMultiplier &&
+                        prev.currentTime === nextCurrentTime
+                    ) {
+                        return prev;
+                    }
+
+                    return {
+                        ...prev,
+                        timeMultiplier: nextMultiplier,
+                        currentTime: nextCurrentTime,
+                    };
+                });
+                return;
+            }
+
+            // Pan: skip when playing
+            if (objProject.isPlaying) return;
+
+            const panDirection = isPanUp ? -1 : 1;
             setProject((prev) => {
-                const nextMultiplier = getNextTimeMultiplierByWheel(
+                const visibleSpan = getVisibleSpan(
                     duration,
                     prev.timeMultiplier,
-                    event.deltaY,
                 );
-                const nextSpan = getVisibleSpan(duration, nextMultiplier);
-                const maxStart = Math.max(0, duration - nextSpan);
-
-                return {
-                    ...prev,
-                    timeMultiplier: nextMultiplier,
-                    currentTime: clamp(prev.currentTime, 0, maxStart),
-                };
-            });
-            return;
-        }
-
-        // Pan: skip when playing
-        if (objProject.isPlaying) return;
-
-        const panDirection = isPanUp ? -1 : 1;
-        setProject((prev) => {
-            const visibleSpan = getVisibleSpan(duration, prev.timeMultiplier);
-            const maxStart = Math.max(0, duration - visibleSpan);
-            const panStep = visibleSpan * WHEEL_PAN_RATIO;
-
-            return {
-                ...prev,
-                currentTime: clamp(
+                const maxStart = Math.max(0, duration - visibleSpan);
+                const panStep = visibleSpan * WHEEL_PAN_RATIO;
+                const nextCurrentTime = clamp(
                     prev.currentTime + panDirection * panStep,
                     0,
                     maxStart,
-                ),
-            };
+                );
+
+                if (nextCurrentTime === prev.currentTime) {
+                    return prev;
+                }
+
+                return {
+                    ...prev,
+                    currentTime: nextCurrentTime,
+                };
+            });
+        },
+        [duration, matchesShortcut, objProject.isPlaying],
+    );
+
+    useEffect(() => {
+        const lanes = laneContainerRef.current;
+        if (!lanes) return;
+
+        const onLaneWheel = (event: WheelEvent) => {
+            handleLaneWheel(event);
+        };
+
+        lanes.addEventListener("wheel", onLaneWheel, {
+            passive: false,
         });
-    }
+
+        return () => {
+            lanes.removeEventListener("wheel", onLaneWheel);
+        };
+    }, [handleLaneWheel]);
 
     return (
         <AudioDataCtx.Provider value={audioDataList}>
@@ -496,7 +554,6 @@ export default function WorkArea() {
                     <div
                         ref={laneContainerRef}
                         className="flex flex-col gap-4 px-10 py-2"
-                        onWheel={handleLaneWheel}
                     >
                         <div className="rounded-lg border border-gray-300 p-4">
                             <div className="w-7/8 mx-auto">
