@@ -90,7 +90,7 @@ function renderWaveToCanvas(
 
 function WaveLane(p: _p) {
     const CANVAS_PHYSICAL_WIDTH = 1200;
-    const CANVAS_BASE_HEIGHT = 70;
+    const CANVAS_BASE_HEIGHT = 100;
 
     const audioDataList = useContext(AudioDataCtx);
     const audioData = audioDataList.find((a) => a.id === p.audioId);
@@ -120,16 +120,17 @@ function WaveLane(p: _p) {
 
         // 如果已有 decodedBuffer，直接使用
         if (audioData.decodedBuffer) {
-            const channelCount = audioData.decodedBuffer.numberOfChannels;
+            const decodedBuffer = audioData.decodedBuffer;
+            const channelCount = decodedBuffer.numberOfChannels;
             const channelData = Array.from({ length: channelCount }, (_, i) =>
-                audioData.decodedBuffer.getChannelData(i).slice(),
+                decodedBuffer.getChannelData(i).slice(),
             );
             waveformCacheRef.current = {
-                audioBuffer: audioData.decodedBuffer,
+                audioBuffer: decodedBuffer,
                 channelData,
-                sampleRate: audioData.decodedBuffer.sampleRate,
+                sampleRate: decodedBuffer.sampleRate,
                 channelCount,
-                length: audioData.decodedBuffer.length,
+                length: decodedBuffer.length,
             };
             Promise.resolve().then(() => setIsCacheReady(true));
             return;

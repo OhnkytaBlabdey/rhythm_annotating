@@ -3,7 +3,7 @@ import { AudioDataCtx } from "../../audioContext";
 import { SpectrumLaneState } from "@/interface/audioData";
 
 const MAX_INTERNAL_CANVAS_WIDTH = 1800;
-const MAX_RENDER_HEIGHT = 220;
+const MAX_RENDER_HEIGHT = 110;
 const MIN_REDRAW_PIXEL_SHIFT = 1;
 
 interface _p {
@@ -128,7 +128,7 @@ function mixDownToMono(audioBuffer: AudioBuffer): Float32Array {
 }
 
 function SpectrumLane(p: _p) {
-    const CANVAS_HEIGHT = 80;
+    const CANVAS_HEIGHT = 40;
 
     const audioDataList = useContext(AudioDataCtx);
     const audioData = audioDataList.find((a) => a.id === p.audioId);
@@ -338,7 +338,7 @@ function SpectrumLane(p: _p) {
             10,
         );
         const desiredHeight = Math.round(spectrumLen / binsPerPixel);
-        const renderHeight = clampNumber(desiredHeight, 64, MAX_RENDER_HEIGHT);
+        const renderHeight = clampNumber(desiredHeight, 32, MAX_RENDER_HEIGHT);
 
         const [tL, tR] = p.timeRange;
         const prevDraw = prevDrawRef.current;

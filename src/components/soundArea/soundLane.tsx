@@ -57,62 +57,87 @@ export default function SoundLane(prop: _prop) {
                     {prop.timeRange[1].toFixed(4)} second
                 </div>
             </div>
-            <div className="flex flex-1">
-                <div
-                    className="w-[300px] shrink-0 pr-3"
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <SoundMenu audioId={prop.audioId} />
-                    <WaveMenu
-                        audioId={prop.audioId}
-                        waveState={prop.refSoundLaneState.waveLane}
-                        setWaveState={(waveLane) => {
-                            prop.setSoundLaneState(prop.index, {
-                                ...prop.refSoundLaneState,
-                                waveLane,
-                            });
-                        }}
-                    />
-                    <SpectrumMenu
-                        audioId={prop.audioId}
-                        spectrumState={prop.refSoundLaneState.spectrumLane}
-                        setSpectrumState={(spectrumLane) => {
-                            prop.setSoundLaneState(prop.index, {
-                                ...prop.refSoundLaneState,
-                                spectrumLane,
-                            });
-                        }}
-                    />
+            <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                <SoundMenu audioId={prop.audioId} />
+            </div>
+            <div className="flex flex-col flex-1 gap-2 mt-2">
+                <div className="flex items-start gap-3">
+                    <div
+                        className="w-[150px] shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <WaveMenu
+                            audioId={prop.audioId}
+                            waveState={prop.refSoundLaneState.waveLane}
+                            setWaveState={(waveLane) => {
+                                prop.setSoundLaneState(prop.index, {
+                                    ...prop.refSoundLaneState,
+                                    waveLane,
+                                });
+                            }}
+                        />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <WaveLane
+                            audioId={prop.audioId}
+                            timeRange={prop.timeRange}
+                            waveState={prop.refSoundLaneState.waveLane}
+                            setWaveState={(waveLane) => {
+                                prop.setSoundLaneState(prop.index, {
+                                    ...prop.refSoundLaneState,
+                                    waveLane,
+                                });
+                            }}
+                        />
+                    </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                    <WaveLane
-                        audioId={prop.audioId}
-                        timeRange={prop.timeRange}
-                        waveState={prop.refSoundLaneState.waveLane}
-                        setWaveState={(waveLane) => {
-                            prop.setSoundLaneState(prop.index, {
-                                ...prop.refSoundLaneState,
-                                waveLane,
-                            });
-                        }}
-                    />
-                    <SpectrumLane
-                        audioId={prop.audioId}
-                        timeRange={prop.timeRange}
-                        spectrumState={prop.refSoundLaneState.spectrumLane}
-                        setSpectrumState={(spectrumLane) => {
-                            prop.setSoundLaneState(prop.index, {
-                                ...prop.refSoundLaneState,
-                                spectrumLane,
-                            });
-                        }}
-                    />
-                    <NoteLane
-                        chartData={demoChartData}
-                        timeRange={prop.timeRange}
-                        beatSubdivision={4}
-                        height={120}
-                    />
+
+                <div className="flex items-start gap-3">
+                    <div
+                        className="w-[150px] shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <SpectrumMenu
+                            audioId={prop.audioId}
+                            spectrumState={prop.refSoundLaneState.spectrumLane}
+                            setSpectrumState={(spectrumLane) => {
+                                prop.setSoundLaneState(prop.index, {
+                                    ...prop.refSoundLaneState,
+                                    spectrumLane,
+                                });
+                            }}
+                        />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <SpectrumLane
+                            audioId={prop.audioId}
+                            timeRange={prop.timeRange}
+                            spectrumState={prop.refSoundLaneState.spectrumLane}
+                            setSpectrumState={(spectrumLane) => {
+                                prop.setSoundLaneState(prop.index, {
+                                    ...prop.refSoundLaneState,
+                                    spectrumLane,
+                                });
+                            }}
+                        />
+                    </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                    <div
+                        className="w-[150px] shrink-0 h-[120px] border border-gray-200 rounded-md px-2 py-1 text-sm text-gray-600"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        Note Menu
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <NoteLane
+                            chartData={demoChartData}
+                            timeRange={prop.timeRange}
+                            beatSubdivision={4}
+                            height={120}
+                        />
+                    </div>
                 </div>
             </div>
         </div>
