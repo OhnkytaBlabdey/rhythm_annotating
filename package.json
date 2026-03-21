@@ -2,9 +2,21 @@
   "name": "note_beat_sampling",
   "version": "0.1.0",
   "private": true,
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:web": "next build",
+    "build:desktop:renderer": "node scripts/build-desktop-renderer.mjs",
+    "desktop:start": "pnpm run build:desktop:renderer && pnpm exec electron .",
+    "desktop:package": "pnpm run build:desktop:renderer && pnpm exec electron-forge package",
+    "desktop:make": "pnpm run build:desktop:renderer && pnpm exec electron-forge make",
+    "desktop:make:win:x64": "pnpm run build:desktop:renderer && pnpm exec electron-forge make --platform=win32 --arch=x64 --targets=@electron-forge/maker-zip",
+    "desktop:make:win:arm64": "pnpm run build:desktop:renderer && pnpm exec electron-forge make --platform=win32 --arch=arm64 --targets=@electron-forge/maker-zip",
+    "desktop:make:mac:x64": "pnpm run build:desktop:renderer && pnpm exec electron-forge make --platform=darwin --arch=x64 --targets=@electron-forge/maker-zip",
+    "desktop:make:mac:arm64": "pnpm run build:desktop:renderer && pnpm exec electron-forge make --platform=darwin --arch=arm64 --targets=@electron-forge/maker-zip",
+    "desktop:make:linux:x64": "pnpm run build:desktop:renderer && pnpm exec electron-forge make --platform=linux --arch=x64 --targets=@electron-forge/maker-zip",
+    "desktop:make:linux:arm64": "pnpm run build:desktop:renderer && pnpm exec electron-forge make --platform=linux --arch=arm64 --targets=@electron-forge/maker-zip",
     "start": "next start",
     "lint": "eslint"
   },
@@ -16,16 +28,24 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@electron-forge/cli": "^7.11.1",
+    "@electron-forge/maker-zip": "^7.11.1",
     "@tailwindcss/postcss": "^4.2.1",
     "@types/node": "^20.19.37",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.27",
     "babel-plugin-react-compiler": "1.0.0",
+    "electron": "^41.0.3",
     "eslint": "^9.39.4",
     "eslint-config-next": "16.0.10",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron"
+    ]
   }
 }

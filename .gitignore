@@ -16,6 +16,8 @@
 # next.js
 /.next/
 /out/
+/dist-desktop-renderer/
+/out-electron/
 
 # production
 /build
