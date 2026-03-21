@@ -13,7 +13,11 @@ import {
 } from "react";
 import style from "./noteLane.module.css";
 import { ChartNote, ChartSegment, Fraction } from "./chartTypes";
-import { generateNoteId, normalizeFraction } from "./chartAdapter";
+import {
+    generateNoteId,
+    normalizeFraction,
+    validateChartData,
+} from "./chartAdapter";
 import { NoteEditState } from "./noteState";
 import { useAppSettings } from "@/components/appSettingsContext";
 
@@ -156,6 +160,10 @@ export default function NoteLane({
     const segments = useMemo(
         () => [...chartData].sort((a, b) => a.time - b.time),
         [chartData],
+    );
+    const renderValidationError = useMemo(
+        () => validateChartData(segments),
+        [segments],
     );
     const safeSubdivision = Math.max(1, Math.floor(beatSubdivision));
 
@@ -520,6 +528,19 @@ export default function NoteLane({
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
         ctx.clearRect(0, 0, width, height);
 
+        if (renderValidationError) {
+            ctx.fillStyle = "#1f1720";
+            ctx.fillRect(0, 0, width, height);
+            ctx.fillStyle = "#fecaca";
+            ctx.font = "13px sans-serif";
+            ctx.textAlign = "left";
+            ctx.fillText("谱面格式错误，已停止渲染。", 16, 28);
+            ctx.fillStyle = "#fca5a5";
+            ctx.font = "12px sans-serif";
+            ctx.fillText(renderValidationError, 16, 48);
+            return;
+        }
+
         ctx.fillStyle = "#0f172a";
         ctx.fillRect(0, 0, width, height);
 
@@ -723,6 +744,7 @@ export default function NoteLane({
         selectedMeasureRange,
         safeSubdivision,
         segments,
+        renderValidationError,
         snapTime,
         width,
     ]);
@@ -931,6 +953,9 @@ export default function NoteLane({
 
     const handleMouseMove = useCallback(
         (e: MouseEvent<HTMLCanvasElement>) => {
+            if (renderValidationError) {
+                return;
+            }
             const { time } = updatePointer(e.clientX);
             if (dragState && time !== null) {
                 const delta = time - dragState.startSnapTime;
@@ -938,11 +963,20 @@ export default function NoteLane({
                 commitChart(moved, false);
             }
         },
-        [commitChart, dragState, moveSelectedNotes, updatePointer],
+        [
+            commitChart,
+            dragState,
+            moveSelectedNotes,
+            renderValidationError,
+            updatePointer,
+        ],
     );
 
     const handleMouseDown = useCallback(
         (e: MouseEvent<HTMLCanvasElement>) => {
+            if (renderValidationError) {
+                return;
+            }
             if (e.button !== 0) return;
             canvasRef.current?.focus();
             const { time, note } = updatePointer(e.clientX);
@@ -1020,6 +1054,7 @@ export default function NoteLane({
             setEditState,
             updatePointer,
             onSelectMeasure,
+            renderValidationError,
         ],
     );
 
@@ -1036,13 +1071,16 @@ export default function NoteLane({
 
     const handleContextMenu = useCallback(
         (e: MouseEvent<HTMLCanvasElement>) => {
+            if (renderValidationError) {
+                return;
+            }
             e.preventDefault();
             const { note } = updatePointer(e.clientX);
             if (note) {
                 deleteById(new Set<string>([note.id]));
             }
         },
-        [deleteById, updatePointer],
+        [deleteById, renderValidationError, updatePointer],
     );
 
     const handleKeyDown = useCallback(
@@ -1151,6 +1189,16 @@ export default function NoteLane({
                     onKeyDown={handleKeyDown}
                     tabIndex={0}
                 />
+                {renderValidationError && (
+                    <div className={style.noteLaneOverlay}>
+                        <div className={style.noteLaneOverlayTitle}>
+                            渲染已暂停
+                        </div>
+                        <div className={style.noteLaneOverlayText}>
+                            {renderValidationError}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

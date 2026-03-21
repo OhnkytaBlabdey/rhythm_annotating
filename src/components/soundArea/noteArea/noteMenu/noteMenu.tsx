@@ -28,6 +28,7 @@ interface _p {
     onRedo: () => void;
     onDeleteLane: () => void;
     onClearLane: () => void;
+    onImportText: (text: string) => string | null;
     exportText: string;
     lastError: string | null;
 }
@@ -42,7 +43,9 @@ interface ModeButtonProps {
 function ModeButton({ label, active, onClick, title }: ModeButtonProps) {
     return (
         <button
+            type="button"
             onClick={onClick}
+            onMouseDown={(event) => event.stopPropagation()}
             title={title ?? label}
             className={cls("button", active ? "button-active" : "")}
         >
@@ -61,7 +64,9 @@ interface ActionButtonProps {
 function ActionButton({ label, onClick, disabled, title }: ActionButtonProps) {
     return (
         <button
+            type="button"
             onClick={onClick}
+            onMouseDown={(event) => event.stopPropagation()}
             title={title ?? label}
             disabled={disabled}
             className={cls("button", disabled ? "button-disabled" : "")}
@@ -73,8 +78,15 @@ function ActionButton({ label, onClick, disabled, title }: ActionButtonProps) {
 
 export default function NoteMenu(p: _p) {
     const { getKeyboardShortcutLabel } = useAppSettings();
+    const [isImportOpen, setIsImportOpen] = React.useState(false);
     const [isExportOpen, setIsExportOpen] = React.useState(false);
+    const [importText, setImportText] = React.useState("");
+    const [importError, setImportError] = React.useState<string | null>(null);
     const [measureBpmInput, setMeasureBpmInput] = React.useState<string>("");
+
+    const stopInteraction = (event: React.SyntheticEvent) => {
+        event.stopPropagation();
+    };
 
     React.useEffect(() => {
         if (p.currentMeasureBpm === null) {
@@ -171,6 +183,9 @@ export default function NoteMenu(p: _p) {
                     max={999}
                     step={1}
                     value={p.currentBpm}
+                    onMouseDown={stopInteraction}
+                    onClick={stopInteraction}
+                    onKeyDown={stopInteraction}
                     onWheel={(e) => e.stopPropagation()}
                     onChange={(e) => {
                         const v = Number(e.target.value);
@@ -190,6 +205,9 @@ export default function NoteMenu(p: _p) {
                     step={1}
                     value={measureBpmInput}
                     disabled={!p.canEditCurrentMeasureBpm}
+                    onMouseDown={stopInteraction}
+                    onClick={stopInteraction}
+                    onKeyDown={stopInteraction}
                     onWheel={(e) => e.stopPropagation()}
                     onChange={(e) => {
                         const nextValue = e.target.value;
@@ -217,6 +235,9 @@ export default function NoteMenu(p: _p) {
                     max={64}
                     step={1}
                     value={p.division}
+                    onMouseDown={stopInteraction}
+                    onClick={stopInteraction}
+                    onKeyDown={stopInteraction}
                     onWheel={(e) => e.stopPropagation()}
                     onChange={(e) => {
                         const v = Number(e.target.value);
@@ -248,6 +269,15 @@ export default function NoteMenu(p: _p) {
                     onClick={p.onClearLane}
                 />
                 <ActionButton
+                    label="导入文本"
+                    title="从内部 JSON 文本覆盖当前 NoteLane"
+                    onClick={() => {
+                        setImportError(null);
+                        setImportText("");
+                        setIsImportOpen(true);
+                    }}
+                />
+                <ActionButton
                     label="导出文本"
                     title="导出当前 NoteLane 的 JSON"
                     onClick={() => setIsExportOpen(true)}
@@ -261,9 +291,83 @@ export default function NoteMenu(p: _p) {
 
             {p.lastError && <div className={cls("error")}>{p.lastError}</div>}
 
+            {isImportOpen && (
+                <div
+                    className={cls("modal-backdrop")}
+                    onClick={() => setIsImportOpen(false)}
+                    onMouseDown={() => setIsImportOpen(false)}
+                >
+                    <div
+                        className={cls("modal")}
+                        onClick={stopInteraction}
+                        onMouseDown={stopInteraction}
+                    >
+                        <div className={cls("modal-title")}>
+                            导入 NoteLane JSON
+                        </div>
+                        <textarea
+                            className={cls("modal-text")}
+                            value={importText}
+                            onMouseDown={stopInteraction}
+                            onClick={stopInteraction}
+                            onKeyDown={stopInteraction}
+                            onWheel={(event) => event.stopPropagation()}
+                            onChange={(event) => {
+                                setImportText(event.target.value);
+                                if (importError) {
+                                    setImportError(null);
+                                }
+                            }}
+                            placeholder="粘贴内部导出的 NoteLane JSON 或 chartData JSON，导入后会覆盖当前 Lane。"
+                        />
+                        {importError && (
+                            <div className={cls("error")}>{importError}</div>
+                        )}
+                        <div className={cls("modal-actions")}>
+                            <button
+                                type="button"
+                                className={cls("button")}
+                                onMouseDown={stopInteraction}
+                                onClick={() => {
+                                    const error = p.onImportText(importText);
+                                    if (error) {
+                                        setImportError(error);
+                                        return;
+                                    }
+                                    setIsImportOpen(false);
+                                    setImportText("");
+                                    setImportError(null);
+                                }}
+                            >
+                                覆盖当前 Lane
+                            </button>
+                            <button
+                                type="button"
+                                className={cls("button")}
+                                onMouseDown={stopInteraction}
+                                onClick={() => {
+                                    setIsImportOpen(false);
+                                    setImportError(null);
+                                }}
+                            >
+                                取消
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {isExportOpen && (
-                <div className={cls("modal-backdrop")}>
-                    <div className={cls("modal")}>
+                <div
+                    className={cls("modal-backdrop")}
+                    onClick={() => setIsExportOpen(false)}
+                    onMouseDown={() => setIsExportOpen(false)}
+                >
+                    <div
+                        className={cls("modal")}
+                        onClick={stopInteraction}
+                        onMouseDown={stopInteraction}
+                    >
                         <div className={cls("modal-title")}>
                             导出 NoteLane JSON
                         </div>
@@ -271,11 +375,16 @@ export default function NoteMenu(p: _p) {
                             readOnly
                             className={cls("modal-text")}
                             value={p.exportText}
+                            onMouseDown={stopInteraction}
+                            onClick={stopInteraction}
+                            onKeyDown={stopInteraction}
                             onWheel={(e) => e.stopPropagation()}
                         />
                         <div className={cls("modal-actions")}>
                             <button
+                                type="button"
                                 className={cls("button")}
+                                onMouseDown={stopInteraction}
                                 onClick={() => {
                                     void navigator.clipboard.writeText(
                                         p.exportText,
@@ -285,7 +394,9 @@ export default function NoteMenu(p: _p) {
                                 复制
                             </button>
                             <button
+                                type="button"
                                 className={cls("button")}
+                                onMouseDown={stopInteraction}
                                 onClick={() => setIsExportOpen(false)}
                             >
                                 关闭

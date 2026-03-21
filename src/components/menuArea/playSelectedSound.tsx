@@ -250,11 +250,29 @@ function PlaySelected(prop: _p) {
     }
 
     return (
-        <>
-            <button onClick={onPlay}>Play</button>
-            <button onClick={onPause}>Pause</button>
-            <button onClick={onStop}>Stop</button>
-        </>
+        <div className="flex items-center gap-2">
+            <button
+                type="button"
+                className="editor-toolbar-button"
+                onClick={onPlay}
+            >
+                播放
+            </button>
+            <button
+                type="button"
+                className="editor-toolbar-button"
+                onClick={onPause}
+            >
+                暂停
+            </button>
+            <button
+                type="button"
+                className="editor-toolbar-button"
+                onClick={onStop}
+            >
+                停止
+            </button>
+        </div>
     );
 }
 

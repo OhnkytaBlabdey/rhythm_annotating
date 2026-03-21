@@ -356,3 +356,131 @@ export function validateNoteLaneData(lane: NoteLaneData): string | null {
     }
     return validateChartData(lane.chartData);
 }
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === "object";
+}
+
+function pickImportCandidate(raw: unknown): {
+    chartData: unknown;
+    defaultBpm?: unknown;
+    division?: unknown;
+} | null {
+    if (Array.isArray(raw)) {
+        return {
+            chartData: raw,
+        };
+    }
+
+    if (!isRecord(raw)) {
+        return null;
+    }
+
+    if (isRecord(raw.lane)) {
+        return {
+            chartData: raw.lane.chartData,
+            defaultBpm: raw.lane.defaultBpm,
+            division: raw.lane.division,
+        };
+    }
+
+    return {
+        chartData: raw.chartData,
+        defaultBpm:
+            raw.defaultBpm !== undefined ? raw.defaultBpm : raw.currentBpm,
+        division: raw.division,
+    };
+}
+
+function validateImportSegments(rawSegments: unknown): string | null {
+    if (!Array.isArray(rawSegments)) {
+        return "导入内容缺少 chartData 数组";
+    }
+
+    if (rawSegments.length === 0) {
+        return "导入内容没有任何节拍段";
+    }
+
+    for (let index = 0; index < rawSegments.length; index++) {
+        const segment = rawSegments[index];
+        if (!isRecord(segment)) {
+            return `第 ${index + 1} 个节拍段不是对象`;
+        }
+        const time = Number(segment.time);
+        const tempo = Number(segment.tempo);
+        if (!Number.isFinite(time) || time < 0) {
+            return `第 ${index + 1} 个节拍段的 time 非法`;
+        }
+        if (!Number.isFinite(tempo) || tempo <= 0) {
+            return `第 ${index + 1} 个节拍段的 tempo 非法`;
+        }
+    }
+
+    return null;
+}
+
+export function parseImportedNoteLaneText(
+    text: string,
+    currentLane: NoteLaneData,
+): { lane: NoteLaneData } | { error: string } {
+    if (!text.trim()) {
+        return { error: "导入文本为空" };
+    }
+
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(text);
+    } catch (error) {
+        const message =
+            error instanceof Error ? error.message : "未知 JSON 解析错误";
+        return {
+            error: `JSON 解析失败: ${message}`,
+        };
+    }
+
+    const candidate = pickImportCandidate(parsed);
+    if (!candidate) {
+        return {
+            error: "仅支持内部 NoteLane JSON 或 chartData JSON",
+        };
+    }
+
+    const segmentError = validateImportSegments(candidate.chartData);
+    if (segmentError) {
+        return { error: segmentError };
+    }
+
+    const chartData = normalizeChartSegments(
+        candidate.chartData as RawChartSegment[],
+    );
+
+    if (chartData.length === 0) {
+        return {
+            error: "导入后没有可用的 chartData",
+        };
+    }
+
+    const nextLane: NoteLaneData = {
+        id: currentLane.id,
+        defaultBpm:
+            Number.isFinite(Number(candidate.defaultBpm)) &&
+            Number(candidate.defaultBpm) > 0
+                ? Math.max(1, Math.floor(Number(candidate.defaultBpm)))
+                : currentLane.defaultBpm,
+        division:
+            Number.isFinite(Number(candidate.division)) &&
+            Number(candidate.division) >= 1
+                ? Math.max(1, Math.floor(Number(candidate.division)))
+                : currentLane.division,
+        chartData,
+    };
+
+    const validationError = validateNoteLaneData(nextLane);
+    if (validationError) {
+        return {
+            error: validationError,
+        };
+    }
+
+    return { lane: nextLane };
+}

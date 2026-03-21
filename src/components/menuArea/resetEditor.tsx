@@ -7,9 +7,10 @@ interface _prop {
 export default function ResetEditor(prop: _prop) {
     return (
         <button
+            type="button"
             onClick={prop.resetEditor}
             title="重置工程"
-            className="flex items-center gap-2 px-2"
+            className="editor-toolbar-button"
         >
             <span>重置工程</span>
         </button>

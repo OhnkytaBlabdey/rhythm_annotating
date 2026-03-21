@@ -23,6 +23,7 @@ import {
     NoteEditState,
 } from "./noteArea/noteState";
 import {
+    parseImportedNoteLaneText,
     validateChartData,
     validateNoteLaneData,
     normalizeFraction,
@@ -497,7 +498,7 @@ export default function SoundLane(prop: _prop) {
 
     return (
         <div
-            className="SoundLane flex flex-col h-full cursor-pointer"
+            className="SoundLane flex flex-col gap-3 rounded-[26px] border border-[var(--editor-border)] bg-[var(--editor-surface)] p-4 shadow-[0_12px_34px_rgba(53,36,19,0.06)] cursor-pointer"
             onClick={handleClickToActivate}
         >
             <div className="w-auto">
@@ -516,9 +517,10 @@ export default function SoundLane(prop: _prop) {
             <div className="flex flex-col flex-1 gap-2 mt-2">
                 <div className="flex items-start gap-3">
                     <div
-                        className="w-[150px] shrink-0"
+                        className="editor-inspector-panel w-[176px] shrink-0"
                         onClick={(e) => e.stopPropagation()}
                     >
+                        <div className="editor-pane-caption">Wave</div>
                         <WaveMenu
                             audioId={prop.audioId}
                             waveState={prop.refSoundLaneState.waveLane}
@@ -549,9 +551,10 @@ export default function SoundLane(prop: _prop) {
 
                 <div className="flex items-start gap-3">
                     <div
-                        className="w-[150px] shrink-0"
+                        className="editor-inspector-panel w-[176px] shrink-0"
                         onClick={(e) => e.stopPropagation()}
                     >
+                        <div className="editor-pane-caption">Spectrum</div>
                         <SpectrumMenu
                             audioId={prop.audioId}
                             spectrumState={prop.refSoundLaneState.spectrumLane}
@@ -754,6 +757,29 @@ export default function SoundLane(prop: _prop) {
                               lane,
                           }
                         : lane;
+                    const currentLaneError =
+                        laneErrorMap[lane.id] ?? exportError ?? null;
+
+                    const handleImportText = (text: string): string | null => {
+                        const result = parseImportedNoteLaneText(text, lane);
+                        if ("error" in result) {
+                            setLaneError(lane.id, result.error);
+                            return result.error;
+                        }
+
+                        clearLaneError(lane.id);
+                        pushUndo(lane.chartData);
+                        updateLaneData(lane.id, () => result.lane);
+                        setLaneEditState(lane.id, (prev) => ({
+                            ...prev,
+                            selectedIds: new Set<string>(),
+                            lnHeadTime: null,
+                            undoStack: prev.undoStack,
+                            redoStack: [],
+                            currentBpm: result.lane.defaultBpm,
+                        }));
+                        return null;
+                    };
 
                     return (
                         <div
@@ -761,7 +787,10 @@ export default function SoundLane(prop: _prop) {
                             className="flex items-start gap-3"
                             onClick={(e) => e.stopPropagation()}
                         >
-                            <div className="w-[150px] shrink-0 self-stretch border border-slate-300 rounded-md overflow-hidden bg-white">
+                            <div className="editor-inspector-panel w-[176px] shrink-0 self-stretch">
+                                <div className="editor-pane-caption">
+                                    Note Lane
+                                </div>
                                 <NoteMenu
                                     mode={editState.mode}
                                     setMode={(m: EditMode) =>
@@ -869,12 +898,13 @@ export default function SoundLane(prop: _prop) {
                                         }));
                                         clearLaneError(lane.id);
                                     }}
+                                    onImportText={handleImportText}
                                     exportText={JSON.stringify(
                                         exportPayload,
                                         null,
                                         2,
                                     )}
-                                    lastError={laneErrorMap[lane.id] ?? null}
+                                    lastError={currentLaneError}
                                 />
                             </div>
                             <div className="flex-1 min-w-0">

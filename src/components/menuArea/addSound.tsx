@@ -111,9 +111,10 @@ function AddSound(prop: _prop) {
                 style={{ display: "none" }}
             />
             <button
+                type="button"
                 onClick={handleAddSoundLane}
                 title="Click to AddSound"
-                className="flex items-center gap-2"
+                className="editor-toolbar-button"
             >
                 <Image
                     src="/assets/icons/newSoundLane.png"

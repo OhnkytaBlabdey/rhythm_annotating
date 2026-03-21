@@ -28,7 +28,7 @@ function WorkMenu(prop: _prop) {
 
     return (
         <div className="WorkMenu">
-            <div className="flex">
+            <div className="editor-toolbar-actions">
                 <AddSound key={"add sound"} addAudioData={prop.addAudioData} />
                 <DeleteActiveSound
                     key={"delete sound"}
@@ -58,7 +58,7 @@ function WorkMenu(prop: _prop) {
                 />
                 <button
                     type="button"
-                    className="flex items-center gap-2 px-2"
+                    className="editor-toolbar-button"
                     onClick={() => setIsShortcutModalOpen(true)}
                 >
                     <span>快捷键</span>

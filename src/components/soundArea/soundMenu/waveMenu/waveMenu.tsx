@@ -11,8 +11,8 @@ interface _p {
 
 function WaveMenu(p: _p) {
     return (
-        <div>
-            <div className="flex flex-col">
+        <div className="p-3">
+            <div className="flex flex-col gap-2">
                 <FoldWave
                     audioId={p.audioId}
                     isFolded={p.waveState.isFolded}

@@ -20,8 +20,8 @@ function SpectrumMenu(p: _p) {
     const resolutionScale = p.spectrumState.resolutionScale ?? 1;
 
     return (
-        <div>
-            <div className="flex flex-col">
+        <div className="p-3">
+            <div className="flex flex-col gap-2">
                 <div>
                     <FoldSpectrum
                         audioId={p.audioId}

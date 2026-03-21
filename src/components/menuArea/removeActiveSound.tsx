@@ -20,9 +20,10 @@ function DeleteActiveSound(prop: _prop) {
     return (
         <div>
             <button
+                type="button"
                 onClick={handleDeleteSoundLane}
                 title="delete sound lane"
-                className="flex items-center gap-2"
+                className="editor-toolbar-button"
             >
                 <Image
                     src="/assets/icons/deleteSoundLane.png"

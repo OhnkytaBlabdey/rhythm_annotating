@@ -527,10 +527,10 @@ export default function WorkArea() {
     return (
         <AudioDataCtx.Provider value={audioDataList}>
             <div className="WorkArea" ref={workAreaRef}>
-                <div className="flex flex-col">
+                <div className="editor-shell flex flex-col">
                     {/* Menu */}
-                    <div className="sticky top-0 z-50 bg-white flex px-12 py-2 ">
-                        <div className="rounded-lg border border-gray-300 p-4 w-7/8 mx-auto">
+                    <div className="sticky top-0 z-50 flex py-2">
+                        <div className="editor-toolbar-card">
                             <WorkMenu
                                 key={"menu"}
                                 setSoundLaneStates={setSoundLaneStates}
@@ -554,10 +554,10 @@ export default function WorkArea() {
                     {/* Sound Lanes */}
                     <div
                         ref={laneContainerRef}
-                        className="flex flex-col gap-4 px-10 py-2"
+                        className="flex flex-col gap-4 py-2"
                     >
-                        <div className="rounded-lg border border-gray-300 p-4">
-                            <div className="w-7/8 mx-auto">
+                        <div className="editor-lane-card">
+                            <div className="flex flex-col gap-4">
                                 {audioDataList.map((audio, index) => (
                                     <SoundLane
                                         key={`audio-${audio.id}`}
