@@ -15,12 +15,14 @@ import style from "./noteLane.module.css";
 import { ChartNote, ChartSegment, Fraction } from "./chartTypes";
 import { generateNoteId, normalizeFraction } from "./chartAdapter";
 import { NoteEditState } from "./noteState";
+import { useAppSettings } from "@/components/appSettingsContext";
 
 interface NoteLaneProps {
     chartData: ChartSegment[];
     setChartData: (next: ChartSegment[], saveUndo?: boolean) => boolean;
     timeRange: [number, number];
     beatSubdivision?: number;
+    setBeatSubdivision: (next: number) => void;
     height?: number;
     editState: NoteEditState;
     setEditState: Dispatch<SetStateAction<NoteEditState>>;
@@ -126,6 +128,7 @@ export default function NoteLane({
     setChartData,
     timeRange,
     beatSubdivision = 4,
+    setBeatSubdivision,
     height = 120,
     editState,
     setEditState,
@@ -136,6 +139,7 @@ export default function NoteLane({
     selectedMeasureTime,
     onSelectMeasure,
 }: NoteLaneProps) {
+    const { matchesKeyShortcut } = useAppSettings();
     const wrapperRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [width, setWidth] = useState(1200);
@@ -1043,6 +1047,54 @@ export default function NoteLane({
 
     const handleKeyDown = useCallback(
         (e: KeyboardEvent<HTMLCanvasElement>) => {
+            const modeActions: Array<{
+                action:
+                    | "note.mode.browse"
+                    | "note.mode.insertStrong"
+                    | "note.mode.insertWeak"
+                    | "note.mode.insertLn"
+                    | "note.mode.select"
+                    | "note.mode.paste";
+                mode: NoteEditState["mode"];
+            }> = [
+                { action: "note.mode.browse", mode: "browse" },
+                { action: "note.mode.insertStrong", mode: "insert-strong" },
+                { action: "note.mode.insertWeak", mode: "insert-weak" },
+                { action: "note.mode.insertLn", mode: "insert-ln" },
+                { action: "note.mode.select", mode: "select" },
+                { action: "note.mode.paste", mode: "paste" },
+            ];
+
+            for (const item of modeActions) {
+                if (!matchesKeyShortcut(item.action, e.nativeEvent)) {
+                    continue;
+                }
+
+                e.preventDefault();
+                setEditState((prev) => ({
+                    ...prev,
+                    mode: item.mode,
+                    lnHeadTime: null,
+                }));
+                return;
+            }
+
+            if (
+                matchesKeyShortcut("note.division.increment", e.nativeEvent)
+            ) {
+                e.preventDefault();
+                setBeatSubdivision(Math.min(64, safeSubdivision + 1));
+                return;
+            }
+
+            if (
+                matchesKeyShortcut("note.division.decrement", e.nativeEvent)
+            ) {
+                e.preventDefault();
+                setBeatSubdivision(Math.max(1, safeSubdivision - 1));
+                return;
+            }
+
             if (e.ctrlKey && (e.key === "z" || e.key === "Z")) {
                 e.preventDefault();
                 onUndo();
@@ -1065,7 +1117,17 @@ export default function NoteLane({
                 }
             }
         },
-        [deleteById, editState.selectedIds, hoverNoteId, onRedo, onUndo],
+        [
+            deleteById,
+            editState.selectedIds,
+            hoverNoteId,
+            matchesKeyShortcut,
+            onRedo,
+            onUndo,
+            safeSubdivision,
+            setBeatSubdivision,
+            setEditState,
+        ],
     );
 
     useEffect(() => {

@@ -883,6 +883,15 @@ export default function SoundLane(prop: _prop) {
                                     setChartData={setChartData}
                                     timeRange={prop.timeRange}
                                     beatSubdivision={lane.division}
+                                    setBeatSubdivision={(division) =>
+                                        updateLaneData(lane.id, (prevLane) => ({
+                                            ...prevLane,
+                                            division: Math.max(
+                                                1,
+                                                Math.floor(division),
+                                            ),
+                                        }))
+                                    }
                                     height={120}
                                     editState={editState}
                                     setEditState={(updater) => {

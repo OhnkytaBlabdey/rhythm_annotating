@@ -248,9 +248,11 @@ function SpectrumLane(p: _p) {
         if (!audioData?.buffer) return;
 
         cacheRef.current = {};
-        setLayerVersion(0);
-        setReady(false);
-        setWorkerDone(false);
+        queueMicrotask(() => {
+            setLayerVersion(0);
+            setReady(false);
+            setWorkerDone(false);
+        });
         let isCancelled = false;
 
         const launchWorker = (decoded: AudioBuffer) => {

@@ -3,6 +3,7 @@ import React from "react";
 import style from "./noteMenu.module.css";
 import classNames from "classnames/bind";
 import { EditMode } from "../noteState";
+import { useAppSettings } from "@/components/appSettingsContext";
 
 const cls = classNames.bind(style);
 
@@ -71,6 +72,7 @@ function ActionButton({ label, onClick, disabled, title }: ActionButtonProps) {
 }
 
 export default function NoteMenu(p: _p) {
+    const { getKeyboardShortcutLabel } = useAppSettings();
     const [isExportOpen, setIsExportOpen] = React.useState(false);
     const [measureBpmInput, setMeasureBpmInput] = React.useState<string>("");
 
@@ -91,6 +93,15 @@ export default function NoteMenu(p: _p) {
         { mode: "paste", label: "粘贴", title: "粘贴模式" },
     ];
 
+    const modeShortcutMap: Record<EditMode, string> = {
+        browse: getKeyboardShortcutLabel("note.mode.browse"),
+        "insert-strong": getKeyboardShortcutLabel("note.mode.insertStrong"),
+        "insert-weak": getKeyboardShortcutLabel("note.mode.insertWeak"),
+        "insert-ln": getKeyboardShortcutLabel("note.mode.insertLn"),
+        select: getKeyboardShortcutLabel("note.mode.select"),
+        paste: getKeyboardShortcutLabel("note.mode.paste"),
+    };
+
     return (
         <div className={cls("menu")}>
             {/* Mode group */}
@@ -100,7 +111,11 @@ export default function NoteMenu(p: _p) {
                     <ModeButton
                         key={mode}
                         label={label}
-                        title={title}
+                        title={
+                            modeShortcutMap[mode]
+                                ? `${title} (${modeShortcutMap[mode]})`
+                                : title
+                        }
                         active={p.mode === mode}
                         onClick={() => p.setMode(mode)}
                     />
@@ -208,7 +223,19 @@ export default function NoteMenu(p: _p) {
                         if (v >= 1 && Number.isFinite(v)) p.setDivision(v);
                     }}
                     className={cls("bpm-input")}
-                    title="当前 NoteLane 的单拍等分"
+                    title={`当前 NoteLane 的单拍等分${
+                        getKeyboardShortcutLabel("note.division.increment")
+                            ? `，增加: ${getKeyboardShortcutLabel(
+                                  "note.division.increment",
+                              )}`
+                            : ""
+                    }${
+                        getKeyboardShortcutLabel("note.division.decrement")
+                            ? `，减少: ${getKeyboardShortcutLabel(
+                                  "note.division.decrement",
+                              )}`
+                            : ""
+                    }`}
                 />
                 <span className={cls("bpm-unit")}>n</span>
             </div>

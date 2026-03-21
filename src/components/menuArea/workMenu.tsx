@@ -5,6 +5,7 @@ import TimeRangeController from "./timeRangeController";
 import DeleteActiveSound from "./removeActiveSound";
 import PlaySelected from "./playSelectedSound";
 import ResetEditor from "./resetEditor";
+import ShortcutSettingsModal from "./shortcutSettingsModal";
 
 interface _prop {
     refSoundLaneStates: SoundLaneState[];
@@ -23,6 +24,8 @@ interface _prop {
 }
 
 function WorkMenu(prop: _prop) {
+    const [isShortcutModalOpen, setIsShortcutModalOpen] = React.useState(false);
+
     return (
         <div className="WorkMenu">
             <div className="flex">
@@ -53,7 +56,19 @@ function WorkMenu(prop: _prop) {
                     key={"reset editor"}
                     resetEditor={prop.resetEditor}
                 />
+                <button
+                    type="button"
+                    className="flex items-center gap-2 px-2"
+                    onClick={() => setIsShortcutModalOpen(true)}
+                >
+                    <span>快捷键</span>
+                </button>
             </div>
+            {isShortcutModalOpen && (
+                <ShortcutSettingsModal
+                    onClose={() => setIsShortcutModalOpen(false)}
+                />
+            )}
         </div>
     );
 }

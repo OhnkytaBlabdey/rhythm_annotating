@@ -8,16 +8,18 @@ import React, {
     useMemo,
     useState,
 } from "react";
+import {
+    DEFAULT_SHORTCUTS,
+    SHORTCUT_DEFINITIONS,
+    ShortcutAction,
+    ShortcutMap,
+    findShortcutConflicts,
+    matchesKeyboardShortcut,
+    matchesWheelShortcut,
+    normalizeShortcutCombo,
+} from "@/lib/shortcuts";
 
 const STORAGE_KEY = "explicitize.app-settings";
-
-export type ShortcutAction =
-    | "timeRange.zoomIn"
-    | "timeRange.zoomOut"
-    | "timeRange.panUp"
-    | "timeRange.panDown";
-
-export type ShortcutMap = Record<ShortcutAction, string>;
 
 export interface TimeViewSettings {
     currentTime: number;
@@ -30,18 +32,11 @@ export interface SpectrumViewSettings {
 }
 
 interface PersistedSettings {
-    version: 1;
+    version: 2;
     shortcuts: ShortcutMap;
     timeView: TimeViewSettings;
     spectrumView: SpectrumViewSettings;
 }
-
-const DEFAULT_SHORTCUTS: ShortcutMap = {
-    "timeRange.zoomIn": "Alt+WheelUp",
-    "timeRange.zoomOut": "Alt+WheelDown",
-    "timeRange.panUp": "WheelUp",
-    "timeRange.panDown": "WheelDown",
-};
 
 const DEFAULT_TIME_VIEW: TimeViewSettings = {
     currentTime: 0,
@@ -54,7 +49,7 @@ const DEFAULT_SPECTRUM_VIEW: SpectrumViewSettings = {
 };
 
 const DEFAULT_SETTINGS: PersistedSettings = {
-    version: 1,
+    version: 2,
     shortcuts: DEFAULT_SHORTCUTS,
     timeView: DEFAULT_TIME_VIEW,
     spectrumView: DEFAULT_SPECTRUM_VIEW,
@@ -65,12 +60,21 @@ interface AppSettingsContextValue {
     timeView: TimeViewSettings;
     spectrumView: SpectrumViewSettings;
     hasHydratedSettings: boolean;
-    setShortcut: (action: ShortcutAction, combo: string) => void;
+    saveShortcuts: (
+        next: ShortcutMap,
+    ) => { ok: true } | { ok: false; conflicts: ReturnType<typeof findShortcutConflicts> };
     setTimeView: (next: Partial<TimeViewSettings>) => void;
     setSpectrumView: (next: Partial<SpectrumViewSettings>) => void;
     setSpectrumBrightnessOffset: (offset: number) => void;
     setSpectrumResolutionScale: (scale: number) => void;
     resetProjectScopedSettings: () => void;
+    matchesKeyShortcut: (
+        action: ShortcutAction,
+        event: Pick<
+            KeyboardEvent,
+            "key" | "code" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey"
+        >,
+    ) => boolean;
     matchesShortcut: (
         action: ShortcutAction,
         event: Pick<
@@ -78,6 +82,7 @@ interface AppSettingsContextValue {
             "altKey" | "ctrlKey" | "metaKey" | "shiftKey" | "deltaY"
         >,
     ) => boolean;
+    getKeyboardShortcutLabel: (action: ShortcutAction) => string;
 }
 
 const AppSettingsCtx = createContext<AppSettingsContextValue>({
@@ -85,13 +90,15 @@ const AppSettingsCtx = createContext<AppSettingsContextValue>({
     timeView: DEFAULT_TIME_VIEW,
     spectrumView: DEFAULT_SPECTRUM_VIEW,
     hasHydratedSettings: false,
-    setShortcut: () => undefined,
+    saveShortcuts: () => ({ ok: true }),
     setTimeView: () => undefined,
     setSpectrumView: () => undefined,
     setSpectrumBrightnessOffset: () => undefined,
     setSpectrumResolutionScale: () => undefined,
     resetProjectScopedSettings: () => undefined,
+    matchesKeyShortcut: () => false,
     matchesShortcut: () => false,
+    getKeyboardShortcutLabel: () => "",
 });
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -99,30 +106,25 @@ function isObject(v: unknown): v is Record<string, unknown> {
 }
 
 function normalizeShortcuts(input: unknown): ShortcutMap {
-    if (!isObject(input)) return DEFAULT_SHORTCUTS;
+    const next: ShortcutMap = { ...DEFAULT_SHORTCUTS };
+    if (!isObject(input)) {
+        return next;
+    }
 
-    return {
-        "timeRange.zoomIn":
-            typeof input["timeRange.zoomIn"] === "string" &&
-            input["timeRange.zoomIn"].trim()
-                ? (input["timeRange.zoomIn"] as string)
-                : DEFAULT_SHORTCUTS["timeRange.zoomIn"],
-        "timeRange.zoomOut":
-            typeof input["timeRange.zoomOut"] === "string" &&
-            input["timeRange.zoomOut"].trim()
-                ? (input["timeRange.zoomOut"] as string)
-                : DEFAULT_SHORTCUTS["timeRange.zoomOut"],
-        "timeRange.panUp":
-            typeof input["timeRange.panUp"] === "string" &&
-            input["timeRange.panUp"].trim()
-                ? (input["timeRange.panUp"] as string)
-                : DEFAULT_SHORTCUTS["timeRange.panUp"],
-        "timeRange.panDown":
-            typeof input["timeRange.panDown"] === "string" &&
-            input["timeRange.panDown"].trim()
-                ? (input["timeRange.panDown"] as string)
-                : DEFAULT_SHORTCUTS["timeRange.panDown"],
-    };
+    for (const definition of SHORTCUT_DEFINITIONS) {
+        if (!Object.prototype.hasOwnProperty.call(input, definition.action)) {
+            continue;
+        }
+
+        const rawValue = input[definition.action];
+        if (typeof rawValue !== "string") {
+            continue;
+        }
+
+        next[definition.action] = normalizeShortcutCombo(rawValue);
+    }
+
+    return next;
 }
 
 function normalizeTimeView(input: unknown): TimeViewSettings {
@@ -164,38 +166,20 @@ function normalizeSpectrumView(input: unknown): SpectrumViewSettings {
 }
 
 function normalizeSettings(input: unknown): PersistedSettings {
-    if (!isObject(input) || Number(input.version) !== 1) {
+    if (!isObject(input)) {
+        return DEFAULT_SETTINGS;
+    }
+
+    const version = Number(input.version);
+    if (version !== 1 && version !== 2) {
         return DEFAULT_SETTINGS;
     }
 
     return {
-        version: 1,
+        version: 2,
         shortcuts: normalizeShortcuts(input.shortcuts),
         timeView: normalizeTimeView(input.timeView),
         spectrumView: normalizeSpectrumView(input.spectrumView),
-    };
-}
-
-function parseShortcut(combo: string) {
-    const tokens = combo
-        .split("+")
-        .map((s) => s.trim().toLowerCase())
-        .filter(Boolean);
-
-    const requireAlt = tokens.includes("alt");
-    const requireCtrl = tokens.includes("ctrl");
-    const requireMeta = tokens.includes("meta");
-    const requireShift = tokens.includes("shift");
-    const wheelUp = tokens.includes("wheelup");
-    const wheelDown = tokens.includes("wheeldown");
-
-    return {
-        requireAlt,
-        requireCtrl,
-        requireMeta,
-        requireShift,
-        wheelUp,
-        wheelDown,
     };
 }
 
@@ -224,20 +208,33 @@ export function AppSettingsProvider({
         localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     }, [settings]);
 
-    const setShortcut = useCallback((action: ShortcutAction, combo: string) => {
+    const saveShortcuts = useCallback((next: ShortcutMap) => {
+        const normalized = normalizeShortcuts(next);
+        const conflicts = findShortcutConflicts(normalized);
+        if (conflicts.length > 0) {
+            return {
+                ok: false as const,
+                conflicts,
+            };
+        }
+
         setSettings((prev) => {
-            if (prev.shortcuts[action] === combo) {
+            const changed = SHORTCUT_DEFINITIONS.some(
+                (definition) =>
+                    prev.shortcuts[definition.action] !==
+                    normalized[definition.action],
+            );
+            if (!changed) {
                 return prev;
             }
 
             return {
                 ...prev,
-                shortcuts: {
-                    ...prev.shortcuts,
-                    [action]: combo,
-                },
+                shortcuts: normalized,
             };
         });
+
+        return { ok: true as const };
     }, []);
 
     const setTimeView = useCallback((next: Partial<TimeViewSettings>) => {
@@ -354,42 +351,38 @@ export function AppSettingsProvider({
     const value = useMemo<AppSettingsContextValue>(() => {
         const effectiveShortcuts = normalizeShortcuts(settings.shortcuts);
 
-        const matchesShortcut: AppSettingsContextValue["matchesShortcut"] = (
-            action,
-            event,
-        ) => {
-            const config = parseShortcut(
-                effectiveShortcuts[action] || DEFAULT_SHORTCUTS[action] || "",
-            );
-            if (config.requireAlt !== !!event.altKey) return false;
-            if (config.requireCtrl !== !!event.ctrlKey) return false;
-            if (config.requireMeta !== !!event.metaKey) return false;
-            if (config.requireShift !== !!event.shiftKey) return false;
-            if (config.wheelUp) return event.deltaY < 0;
-            if (config.wheelDown) return event.deltaY > 0;
-            return false;
-        };
-
-        const effectiveSpectrumView = normalizeSpectrumView(
-            settings.spectrumView,
-        );
+        const getKeyboardShortcutLabel: AppSettingsContextValue["getKeyboardShortcutLabel"] =
+            (action) => {
+                const combo = effectiveShortcuts[action] ?? "";
+                if (!combo) {
+                    return "";
+                }
+                if (combo.includes("Wheel")) {
+                    return "";
+                }
+                return combo;
+            };
 
         return {
             shortcuts: effectiveShortcuts,
             timeView: settings.timeView,
-            spectrumView: effectiveSpectrumView,
+            spectrumView: normalizeSpectrumView(settings.spectrumView),
             hasHydratedSettings,
-            setShortcut,
+            saveShortcuts,
             setTimeView,
             setSpectrumView,
             setSpectrumBrightnessOffset,
             setSpectrumResolutionScale,
             resetProjectScopedSettings,
-            matchesShortcut,
+            matchesKeyShortcut: (action, event) =>
+                matchesKeyboardShortcut(effectiveShortcuts[action] || "", event),
+            matchesShortcut: (action, event) =>
+                matchesWheelShortcut(effectiveShortcuts[action] || "", event),
+            getKeyboardShortcutLabel,
         };
     }, [
         hasHydratedSettings,
-        setShortcut,
+        saveShortcuts,
         setTimeView,
         setSpectrumView,
         setSpectrumBrightnessOffset,
