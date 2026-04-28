@@ -1,11 +1,26 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, net, protocol, shell } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
+const { pathToFileURL } = require("node:url");
 
+const APP_PROTOCOL = "app";
+const APP_PROTOCOL_HOST = "-";
 const RENDERER_DIR_NAME = "dist-desktop-renderer";
 
-function resolveRendererIndexHtml() {
+protocol.registerSchemesAsPrivileged([
+    {
+        scheme: APP_PROTOCOL,
+        privileges: {
+            standard: true,
+            secure: true,
+            supportFetchAPI: true,
+            stream: true,
+        },
+    },
+]);
+
+function resolveRendererRoot() {
     const candidateRoots = app.isPackaged
         ? [
               path.join(process.resourcesPath, RENDERER_DIR_NAME),
@@ -19,13 +34,64 @@ function resolveRendererIndexHtml() {
     for (const root of candidateRoots) {
         const candidate = path.join(root, "index.html");
         if (fs.existsSync(candidate)) {
-            return candidate;
+            return root;
         }
     }
 
     throw new Error(
         `Unable to locate desktop renderer output. Expected ${RENDERER_DIR_NAME}/index.html.`,
     );
+}
+
+function resolveRequestPath(requestUrl) {
+    const { pathname } = new URL(requestUrl);
+
+    if (!pathname || pathname === "/") {
+        return "/index.html";
+    }
+
+    return decodeURIComponent(pathname);
+}
+
+function resolveRendererAssetPath(rendererRoot, requestUrl) {
+    const requestedPath = resolveRequestPath(requestUrl);
+    const root = path.resolve(rendererRoot);
+    const candidate = path.resolve(root, `.${requestedPath}`);
+    const relative = path.relative(root, candidate);
+
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+        return null;
+    }
+
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+        return candidate;
+    }
+
+    if (!path.extname(candidate)) {
+        const htmlCandidate = `${candidate}.html`;
+        if (fs.existsSync(htmlCandidate) && fs.statSync(htmlCandidate).isFile()) {
+            return htmlCandidate;
+        }
+
+        const indexCandidate = path.join(candidate, "index.html");
+        if (fs.existsSync(indexCandidate) && fs.statSync(indexCandidate).isFile()) {
+            return indexCandidate;
+        }
+    }
+
+    return null;
+}
+
+function registerRendererProtocol(rendererRoot) {
+    protocol.handle(APP_PROTOCOL, (request) => {
+        const assetPath = resolveRendererAssetPath(rendererRoot, request.url);
+
+        if (!assetPath) {
+            return new Response("Not Found", { status: 404 });
+        }
+
+        return net.fetch(pathToFileURL(assetPath).toString());
+    });
 }
 
 function createWindow() {
@@ -49,12 +115,13 @@ function createWindow() {
         return { action: "deny" };
     });
 
-    win.loadFile(resolveRendererIndexHtml()).catch((error) => {
+    win.loadURL(`${APP_PROTOCOL}://${APP_PROTOCOL_HOST}/index.html`).catch((error) => {
         console.error("Failed to load desktop renderer", error);
     });
 }
 
 app.whenReady().then(() => {
+    registerRendererProtocol(resolveRendererRoot());
     createWindow();
 
     app.on("activate", () => {
