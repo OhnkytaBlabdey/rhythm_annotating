@@ -36,6 +36,7 @@ interface NoteLaneProps {
     onSnapTimeChange?: (time: number | null) => void;
     selectedMeasureTime?: number | null;
     onSelectMeasure?: (time: number | null) => void;
+    onActivate?: () => void;
 }
 
 interface NoteAnchor {
@@ -142,6 +143,7 @@ export default function NoteLane({
     onSnapTimeChange,
     selectedMeasureTime,
     onSelectMeasure,
+    onActivate,
 }: NoteLaneProps) {
     const { matchesKeyShortcut } = useAppSettings();
     const wrapperRef = useRef<HTMLDivElement>(null);
@@ -978,6 +980,7 @@ export default function NoteLane({
                 return;
             }
             if (e.button !== 0) return;
+            onActivate?.();
             canvasRef.current?.focus();
             const { time, note } = updatePointer(e.clientX);
             if (time === null) return;
@@ -1050,6 +1053,7 @@ export default function NoteLane({
             editState.selectedIds,
             handleLeftClickAtSnap,
             noteHits,
+            onActivate,
             segments,
             setEditState,
             updatePointer,
