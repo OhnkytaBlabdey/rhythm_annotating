@@ -60,6 +60,7 @@ export default function WorkArea() {
     const workAreaRef = useRef<HTMLDivElement | null>(null);
     const editorLaneCardRef = useRef<HTMLDivElement | null>(null);
     const wheelUpdateGuardRef = useRef(false);
+    const matchesShortcutRef = useRef(matchesShortcut);
     const latestProjectRef = useRef<project>(objProject);
     const latestAudioDataRef = useRef<AudioData[]>(audioDataList);
     const latestTimeViewRef = useRef<TimeViewSettings>(timeView);
@@ -79,6 +80,10 @@ export default function WorkArea() {
     useEffect(() => {
         latestProjectRef.current = objProject;
     }, [objProject]);
+
+    useEffect(() => {
+        matchesShortcutRef.current = matchesShortcut;
+    }, [matchesShortcut]);
 
     useEffect(() => {
         latestAudioDataRef.current = audioDataList;
@@ -429,10 +434,10 @@ export default function WorkArea() {
             if (wheelUpdateGuardRef.current) return;
             if (isEditableTarget(event.target)) return;
 
-            const isZoomIn = matchesShortcut("timeRange.zoomIn", event);
-            const isZoomOut = matchesShortcut("timeRange.zoomOut", event);
-            const isPanUp = matchesShortcut("timeRange.panUp", event);
-            const isPanDown = matchesShortcut("timeRange.panDown", event);
+            const isZoomIn = matchesShortcutRef.current("timeRange.zoomIn", event);
+            const isZoomOut = matchesShortcutRef.current("timeRange.zoomOut", event);
+            const isPanUp = matchesShortcutRef.current("timeRange.panUp", event);
+            const isPanDown = matchesShortcutRef.current("timeRange.panDown", event);
 
             if (!isZoomIn && !isZoomOut && !isPanUp && !isPanDown) {
                 return;
@@ -504,7 +509,7 @@ export default function WorkArea() {
                 };
             });
         },
-        [duration, isEditableTarget, matchesShortcut, objProject.isPlaying],
+        [duration, isEditableTarget, objProject.isPlaying],
     );
 
     useEffect(() => {

@@ -177,6 +177,7 @@ export default function NoteMenu(p: _p) {
             {/* 拍 */}
             <div className={cls("section-label")}>拍</div>
             <div className={cls("bpm-row")}>
+                <span className={cls("bpm-unit")}>默认</span>
                 <input
                     type="number"
                     min={1}
@@ -192,12 +193,13 @@ export default function NoteMenu(p: _p) {
                         if (v > 0 && Number.isFinite(v)) p.setCurrentBpm(v);
                     }}
                     className={cls("bpm-input")}
-                    title="当前轨道 BPM"
+                    title="当前轨道默认 BPM，修改后将重设后续空小节"
                 />
                 <span className={cls("bpm-unit")}>bpm</span>
             </div>
 
             <div className={cls("bpm-row")}>
+                <span className={cls("bpm-unit")}>选中</span>
                 <input
                     type="number"
                     min={1}
@@ -222,7 +224,7 @@ export default function NoteMenu(p: _p) {
                         }
                     }}
                     className={cls("bpm-input")}
-                    title="当前选中小节 BPM"
+                    title="当前选中小节 BPM，仅修改该小节"
                 />
                 <span className={cls("bpm-unit")}>bpm</span>
             </div>
