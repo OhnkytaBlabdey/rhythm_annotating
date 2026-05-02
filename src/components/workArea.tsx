@@ -58,7 +58,7 @@ export default function WorkArea() {
     const [audioDataList, setAudioDataList] = useState<AudioData[]>([]);
     const [hasHydratedProject, setHasHydratedProject] = useState(false);
     const workAreaRef = useRef<HTMLDivElement | null>(null);
-    const laneContainerRef = useRef<HTMLDivElement | null>(null);
+    const editorLaneCardRef = useRef<HTMLDivElement | null>(null);
     const wheelUpdateGuardRef = useRef(false);
     const latestProjectRef = useRef<project>(objProject);
     const latestAudioDataRef = useRef<AudioData[]>(audioDataList);
@@ -392,19 +392,19 @@ export default function WorkArea() {
 
     useEffect(() => {
         const onNativeWheel = (event: WheelEvent) => {
-            const lanes = laneContainerRef.current;
-            if (!lanes) return;
+            const card = editorLaneCardRef.current;
+            if (!card) return;
             const target = event.target as Node | null;
-            if (!target || !lanes.contains(target)) return;
+            if (!target || !card.contains(target)) return;
             event.preventDefault();
         };
 
         const onAltKey = (event: KeyboardEvent) => {
             if (event.key !== "Alt") return;
-            const lanes = laneContainerRef.current;
-            if (!lanes) return;
+            const card = editorLaneCardRef.current;
+            if (!card) return;
             const target = event.target as Node | null;
-            if (!target || !lanes.contains(target)) return;
+            if (!target || !card.contains(target)) return;
             if (isEditableTarget(event.target)) return;
             event.preventDefault();
         };
@@ -508,19 +508,19 @@ export default function WorkArea() {
     );
 
     useEffect(() => {
-        const lanes = laneContainerRef.current;
-        if (!lanes) return;
+        const card = editorLaneCardRef.current;
+        if (!card) return;
 
         const onLaneWheel = (event: WheelEvent) => {
             handleLaneWheel(event);
         };
 
-        lanes.addEventListener("wheel", onLaneWheel, {
+        card.addEventListener("wheel", onLaneWheel, {
             passive: false,
         });
 
         return () => {
-            lanes.removeEventListener("wheel", onLaneWheel);
+            card.removeEventListener("wheel", onLaneWheel);
         };
     }, [handleLaneWheel]);
 
@@ -529,8 +529,8 @@ export default function WorkArea() {
             <div className="WorkArea" ref={workAreaRef}>
                 <div className="editor-shell flex flex-col">
                     {/* Menu */}
-                    <div className="sticky top-0 z-50 flex py-2">
-                        <div className="editor-toolbar-card">
+                    <div className="sticky top-0 z-50 flex">
+                        <div className="editor-toolbar-card mb-2">
                             <WorkMenu
                                 key={"menu"}
                                 setSoundLaneStates={setSoundLaneStates}
@@ -553,10 +553,9 @@ export default function WorkArea() {
                     </div>
                     {/* Sound Lanes */}
                     <div
-                        ref={laneContainerRef}
                         className="flex flex-col gap-4 py-2"
                     >
-                        <div className="editor-lane-card">
+                        <div className="editor-lane-card" ref={editorLaneCardRef}>
                             <div className="flex flex-col gap-4">
                                 {audioDataList.map((audio, index) => (
                                     <SoundLane
