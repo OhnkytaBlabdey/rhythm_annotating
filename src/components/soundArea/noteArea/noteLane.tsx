@@ -128,6 +128,35 @@ function fractionKey(input: Fraction | undefined): string | null {
     return `${f.a}/${f.b}`;
 }
 
+function getAbsoluteMeasureIndex(
+    time: number,
+    segments: ChartSegment[],
+    fallbackBpm: number,
+): number {
+    let cumulative = 0;
+    for (const segment of segments) {
+        if (!Number.isFinite(segment.tempo) || segment.tempo <= 0) continue;
+        const beatDuration = 60 / segment.tempo;
+        const segEnd = segment.time + segment.measures.length * beatDuration;
+        if (time >= segment.time - 1e-6 && time < segEnd - 1e-6) {
+            const relIndex = Math.floor((time - segment.time) / beatDuration);
+            return cumulative + Math.max(0, relIndex);
+        }
+        cumulative += segment.measures.length;
+    }
+    const last = segments.at(-1);
+    const virtualTempo =
+        last && Number.isFinite(last.tempo) && last.tempo > 0
+            ? last.tempo
+            : fallbackBpm;
+    const vb = 60 / virtualTempo;
+    const virtualStart = last
+        ? last.time + last.measures.length * vb
+        : 0;
+    const relIndex = Math.floor((time - virtualStart) / vb);
+    return cumulative + Math.max(0, relIndex);
+}
+
 export default function NoteLane({
     chartData,
     setChartData,
@@ -260,8 +289,10 @@ export default function NoteLane({
         const unique: number[] = [];
         for (const tick of gridTicks) {
             if (!tick.major) continue;
-            const last = unique.at(-1);
-            if (last === undefined || Math.abs(last - tick.time) > 1e-6) {
+            const isDuplicate = unique.some(
+                (t) => Math.abs(t - tick.time) <= 1e-6,
+            );
+            if (!isDuplicate) {
                 unique.push(tick.time);
             }
         }
@@ -642,7 +673,11 @@ export default function NoteLane({
             ctx.fillStyle = "#cbd5e1";
             ctx.font = "10px sans-serif";
             ctx.textAlign = "left";
-            ctx.fillText(`#${i}`, x + 2, 11);
+            ctx.fillText(
+                `#${getAbsoluteMeasureIndex(beatStart, segments, editState.currentBpm)}`,
+                x + 2,
+                11,
+            );
             ctx.fillStyle = "#94a3b8";
             ctx.fillText(`♪${bpm}`, x + 2, height - 4);
         }

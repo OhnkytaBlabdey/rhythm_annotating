@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useContext } from "react";
 import { AudioDataCtx } from "../audioContext";
 import { SoundLaneState } from "@/interface/audioData";
 
-const UI_UPDATE_INTERVAL_MS = 33;
+const UI_UPDATE_INTERVAL_MS = 16;
 const PLAY_ALL_KEY = "__PLAY_ALL__";
 
 interface _p {
