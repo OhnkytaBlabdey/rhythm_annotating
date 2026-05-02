@@ -21,35 +21,31 @@ function AmplitudeScale(p: _p) {
     }
 
     return (
-        <div>
-            <div className="flex-col">
-                <button
-                    onClick={handleAmpUp}
-                    title="Amplitude Up"
-                    className={`flex items-center gap-2 ${cls("button")}`}
-                >
-                    <Image
-                        src="/assets/icons/ampUp.png"
-                        alt="放大振幅"
-                        width={24}
-                        height={24}
-                    />
-                    <span>放大振幅</span>
-                </button>
-                <button
-                    onClick={handleAmpDown}
-                    title="Amplitude Down"
-                    className={`flex items-center gap-2 ${cls("button")}`}
-                >
-                    <Image
-                        src="/assets/icons/ampDown.png"
-                        alt="缩小振幅"
-                        width={24}
-                        height={24}
-                    />
-                    <span>缩小振幅</span>
-                </button>
-            </div>
+        <div className="flex gap-2">
+            <button
+                onClick={handleAmpUp}
+                title="放大振幅 (Amplitude Up)"
+                className={cls("icon-button")}
+            >
+                <Image
+                    src="/assets/icons/ampUp.png"
+                    alt="放大振幅"
+                    width={24}
+                    height={24}
+                />
+            </button>
+            <button
+                onClick={handleAmpDown}
+                title="缩小振幅 (Amplitude Down)"
+                className={cls("icon-button")}
+            >
+                <Image
+                    src="/assets/icons/ampDown.png"
+                    alt="缩小振幅"
+                    width={24}
+                    height={24}
+                />
+            </button>
         </div>
     );
 }

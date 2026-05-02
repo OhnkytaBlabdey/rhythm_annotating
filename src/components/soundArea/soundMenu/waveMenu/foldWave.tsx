@@ -17,27 +17,22 @@ function FoldWave(p: _p) {
     };
 
     return (
-        <div>
-            <div className="flex">
-                <button
-                    onClick={handleFold}
-                    title="Amplitude Fold"
-                    className={`flex items-center gap-2 ${cls("button")}`}
-                >
-                    <Image
-                        src={
-                            p.isFolded
-                                ? "/assets/icons/unfold.png"
-                                : "/assets/icons/fold.png"
-                        }
-                        alt="放大振幅"
-                        width={24}
-                        height={24}
-                    />
-                    <span>{!p.isFolded ? "折叠幅值" : "展开幅值"}</span>
-                </button>
-            </div>
-        </div>
+        <button
+            onClick={handleFold}
+            title={p.isFolded ? "展开幅值 (Unfold)" : "折叠幅值 (Fold)"}
+            className={cls("fold-button")}
+        >
+            <Image
+                src={
+                    p.isFolded
+                        ? "/assets/icons/unfold.png"
+                        : "/assets/icons/fold.png"
+                }
+                alt={p.isFolded ? "展开幅值" : "折叠幅值"}
+                width={24}
+                height={24}
+            />
+        </button>
     );
 }
 

@@ -174,8 +174,8 @@ export default function NoteMenu(p: _p) {
                 />
             </div>
 
-            {/* BPM */}
-            <div className={cls("section-label")}>BPM</div>
+            {/* 拍 */}
+            <div className={cls("section-label")}>拍</div>
             <div className={cls("bpm-row")}>
                 <input
                     type="number"
@@ -227,7 +227,6 @@ export default function NoteMenu(p: _p) {
                 <span className={cls("bpm-unit")}>bpm</span>
             </div>
 
-            <div className={cls("section-label")}>等分</div>
             <div className={cls("bpm-row")}>
                 <input
                     type="number"
@@ -262,7 +261,7 @@ export default function NoteMenu(p: _p) {
             </div>
 
             <div className={cls("section-label")}>Lane</div>
-            <div className={cls("button-group")}>
+            <div className={cls("button-group", "lane-grid")}>
                 <ActionButton
                     label="清空本Lane"
                     title="清空当前 NoteLane 数据"

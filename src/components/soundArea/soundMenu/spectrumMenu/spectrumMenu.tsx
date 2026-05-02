@@ -1,5 +1,4 @@
 import React from "react";
-import FoldSpectrum from "./foldSpectrum";
 import BrightnessUp from "./brightnessUp";
 import BrightnessDown from "./brightnessDown";
 import ResolutionUp from "./resolutionUp";
@@ -20,65 +19,51 @@ function SpectrumMenu(p: _p) {
     const resolutionScale = p.spectrumState.resolutionScale ?? 1;
 
     return (
-        <div className="p-3">
-            <div className="flex flex-col gap-2">
-                <div>
-                    <FoldSpectrum
-                        audioId={p.audioId}
-                        isFolded={p.spectrumState.isFolded}
-                        setIsFolded={(isFolded) => {
-                            p.setSpectrumState({
-                                ...p.spectrumState,
-                                isFolded,
-                            });
-                        }}
-                    />
-                </div>
-                <BrightnessUp
-                    audioId={p.audioId}
-                    brightnessOffset={brightnessOffset}
-                    setBrightnessOffset={(brightnessOffset) => {
-                        setSpectrumBrightnessOffset(brightnessOffset);
-                        p.setSpectrumState({
-                            ...p.spectrumState,
-                            brightnessOffset,
-                        });
-                    }}
-                />
-                <BrightnessDown
-                    audioId={p.audioId}
-                    brightnessOffset={brightnessOffset}
-                    setBrightnessOffset={(brightnessOffset) => {
-                        setSpectrumBrightnessOffset(brightnessOffset);
-                        p.setSpectrumState({
-                            ...p.spectrumState,
-                            brightnessOffset,
-                        });
-                    }}
-                />
-                <ResolutionUp
-                    audioId={p.audioId}
-                    resolutionScale={resolutionScale}
-                    setResolutionScale={(resolutionScale) => {
-                        setSpectrumResolutionScale(resolutionScale);
-                        p.setSpectrumState({
-                            ...p.spectrumState,
-                            resolutionScale,
-                        });
-                    }}
-                />
-                <ResolutionDown
-                    audioId={p.audioId}
-                    resolutionScale={resolutionScale}
-                    setResolutionScale={(resolutionScale) => {
-                        setSpectrumResolutionScale(resolutionScale);
-                        p.setSpectrumState({
-                            ...p.spectrumState,
-                            resolutionScale,
-                        });
-                    }}
-                />
-            </div>
+        <div className="px-2 pb-2 flex gap-2">
+            <BrightnessUp
+                audioId={p.audioId}
+                brightnessOffset={brightnessOffset}
+                setBrightnessOffset={(brightnessOffset) => {
+                    setSpectrumBrightnessOffset(brightnessOffset);
+                    p.setSpectrumState({
+                        ...p.spectrumState,
+                        brightnessOffset,
+                    });
+                }}
+            />
+            <BrightnessDown
+                audioId={p.audioId}
+                brightnessOffset={brightnessOffset}
+                setBrightnessOffset={(brightnessOffset) => {
+                    setSpectrumBrightnessOffset(brightnessOffset);
+                    p.setSpectrumState({
+                        ...p.spectrumState,
+                        brightnessOffset,
+                    });
+                }}
+            />
+            <ResolutionUp
+                audioId={p.audioId}
+                resolutionScale={resolutionScale}
+                setResolutionScale={(resolutionScale) => {
+                    setSpectrumResolutionScale(resolutionScale);
+                    p.setSpectrumState({
+                        ...p.spectrumState,
+                        resolutionScale,
+                    });
+                }}
+            />
+            <ResolutionDown
+                audioId={p.audioId}
+                resolutionScale={resolutionScale}
+                setResolutionScale={(resolutionScale) => {
+                    setSpectrumResolutionScale(resolutionScale);
+                    p.setSpectrumState({
+                        ...p.spectrumState,
+                        resolutionScale,
+                    });
+                }}
+            />
         </div>
     );
 }

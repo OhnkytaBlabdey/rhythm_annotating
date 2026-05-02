@@ -1,5 +1,4 @@
 import React from "react";
-import FoldWave from "./foldWave";
 import AmplitudeScale from "./amplitudeScale";
 import { WaveLaneState } from "@/interface/audioData";
 
@@ -11,29 +10,17 @@ interface _p {
 
 function WaveMenu(p: _p) {
     return (
-        <div className="p-3">
-            <div className="flex flex-col gap-2">
-                <FoldWave
-                    audioId={p.audioId}
-                    isFolded={p.waveState.isFolded}
-                    setIsFolded={(isFolded) => {
-                        p.setWaveState({
-                            ...p.waveState,
-                            isFolded,
-                        });
-                    }}
-                />
-                <AmplitudeScale
-                    audioId={p.audioId}
-                    amplitudeMultiplier={p.waveState.amplitudeMultiplier}
-                    setAmplitudeMultiplier={(amplitudeMultiplier) => {
-                        p.setWaveState({
-                            ...p.waveState,
-                            amplitudeMultiplier,
-                        });
-                    }}
-                />
-            </div>
+        <div className="px-2 pb-2">
+            <AmplitudeScale
+                audioId={p.audioId}
+                amplitudeMultiplier={p.waveState.amplitudeMultiplier}
+                setAmplitudeMultiplier={(amplitudeMultiplier) => {
+                    p.setWaveState({
+                        ...p.waveState,
+                        amplitudeMultiplier,
+                    });
+                }}
+            />
         </div>
     );
 }

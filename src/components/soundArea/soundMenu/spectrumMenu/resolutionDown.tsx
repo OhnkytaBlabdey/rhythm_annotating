@@ -20,23 +20,18 @@ function ResolutionDown(p: _p) {
     }
 
     return (
-        <div>
-            <div className="flex">
-                <button
-                    onClick={handleResolutionDown}
-                    title="Decrease time+frequency analysis resolution"
-                    className={`flex items-center gap-2 ${cls("button")}`}
-                >
-                    <Image
-                        src="/assets/icons/zoomOut.png"
-                        alt="降低分辨率"
-                        width={24}
-                        height={24}
-                    />
-                    <span>降低分辨率</span>
-                </button>
-            </div>
-        </div>
+        <button
+            onClick={handleResolutionDown}
+            title="降低分辨率 (Decrease resolution)"
+            className={cls("icon-button")}
+        >
+            <Image
+                src="/assets/icons/zoomOut.png"
+                alt="降低分辨率"
+                width={24}
+                height={24}
+            />
+        </button>
     );
 }
 

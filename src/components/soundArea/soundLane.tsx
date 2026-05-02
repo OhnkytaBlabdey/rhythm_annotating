@@ -5,7 +5,9 @@ import SoundMenu from "./soundMenu/soundMenu";
 import WaveLane from "./waveArea/waveLane";
 import SpectrumLane from "./spectrumArea/spectrumLane";
 import WaveMenu from "./soundMenu/waveMenu/waveMenu";
+import FoldWave from "./soundMenu/waveMenu/foldWave";
 import SpectrumMenu from "./soundMenu/spectrumMenu/spectrumMenu";
+import FoldSpectrum from "./soundMenu/spectrumMenu/foldSpectrum";
 import NoteMenu from "./noteArea/noteMenu/noteMenu";
 import { useContext, useCallback, useMemo, useState } from "react";
 import { AudioDataCtx } from "../audioContext";
@@ -811,7 +813,22 @@ export default function SoundLane(prop: _prop) {
                         className="editor-inspector-panel w-[176px] shrink-0"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className="editor-pane-caption">Wave</div>
+                        <div className="flex items-center gap-2 px-2 pt-2">
+                            <div className="editor-pane-caption">Wave</div>
+                            <FoldWave
+                                audioId={prop.audioId}
+                                isFolded={prop.refSoundLaneState.waveLane.isFolded}
+                                setIsFolded={(isFolded) => {
+                                    prop.setSoundLaneState(prop.index, {
+                                        ...prop.refSoundLaneState,
+                                        waveLane: {
+                                            ...prop.refSoundLaneState.waveLane,
+                                            isFolded,
+                                        },
+                                    });
+                                }}
+                            />
+                        </div>
                         <WaveMenu
                             audioId={prop.audioId}
                             waveState={prop.refSoundLaneState.waveLane}
@@ -845,7 +862,22 @@ export default function SoundLane(prop: _prop) {
                         className="editor-inspector-panel w-[176px] shrink-0"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className="editor-pane-caption">Spectrum</div>
+                        <div className="flex items-center gap-2 px-2 pt-2">
+                            <div className="editor-pane-caption">Spectrum</div>
+                            <FoldSpectrum
+                                audioId={prop.audioId}
+                                isFolded={prop.refSoundLaneState.spectrumLane.isFolded}
+                                setIsFolded={(isFolded) => {
+                                    prop.setSoundLaneState(prop.index, {
+                                        ...prop.refSoundLaneState,
+                                        spectrumLane: {
+                                            ...prop.refSoundLaneState.spectrumLane,
+                                            isFolded,
+                                        },
+                                    });
+                                }}
+                            />
+                        </div>
                         <SpectrumMenu
                             audioId={prop.audioId}
                             spectrumState={prop.refSoundLaneState.spectrumLane}

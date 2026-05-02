@@ -17,27 +17,22 @@ function FoldSpectrum(p: _p) {
     };
 
     return (
-        <div>
-            <div className="flex">
-                <button
-                    onClick={handleFold}
-                    title="Spectrum Fold"
-                    className={`flex items-center gap-2 ${cls("button")}`}
-                >
-                    <Image
-                        src={
-                            p.isFolded
-                                ? "/assets/icons/unfold.png"
-                                : "/assets/icons/fold.png"
-                        }
-                        alt="折叠频域"
-                        width={24}
-                        height={24}
-                    />
-                    <span>{!p.isFolded ? "折叠频域" : "展开频域"}</span>
-                </button>
-            </div>
-        </div>
+        <button
+            onClick={handleFold}
+            title={p.isFolded ? "展开频域 (Unfold)" : "折叠频域 (Fold)"}
+            className={cls("fold-button")}
+        >
+            <Image
+                src={
+                    p.isFolded
+                        ? "/assets/icons/unfold.png"
+                        : "/assets/icons/fold.png"
+                }
+                alt={p.isFolded ? "展开频域" : "折叠频域"}
+                width={24}
+                height={24}
+            />
+        </button>
     );
 }
 

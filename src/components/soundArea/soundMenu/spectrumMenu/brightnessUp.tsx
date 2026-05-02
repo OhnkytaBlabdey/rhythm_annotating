@@ -20,23 +20,18 @@ function BrightnessUp(p: _p) {
     }
 
     return (
-        <div>
-            <div className="flex">
-                <button
-                    onClick={handleBrighten}
-                    title="Brightness Up"
-                    className={`flex items-center gap-2 ${cls("button")}`}
-                >
-                    <Image
-                        src="/assets/icons/liangduup.svg"
-                        alt="提高亮度"
-                        width={24}
-                        height={24}
-                    />
-                    <span>提高亮度</span>
-                </button>
-            </div>
-        </div>
+        <button
+            onClick={handleBrighten}
+            title="提高亮度 (Brightness Up)"
+            className={cls("icon-button")}
+        >
+            <Image
+                src="/assets/icons/liangduup.svg"
+                alt="提高亮度"
+                width={24}
+                height={24}
+            />
+        </button>
     );
 }
 

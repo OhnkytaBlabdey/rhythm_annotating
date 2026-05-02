@@ -20,23 +20,18 @@ function BrightnessDown(p: _p) {
     }
 
     return (
-        <div>
-            <div className="flex">
-                <button
-                    onClick={handleDarken}
-                    title="Brightness Down"
-                    className={`flex items-center gap-2 ${cls("button")}`}
-                >
-                    <Image
-                        src="/assets/icons/liangdudown.svg"
-                        alt="降低亮度"
-                        width={24}
-                        height={24}
-                    />
-                    <span>降低亮度</span>
-                </button>
-            </div>
-        </div>
+        <button
+            onClick={handleDarken}
+            title="降低亮度 (Brightness Down)"
+            className={cls("icon-button")}
+        >
+            <Image
+                src="/assets/icons/liangdudown.svg"
+                alt="降低亮度"
+                width={24}
+                height={24}
+            />
+        </button>
     );
 }
 

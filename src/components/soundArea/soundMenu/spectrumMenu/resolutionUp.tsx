@@ -20,23 +20,18 @@ function ResolutionUp(p: _p) {
     }
 
     return (
-        <div>
-            <div className="flex">
-                <button
-                    onClick={handleResolutionUp}
-                    title="Increase time+frequency analysis resolution"
-                    className={`flex items-center gap-2 ${cls("button")}`}
-                >
-                    <Image
-                        src="/assets/icons/zoomIn.png"
-                        alt="提高分辨率"
-                        width={24}
-                        height={24}
-                    />
-                    <span>提高分辨率</span>
-                </button>
-            </div>
-        </div>
+        <button
+            onClick={handleResolutionUp}
+            title="提高分辨率 (Increase resolution)"
+            className={cls("icon-button")}
+        >
+            <Image
+                src="/assets/icons/zoomIn.png"
+                alt="提高分辨率"
+                width={24}
+                height={24}
+            />
+        </button>
     );
 }
 
