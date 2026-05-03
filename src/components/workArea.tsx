@@ -566,7 +566,7 @@ export default function WorkArea() {
                     </div>
                     {/* Sound Lanes */}
                     <div
-                        className="flex flex-col gap-4 py-2"
+                        className="flex flex-col gap-4 pt-5 pb-2"
                     >
                         <div className="editor-lane-card" ref={editorLaneCardRef}>
                             <div className="flex flex-col gap-4">
