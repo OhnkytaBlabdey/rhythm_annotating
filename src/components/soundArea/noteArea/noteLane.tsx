@@ -243,14 +243,11 @@ export default function NoteLane({
         }
 
         const last = segments.at(-1);
-        const virtualTempo =
-            last && Number.isFinite(last.tempo) && last.tempo > 0
-                ? last.tempo
-                : Math.max(1, editState.currentBpm);
+        const virtualTempo = Math.max(1, editState.currentBpm);
         const beatDuration = 60 / virtualTempo;
         const virtualStart =
             last && Number.isFinite(last.tempo) && last.tempo > 0
-                ? last.time + last.measures.length * beatDuration
+                ? last.time + last.measures.length * (60 / last.tempo)
                 : 0;
 
         for (

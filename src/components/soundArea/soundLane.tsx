@@ -696,7 +696,6 @@ export default function SoundLane(prop: _prop) {
                 updateLaneData(activeLane.id, (prevLane) => ({
                     ...prevLane,
                     defaultBpm: safeBpm,
-                    chartData: retimeChartByBpm(prevLane.chartData, safeBpm),
                 }));
             },
             currentMeasureBpm: selectedMeasure?.tempo ?? null,
@@ -769,7 +768,6 @@ export default function SoundLane(prop: _prop) {
         laneErrorMap,
         locateMeasureAtTime,
         cloneChart,
-        retimeChartByBpm,
         retimeSingleMeasureByBpm,
         setLaneEditState,
         updateLaneData,
