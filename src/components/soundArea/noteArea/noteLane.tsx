@@ -136,6 +136,10 @@ function getAbsoluteMeasureIndex(
     let cumulative = 0;
     for (const segment of segments) {
         if (!Number.isFinite(segment.tempo) || segment.tempo <= 0) continue;
+        if (segment.measures.length === 0) {
+            if (time >= segment.time - 1e-6) return cumulative;
+            continue;
+        }
         const beatDuration = 60 / segment.tempo;
         const segEnd = segment.time + segment.measures.length * beatDuration;
         if (time >= segment.time - 1e-6 && time < segEnd - 1e-6) {
@@ -340,6 +344,10 @@ export default function NoteLane({
             for (let i = 0; i < sorted.length; i++) {
                 const seg = sorted[i];
                 if (!Number.isFinite(seg.tempo) || seg.tempo <= 0) continue;
+                if (seg.measures.length === 0) {
+                    if (time >= seg.time - 1e-6) return seg.tempo;
+                    continue;
+                }
                 const beatDuration = 60 / seg.tempo;
                 const end = seg.time + seg.measures.length * beatDuration;
                 if (time >= seg.time - 1e-6 && time < end - 1e-6) {

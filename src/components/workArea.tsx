@@ -335,6 +335,11 @@ export default function WorkArea() {
         [objProject.currentTime, maxStart],
     );
 
+    const timeRange = useMemo(
+        (): [number, number] => [clampedCurrentTime, clampedCurrentTime + visibleSpan],
+        [clampedCurrentTime, visibleSpan],
+    );
+
     useEffect(() => {
         if (!hasHydratedSettings) return;
         if (!hasHydratedProject) return;
@@ -401,6 +406,7 @@ export default function WorkArea() {
             if (!card) return;
             const target = event.target as Node | null;
             if (!target || !card.contains(target)) return;
+            if (isEditableTarget(event.target)) return;
             event.preventDefault();
         };
 
@@ -447,7 +453,7 @@ export default function WorkArea() {
             // window wheel listener above; React onWheel may be passive.
             event.stopPropagation();
             wheelUpdateGuardRef.current = true;
-            queueMicrotask(() => {
+            requestAnimationFrame(() => {
                 wheelUpdateGuardRef.current = false;
             });
 
@@ -573,10 +579,7 @@ export default function WorkArea() {
                                         setSoundLaneState={
                                             setIndexSoundLaneState
                                         }
-                                        timeRange={[
-                                            clampedCurrentTime,
-                                            clampedCurrentTime + visibleSpan,
-                                        ]}
+                                        timeRange={timeRange}
                                     />
                                 ))}
                             </div>
