@@ -5,21 +5,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Development
 
 ```bash
-pnpm install        # Install dependencies
-pnpm dev            # Next.js dev server (web build, basePath=/rhythm_annotating)
-pnpm build          # Next.js static export → out/
-pnpm lint           # ESLint
+pnpm install                # Install dependencies
+pnpm dev                    # Next.js dev server (web build, basePath=/rhythm_annotating)
+pnpm build                  # Next.js static export → out/ (alias: pnpm build:web)
+pnpm lint                   # ESLint (flat config: eslint.config.mjs)
 ```
+
+No test framework is set up (no jest, vitest, or playwright).
 
 ### Desktop (Electron)
 
 ```bash
 pnpm desktop:start                                                  # Build desktop renderer + launch Electron locally
+pnpm desktop:package                                                # Package for current platform (via electron-forge)
+pnpm desktop:make                                                   # Create distributable for current platform
 pnpm desktop:make:win:x64                                           # Package for a specific platform (also win:arm64, mac:x64, mac:arm64, linux:x64, linux:arm64)
 pnpm build:desktop:renderer                                         # Only build the Next.js desktop export → dist-desktop-renderer/
 ```
 
-Desktop build sets `BUILD_TARGET=desktop` env, which makes Next.js export with an empty `basePath` (no `/rhythm_annotating` prefix). The Electron main process serves this via a custom `app://` protocol with path traversal protection.
+Desktop build sets `BUILD_TARGET=desktop` env, which makes Next.js export with no `basePath` (no `/rhythm_annotating` prefix). The Electron main process serves this via a custom `app://` protocol with path traversal protection. Desktop builds require `node-linker=hoisted` in `.npmrc`.
+
+Electron Forge config is in `forge.config.js`. All `desktop:make:*` scripts use `@electron-forge/maker-zip` (no signing/notarization).
 
 ## Architecture
 
@@ -30,7 +36,9 @@ This is a **local-first rhythm annotation editor** — a Next.js 16 static-expor
 | Target | `basePath` | Output | Runtime |
 |--------|---|-----|-----|
 | Web (`pnpm build`) | `/rhythm_annotating` | `out/` | GitHub Pages / static hosting |
-| Desktop (`BUILD_TARGET=desktop`) | empty | `dist-desktop-renderer/` | Electron (`electron/main.cjs`) |
+| Desktop (`BUILD_TARGET=desktop`) | undefined (empty string || undefined) | `dist-desktop-renderer/` | Electron (`electron/main.cjs`) |
+
+Static export requires `images.unoptimized: true` in `next.config.ts`.
 
 Electron loads the desktop renderer via a custom `app://` protocol handler that resolves files from `dist-desktop-renderer/` with strict path traversal checks. The preload script (`electron/preload.cjs`) exposes `window.desktopRuntime` via `contextBridge` (isElectron, platform, arch, versions).
 
@@ -76,6 +84,11 @@ Convenience helpers on the context: `matchesKeyShortcut(action, event)` and `mat
 - **WaveLane**: Renders audio waveform from `AudioBuffer` using canvas.
 - **SpectrumLane**: Computes FFT spectrum data in a Web Worker (`spectrumWorker.ts`), renders via canvas. Worker is initialized via `createSpectrumWorker.ts` (WASM-based approach).
 - **NoteLane**: Renders note charts on a time grid with measure graduations.
+
+### CI/CD
+
+Push to `main` triggers GitHub Actions deploy (`.github/workflows/deploy.yml`):
+- pnpm 10, Node 22, `pnpm install --frozen-lockfile` → `pnpm build` → deploy to GitHub Pages via `actions/deploy-pages@v4`.
 
 ### Key Conventions
 
