@@ -65,6 +65,7 @@ export default function WorkArea() {
     const latestAudioDataRef = useRef<AudioData[]>(audioDataList);
     const latestTimeViewRef = useRef<TimeViewSettings>(timeView);
     const latestSpectrumViewRef = useRef<SpectrumViewSettings>(spectrumView);
+    const latestSetTimeViewRef = useRef(setTimeView);
 
     const isEditableTarget = useCallback((target: EventTarget | null) => {
         const el = target as HTMLElement | null;
@@ -96,6 +97,10 @@ export default function WorkArea() {
     useEffect(() => {
         latestSpectrumViewRef.current = spectrumView;
     }, [spectrumView]);
+
+    useEffect(() => {
+        latestSetTimeViewRef.current = setTimeView;
+    }, [setTimeView]);
 
     useEffect(() => {
         const unregisterTimeView = registerPersistSlice<TimeViewSettings>({
@@ -449,73 +454,70 @@ export default function WorkArea() {
                 return;
             }
 
-            // Default scroll prevention is handled by the native non-passive
-            // window wheel listener above; React onWheel may be passive.
             event.stopPropagation();
             wheelUpdateGuardRef.current = true;
             requestAnimationFrame(() => {
                 wheelUpdateGuardRef.current = false;
             });
 
+            const current = latestProjectRef.current;
+
             if (isZoomIn || isZoomOut) {
-                setProject((prev) => {
-                    const nextMultiplier = getNextTimeMultiplierByWheel(
-                        duration,
-                        prev.timeMultiplier,
-                        event.deltaY,
-                    );
-                    const nextSpan = getVisibleSpan(duration, nextMultiplier);
-                    const maxStart = Math.max(0, duration - nextSpan);
-                    const nextCurrentTime = clamp(
-                        prev.currentTime,
-                        0,
-                        maxStart,
-                    );
+                const nextMultiplier = getNextTimeMultiplierByWheel(
+                    duration,
+                    current.timeMultiplier,
+                    event.deltaY,
+                );
+                const nextSpan = getVisibleSpan(duration, nextMultiplier);
+                const maxStart = Math.max(0, duration - nextSpan);
+                const nextCurrentTime = clamp(current.currentTime, 0, maxStart);
 
-                    if (
-                        prev.timeMultiplier === nextMultiplier &&
-                        prev.currentTime === nextCurrentTime
-                    ) {
-                        return prev;
-                    }
+                if (
+                    current.timeMultiplier === nextMultiplier &&
+                    current.currentTime === nextCurrentTime
+                ) {
+                    return;
+                }
 
-                    return {
-                        ...prev,
-                        timeMultiplier: nextMultiplier,
-                        currentTime: nextCurrentTime,
-                    };
+                setProject((prev) => ({
+                    ...prev,
+                    timeMultiplier: nextMultiplier,
+                    currentTime: nextCurrentTime,
+                }));
+                latestSetTimeViewRef.current({
+                    currentTime: nextCurrentTime,
+                    timeMultiplier: nextMultiplier,
                 });
                 return;
             }
 
             // Pan: skip when playing
-            if (objProject.isPlaying) return;
+            if (current.isPlaying) return;
 
             const panDirection = isPanUp ? -1 : 1;
-            setProject((prev) => {
-                const visibleSpan = getVisibleSpan(
-                    duration,
-                    prev.timeMultiplier,
-                );
-                const maxStart = Math.max(0, duration - visibleSpan);
-                const panStep = visibleSpan * WHEEL_PAN_RATIO;
-                const nextCurrentTime = clamp(
-                    prev.currentTime + panDirection * panStep,
-                    0,
-                    maxStart,
-                );
+            const visibleSpan = getVisibleSpan(duration, current.timeMultiplier);
+            const maxStart = Math.max(0, duration - visibleSpan);
+            const panStep = visibleSpan * WHEEL_PAN_RATIO;
+            const nextCurrentTime = clamp(
+                current.currentTime + panDirection * panStep,
+                0,
+                maxStart,
+            );
 
-                if (nextCurrentTime === prev.currentTime) {
-                    return prev;
-                }
+            if (nextCurrentTime === current.currentTime) {
+                return;
+            }
 
-                return {
-                    ...prev,
-                    currentTime: nextCurrentTime,
-                };
+            setProject((prev) => ({
+                ...prev,
+                currentTime: nextCurrentTime,
+            }));
+            latestSetTimeViewRef.current({
+                currentTime: nextCurrentTime,
+                timeMultiplier: current.timeMultiplier,
             });
         },
-        [duration, isEditableTarget, objProject.isPlaying],
+        [duration, isEditableTarget],
     );
 
     useEffect(() => {
