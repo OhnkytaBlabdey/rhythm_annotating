@@ -75,6 +75,12 @@ export default function SoundLane(prop: _prop) {
         return noteLanes[0]?.id ?? null;
     }, [activeNoteLaneId, noteLanes]);
 
+    const sortedNoteLanes = useMemo(() => {
+        const active = noteLanes.find((l) => l.id === resolvedActiveLaneId);
+        const others = noteLanes.filter((l) => l.id !== resolvedActiveLaneId);
+        return active ? [active, ...others] : [...noteLanes];
+    }, [noteLanes, resolvedActiveLaneId]);
+
     const laneSnapHandlers = useMemo(() => {
         const handlers: Record<string, (time: number | null) => void> = {};
         for (const lane of noteLanes) {
@@ -918,13 +924,7 @@ export default function SoundLane(prop: _prop) {
                         )}
                     </div>
                     <div className="flex-1 min-w-0 flex flex-col gap-2">
-                        {[...noteLanes]
-                            .sort((a, b) => {
-                                if (a.id === resolvedActiveLaneId) return -1;
-                                if (b.id === resolvedActiveLaneId) return -1;
-                                return 0;
-                            })
-                            .map((lane: NoteLaneData) => {
+                        {sortedNoteLanes.map((lane: NoteLaneData) => {
                             const editState =
                                 laneEditStateMap[lane.id] ??
                                 defaultNoteEditState(lane.defaultBpm);

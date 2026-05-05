@@ -409,9 +409,10 @@ export default function WorkArea() {
         const onNativeWheel = (event: WheelEvent) => {
             const card = editorLaneCardRef.current;
             if (!card) return;
-            const target = event.target as Node | null;
+            const target = event.target as HTMLElement | null;
             if (!target || !card.contains(target)) return;
             if (isEditableTarget(event.target)) return;
+            if (!target.closest('[data-lane="true"]')) return;
             event.preventDefault();
         };
 

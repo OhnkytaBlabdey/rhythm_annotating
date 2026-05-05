@@ -236,6 +236,17 @@ export default function NoteLane({
     editingRef.current.noteId = annotationEditing;
     editingRef.current.text = annotationInputValue;
 
+    const annotationInputRef = useRef<HTMLInputElement | null>(null);
+
+    useEffect(() => {
+        if (annotationEditing !== null) {
+            requestAnimationFrame(() => {
+                annotationInputRef.current?.focus();
+                annotationInputRef.current?.select();
+            });
+        }
+    }, [annotationEditing]);
+
     const segments = useMemo(
         () => [...chartData].sort((a, b) => a.time - b.time),
         [chartData],
@@ -876,10 +887,10 @@ export default function NoteLane({
                             const aboxW = 60;
                             const aboxH = 18;
                             const aboxX = ax - aboxW / 2;
-                            const isEditing = note.id === annotationEditing;
-                            ctx.fillStyle = isEditing ? "#e0f2fe" : "#ffffffdd";
-                            ctx.strokeStyle = isEditing ? "#0ea5e9" : "#64748b";
-                            ctx.lineWidth = isEditing ? 2 : 1;
+                            if (note.id === annotationEditing) continue;
+                            ctx.fillStyle = "#ffffffdd";
+                            ctx.strokeStyle = "#64748b";
+                            ctx.lineWidth = 1;
                             roundRect(
                                 ctx,
                                 aboxX,
@@ -890,9 +901,7 @@ export default function NoteLane({
                             );
                             ctx.fill();
                             ctx.stroke();
-                            const displayText = isEditing
-                                ? annotationInputValue || ""
-                                : note.annotation || "";
+                            const displayText = note.annotation || "";
                             if (displayText) {
                                 ctx.fillStyle = "#1e293b";
                                 ctx.font = "10px sans-serif";
@@ -1456,13 +1465,14 @@ export default function NoteLane({
             if (renderValidationError) {
                 return;
             }
+            if (editState.mode === "browse") return;
             e.preventDefault();
             const { note } = updatePointer(e.clientX);
             if (note) {
                 deleteById(new Set<string>([note.id]));
             }
         },
-        [deleteById, renderValidationError, updatePointer],
+        [deleteById, editState.mode, renderValidationError, updatePointer],
     );
 
     const handleKeyDown = useCallback(
@@ -1660,8 +1670,8 @@ export default function NoteLane({
                                 setAnnotationEditing(null);
                                 setAnnotationInputValue("");
                             }}
+                            ref={annotationInputRef}
                             placeholder="输入标注文本"
-                            autoFocus
                         />
                     </div>
                 )}
