@@ -782,28 +782,28 @@ export default function NoteLane({
                 measureIndex++
             ) {
                 const measureStart = segment.time + measureIndex * beatDuration;
+                const measureEnd = measureStart + beatDuration;
                 const measure = segment.measures[measureIndex];
+
+                // Measure-level filter: skip measures outside [startTime, endTime]
+                // when NOT in start/end marker placement modes
+                if (
+                    editState.mode !== "insert-start" &&
+                    editState.mode !== "insert-end"
+                ) {
+                    if (
+                        (startTime !== null && startTime !== undefined && measureEnd < startTime) ||
+                        (endTime !== null && endTime !== undefined && measureStart > endTime)
+                    ) {
+                        continue;
+                    }
+                }
 
                 for (const note of measure.notes) {
                     const anchors = toAnchors(note, measureStart, beatDuration);
                     if (anchors.length === 0) {
                         continue;
                     }
-
-                    // Filter by start/end time
-                    const noteTime = anchors[0].time;
-                    if (
-                        startTime !== null &&
-                        startTime !== undefined &&
-                        noteTime < startTime
-                    )
-                        continue;
-                    if (
-                        endTime !== null &&
-                        endTime !== undefined &&
-                        noteTime > endTime
-                    )
-                        continue;
 
                     const color = colorByType(note.type);
                     const y = centerY;
@@ -1179,13 +1179,89 @@ export default function NoteLane({
             onSelectMeasure?.(time);
 
             if (editState.mode === "annotate") {
-                if (note) {
+                // Hit-test annotation boxes (below each note)
+                const rect = canvasRef.current?.getBoundingClientRect();
+                if (!rect) return;
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
+                const boxY = height / 2 + 20;
+                const boxH = 18;
+                const boxHW = 30;
+
+                let hitNoteId: string | null = null;
+                for (const segment of segments) {
+                    if (!Number.isFinite(segment.tempo) || segment.tempo <= 0)
+                        continue;
+                    const beatDuration = 60 / segment.tempo;
+                    for (
+                        let mi = 0;
+                        mi < segment.measures.length;
+                        mi++
+                    ) {
+                        const mStart = segment.time + mi * beatDuration;
+                        const mEnd = mStart + beatDuration;
+                        // Apply measure filter
+                        if (
+                            startTime !== null &&
+                            startTime !== undefined &&
+                            mEnd < startTime
+                        )
+                            continue;
+                        if (
+                            endTime !== null &&
+                            endTime !== undefined &&
+                            mStart > endTime
+                        )
+                            continue;
+                        for (const n of segment.measures[mi].notes) {
+                            const a = toAnchors(n, mStart, beatDuration);
+                            if (a.length === 0) continue;
+                            const headTime = a[0].time;
+                            if (headTime < rangeStart || headTime > rangeEnd)
+                                continue;
+                            const bx = mapTimeToX(headTime);
+                            if (
+                                clickX >= bx - boxHW &&
+                                clickX <= bx + boxHW &&
+                                clickY >= boxY &&
+                                clickY <= boxY + boxH
+                            ) {
+                                hitNoteId = n.id;
+                                break;
+                            }
+                        }
+                        if (hitNoteId) break;
+                    }
+                    if (hitNoteId) break;
+                }
+
+                if (hitNoteId) {
                     const fullNote = segments
                         .flatMap((seg) => seg.measures)
                         .flatMap((m) => m.notes)
-                        .find((n) => n.id === note.id);
-                    setAnnotationEditing(note.id);
+                        .find((n) => n.id === hitNoteId);
+                    setAnnotationEditing(hitNoteId);
                     setAnnotationInputValue(fullNote?.annotation ?? "");
+                } else if (annotationEditing !== null) {
+                    // Clicked outside — save and close
+                    const next = segments.map((seg) => ({
+                        ...seg,
+                        measures: seg.measures.map((m) => ({
+                            ...m,
+                            notes: m.notes.map((n) =>
+                                n.id === annotationEditing
+                                    ? {
+                                          ...n,
+                                          annotation:
+                                              annotationInputValue || undefined,
+                                      }
+                                    : n,
+                            ),
+                        })),
+                    }));
+                    setChartData(next, true);
+                    setAnnotationEditing(null);
+                    setAnnotationInputValue("");
                 }
                 return;
             }
@@ -1252,14 +1328,23 @@ export default function NoteLane({
         },
         [
             anchorSelectionId,
+            annotationEditing,
+            annotationInputValue,
             cloneChart,
             editState.mode,
             editState.selectedIds,
             handleLeftClickAtSnap,
+            height,
+            mapTimeToX,
             noteHits,
             onActivate,
+            rangeStart,
+            rangeEnd,
             segments,
+            setChartData,
             setEditState,
+            startTime,
+            endTime,
             updatePointer,
             onSelectMeasure,
             renderValidationError,
@@ -1293,6 +1378,8 @@ export default function NoteLane({
 
     const handleKeyDown = useCallback(
         (e: KeyboardEvent<HTMLCanvasElement>) => {
+            if (annotationEditing !== null) return;
+
             const modeActions: Array<{
                 action:
                     | "note.mode.browse"
@@ -1370,6 +1457,7 @@ export default function NoteLane({
             }
         },
         [
+            annotationEditing,
             deleteById,
             editState.selectedIds,
             hoverNoteId,

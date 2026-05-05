@@ -152,7 +152,10 @@ export default function ShortcutSettingsModal({
                     </button>
                 </div>
 
-                <div className={style.body}>
+                <div
+                    className={style.body}
+                    onWheel={(e) => e.stopPropagation()}
+                >
                     {captureAction && (
                         <div className={style.capture}>
                             <div>
