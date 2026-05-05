@@ -444,6 +444,12 @@ export default function WorkArea() {
             if (duration <= 0) return;
             if (wheelUpdateGuardRef.current) return;
             if (isEditableTarget(event.target)) return;
+            if (
+                !(event.target as HTMLElement | null)?.closest(
+                    '[data-lane="true"]',
+                )
+            )
+                return;
 
             const isZoomIn = matchesShortcutRef.current("timeRange.zoomIn", event);
             const isZoomOut = matchesShortcutRef.current("timeRange.zoomOut", event);

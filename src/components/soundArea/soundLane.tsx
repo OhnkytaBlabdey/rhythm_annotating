@@ -918,7 +918,13 @@ export default function SoundLane(prop: _prop) {
                         )}
                     </div>
                     <div className="flex-1 min-w-0 flex flex-col gap-2">
-                        {noteLanes.map((lane: NoteLaneData) => {
+                        {[...noteLanes]
+                            .sort((a, b) => {
+                                if (a.id === resolvedActiveLaneId) return -1;
+                                if (b.id === resolvedActiveLaneId) return -1;
+                                return 0;
+                            })
+                            .map((lane: NoteLaneData) => {
                             const editState =
                                 laneEditStateMap[lane.id] ??
                                 defaultNoteEditState(lane.defaultBpm);

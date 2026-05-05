@@ -1041,6 +1041,32 @@ export default function NoteLane({
         [cloneChart, editState.selectedIds],
     );
 
+    const isInsideExistingLn = useCallback(
+        (time: number): boolean => {
+            for (const segment of segments) {
+                if (!Number.isFinite(segment.tempo) || segment.tempo <= 0)
+                    continue;
+                const beatDuration = 60 / segment.tempo;
+                for (let m = 0; m < segment.measures.length; m++) {
+                    const measureStart = segment.time + m * beatDuration;
+                    for (const note of segment.measures[m].notes) {
+                        if (note.type !== 2) continue;
+                        const head = toBeatValue(note.head);
+                        const tail = toBeatValue(note.tail);
+                        if (head === null || tail === null) continue;
+                        const headAbs = measureStart + head * beatDuration;
+                        const tailAbs = measureStart + tail * beatDuration;
+                        if (time >= headAbs - 1e-6 && time < tailAbs - 1e-6) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        },
+        [segments],
+    );
+
     const handleLeftClickAtSnap = useCallback(
         (time: number) => {
             if (editState.mode === "browse") return;
@@ -1075,6 +1101,7 @@ export default function NoteLane({
             }
 
             if (editState.mode === "insert-ln") {
+                if (isInsideExistingLn(time)) return;
                 if (editState.lnHeadTime === null) {
                     setEditState((prev) => ({ ...prev, lnHeadTime: time }));
                     return;
@@ -1171,6 +1198,7 @@ export default function NoteLane({
             editState.clipboard,
             editState.lnHeadTime,
             editState.mode,
+            isInsideExistingLn,
             resolveInsertTarget,
             safeSubdivision,
             segments,
@@ -1540,7 +1568,7 @@ export default function NoteLane({
             className={style.noteLaneRoot}
             onClick={(e) => e.stopPropagation()}
         >
-            <div className={style.noteLaneCanvasWrap} ref={wrapperRef}>
+            <div className={style.noteLaneCanvasWrap} ref={wrapperRef} data-lane="true">
                 <canvas
                     ref={canvasRef}
                     className={style.noteLaneCanvas}

@@ -212,6 +212,7 @@ function WaveLane(p: _p) {
                         ref={canvasRef}
                         width={CANVAS_PHYSICAL_WIDTH}
                         height={WAVELANE_TOTAL_HEIGHT}
+                        data-lane="true"
                         style={{
                             border: "1px solid #ccc",
                             width: "100%",

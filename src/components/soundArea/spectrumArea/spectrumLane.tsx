@@ -503,6 +503,7 @@ function SpectrumLane(p: _p) {
             ref={canvasRef}
             width={canvasWidth}
             height={CANVAS_HEIGHT}
+            data-lane="true"
             title={
                 workerDone || ready
                     ? "Spectrum ready: multi-resolution STFT"

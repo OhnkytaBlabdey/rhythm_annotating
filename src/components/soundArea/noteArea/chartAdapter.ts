@@ -301,10 +301,19 @@ function validateGlobalAbsoluteOverlaps(
             if (note.id === ln.id) continue;
             for (const anchor of note.anchors) {
                 // LN endpoints touching any other note anchor is forbidden.
+                // Exception: LN head adjacent to another LN's tail (or vice versa) is allowed.
                 if (
                     nearlyEqual(anchor, ln.head) ||
                     nearlyEqual(anchor, ln.tail)
                 ) {
+                    if (note.type === 2 && note.tail !== undefined) {
+                        const isAdjacent =
+                            (nearlyEqual(anchor, ln.head) &&
+                                nearlyEqual(anchor, note.tail)) ||
+                            (nearlyEqual(anchor, ln.tail) &&
+                                nearlyEqual(anchor, note.head));
+                        if (isAdjacent) continue;
+                    }
                     return "长条 note 端点不能与其它 note 重合";
                 }
                 if (
@@ -317,10 +326,10 @@ function validateGlobalAbsoluteOverlaps(
         }
         for (let j = i + 1; j < lnRanges.length; j++) {
             const other = lnRanges[j];
-            // Any overlap including endpoint contact is forbidden.
+            // Overlap (excluding endpoint adjacency) is forbidden.
             if (
-                ln.head <= other.tail + TIME_EPS &&
-                other.head <= ln.tail + TIME_EPS
+                ln.head + TIME_EPS < other.tail &&
+                other.head + TIME_EPS < ln.tail
             ) {
                 return "长条 note 之间不能重叠";
             }
