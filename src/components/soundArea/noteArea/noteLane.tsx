@@ -226,6 +226,13 @@ export default function NoteLane({
         null,
     );
     const [annotationInputValue, setAnnotationInputValue] = useState("");
+    const editingRef = useRef<{
+        noteId: string | null;
+        text: string;
+        saved: boolean;
+    }>({ noteId: null, text: "", saved: false });
+    editingRef.current.noteId = annotationEditing;
+    editingRef.current.text = annotationInputValue;
 
     const segments = useMemo(
         () => [...chartData].sort((a, b) => a.time - b.time),
@@ -867,9 +874,10 @@ export default function NoteLane({
                             const aboxW = 60;
                             const aboxH = 18;
                             const aboxX = ax - aboxW / 2;
-                            ctx.fillStyle = "#ffffffdd";
-                            ctx.strokeStyle = "#64748b";
-                            ctx.lineWidth = 1;
+                            const isEditing = note.id === annotationEditing;
+                            ctx.fillStyle = isEditing ? "#e0f2fe" : "#ffffffdd";
+                            ctx.strokeStyle = isEditing ? "#0ea5e9" : "#64748b";
+                            ctx.lineWidth = isEditing ? 2 : 1;
                             roundRect(
                                 ctx,
                                 aboxX,
@@ -880,20 +888,43 @@ export default function NoteLane({
                             );
                             ctx.fill();
                             ctx.stroke();
-                            if (note.annotation) {
+                            const displayText = isEditing
+                                ? annotationInputValue || ""
+                                : note.annotation || "";
+                            if (displayText) {
                                 ctx.fillStyle = "#1e293b";
                                 ctx.font = "10px sans-serif";
                                 ctx.textAlign = "center";
                                 ctx.fillText(
-                                    note.annotation.length > 8
-                                        ? note.annotation.slice(0, 7) + "…"
-                                        : note.annotation,
+                                    displayText.length > 8
+                                        ? displayText.slice(0, 7) + "…"
+                                        : displayText,
                                     ax,
                                     aboxY + 13,
                                 );
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // Draw semi-transparent overlay outside [startTime, endTime] window
+        if (
+            editState.mode !== "insert-start" &&
+            editState.mode !== "insert-end"
+        ) {
+            ctx.fillStyle = "rgba(15,23,42,0.55)";
+            if (startTime !== null && startTime !== undefined) {
+                const leftEdge = mapTimeToX(startTime);
+                if (leftEdge > 0) {
+                    ctx.fillRect(0, 0, leftEdge, height);
+                }
+            }
+            if (endTime !== null && endTime !== undefined) {
+                const rightEdge = mapTimeToX(endTime);
+                if (rightEdge < width) {
+                    ctx.fillRect(rightEdge, 0, width - rightEdge, height);
                 }
             }
         }
@@ -922,6 +953,8 @@ export default function NoteLane({
         rangeEnd,
         rangeStart,
         selectedMeasureRange,
+        annotationEditing,
+        annotationInputValue,
         safeSubdivision,
         segments,
         renderValidationError,
@@ -1176,7 +1209,6 @@ export default function NoteLane({
             canvasRef.current?.focus();
             const { time, note } = updatePointer(e.clientX);
             if (time === null) return;
-            onSelectMeasure?.(time);
 
             if (editState.mode === "annotate") {
                 // Hit-test annotation boxes (below each note)
@@ -1244,6 +1276,7 @@ export default function NoteLane({
                     setAnnotationInputValue(fullNote?.annotation ?? "");
                 } else if (annotationEditing !== null) {
                     // Clicked outside — save and close
+                    editingRef.current.saved = true;
                     const next = segments.map((seg) => ({
                         ...seg,
                         measures: seg.measures.map((m) => ({
@@ -1265,6 +1298,8 @@ export default function NoteLane({
                 }
                 return;
             }
+
+            onSelectMeasure?.(time);
 
             if (editState.mode === "select") {
                 if (note) {
@@ -1502,7 +1537,10 @@ export default function NoteLane({
                     </div>
                 )}
                 {annotationEditing !== null && (
-                    <div className={style.annotationOverlay}>
+                    <div
+                        className={style.annotationOverlay}
+                        onMouseDown={(e) => e.stopPropagation()}
+                    >
                         <input
                             className={style.annotationInput}
                             value={annotationInputValue}
@@ -1512,17 +1550,19 @@ export default function NoteLane({
                             onKeyDown={(e) => {
                                 if (e.key === "Enter") {
                                     e.preventDefault();
+                                    editingRef.current.saved = true;
+                                    const { noteId, text } = editingRef.current;
+                                    if (!noteId) return;
                                     const next = segments.map((seg) => ({
                                         ...seg,
                                         measures: seg.measures.map((m) => ({
                                             ...m,
                                             notes: m.notes.map((n) =>
-                                                n.id === annotationEditing
+                                                n.id === noteId
                                                     ? {
                                                           ...n,
                                                           annotation:
-                                                              annotationInputValue ||
-                                                              undefined,
+                                                              text || undefined,
                                                       }
                                                     : n,
                                             ),
@@ -1534,22 +1574,25 @@ export default function NoteLane({
                                 }
                                 if (e.key === "Escape") {
                                     e.preventDefault();
+                                    editingRef.current.saved = true;
                                     setAnnotationEditing(null);
                                     setAnnotationInputValue("");
                                 }
                             }}
                             onBlur={() => {
+                                const { noteId, text, saved } = editingRef.current;
+                                if (saved || !noteId) return;
+                                editingRef.current.saved = true;
                                 const next = segments.map((seg) => ({
                                     ...seg,
                                     measures: seg.measures.map((m) => ({
                                         ...m,
                                         notes: m.notes.map((n) =>
-                                            n.id === annotationEditing
+                                            n.id === noteId
                                                 ? {
                                                       ...n,
                                                       annotation:
-                                                          annotationInputValue ||
-                                                          undefined,
+                                                          text || undefined,
                                                   }
                                                 : n,
                                         ),
