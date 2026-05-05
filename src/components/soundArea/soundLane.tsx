@@ -1,7 +1,7 @@
 "use client";
 import "./soundLane.module.css";
 import SoundFileTitleBar from "./soundFileTitleBar";
-import SoundMenu from "./soundMenu/soundMenu";
+
 import WaveLane from "./waveArea/waveLane";
 import SpectrumLane from "./spectrumArea/spectrumLane";
 import WaveMenu from "./soundMenu/waveMenu/waveMenu";
@@ -39,6 +39,7 @@ interface _prop {
     timeRange: [number, number];
     refSoundLaneState: SoundLaneState;
     setSoundLaneState: (i: number, state: SoundLaneState) => void;
+    onActivate?: (audioId: string) => void;
 }
 
 export default function SoundLane(prop: _prop) {
@@ -765,6 +766,7 @@ export default function SoundLane(prop: _prop) {
             onImportText: handleImportText,
             exportText: JSON.stringify(exportPayload, null, 2),
             lastError: currentLaneError,
+            onAddNoteLane: handleAddNoteLane,
         };
     }, [
         resolvedActiveLaneId,
@@ -779,6 +781,7 @@ export default function SoundLane(prop: _prop) {
         updateLaneData,
         setLaneError,
         clearLaneError,
+        handleAddNoteLane,
     ]);
 
     if (!audioData) {
@@ -791,6 +794,7 @@ export default function SoundLane(prop: _prop) {
             isActive: !prop.refSoundLaneState.isActive,
         };
         prop.setSoundLaneState(prop.index, updatedState);
+        prop.onActivate?.(prop.audioId);
     }
 
     return (
@@ -804,13 +808,7 @@ export default function SoundLane(prop: _prop) {
                     isActive={prop.refSoundLaneState.isActive || false}
                 />
             </div>
-            <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-                <SoundMenu
-                    audioId={prop.audioId}
-                    timeRange={prop.timeRange}
-                    onAddNoteLane={handleAddNoteLane}
-                />
-            </div>
+
             <div className="flex flex-col flex-1 gap-2 mt-2">
                 <div className="flex items-start gap-3">
                     <div

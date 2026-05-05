@@ -15,6 +15,29 @@
     padding: 2px 2px 0;
     user-select: none;
     font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.addLaneBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    border-radius: 6px;
+    padding: 0;
+    opacity: 0.55;
+    transition: opacity 0.16s ease, background-color 0.16s ease;
+}
+
+.addLaneBtn:hover {
+    opacity: 1;
+    background: rgba(15, 118, 110, 0.12);
 }
 
 .button-group {

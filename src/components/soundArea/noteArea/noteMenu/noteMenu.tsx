@@ -31,6 +31,7 @@ interface _p {
     onImportText: (text: string) => string | null;
     exportText: string;
     lastError: string | null;
+    onAddNoteLane?: () => void;
 }
 
 interface ModeButtonProps {
@@ -268,7 +269,25 @@ export default function NoteMenu(p: _p) {
                 <span className={cls("bpm-unit")}>n</span>
             </div>
 
-            <div className={cls("section-label")}>Lane</div>
+            <div className={cls("section-label")}>
+                Lane
+                {p.onAddNoteLane && (
+                    <button
+                        type="button"
+                        className={cls("addLaneBtn")}
+                        onClick={p.onAddNoteLane}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        title="添加记谱"
+                    >
+                        <img
+                            src="/assets/icons/newNoteLane.png"
+                            alt="添加记谱"
+                            width={14}
+                            height={14}
+                        />
+                    </button>
+                )}
+            </div>
             <div className={cls("button-group", "lane-grid")}>
                 <ActionButton
                     label="清空本Lane"

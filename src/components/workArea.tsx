@@ -56,6 +56,7 @@ export default function WorkArea() {
         timeMultiplier: timeView.timeMultiplier,
     }));
     const [audioDataList, setAudioDataList] = useState<AudioData[]>([]);
+    const [activeSoundLaneId, setActiveSoundLaneId] = useState<string | null>(null);
     const [hasHydratedProject, setHasHydratedProject] = useState(false);
     const workAreaRef = useRef<HTMLDivElement | null>(null);
     const editorLaneCardRef = useRef<HTMLDivElement | null>(null);
@@ -345,6 +346,18 @@ export default function WorkArea() {
         [clampedCurrentTime, visibleSpan],
     );
 
+    const sortedLaneEntries = useMemo(() => {
+        const entries = audioDataList.map((audio, i) => ({
+            audio,
+            state: objProject.soundLaneStates[i],
+            index: i,
+        }));
+        if (!activeSoundLaneId) return entries;
+        const active = entries.find((e) => e.audio.id === activeSoundLaneId);
+        const others = entries.filter((e) => e.audio.id !== activeSoundLaneId);
+        return active ? [active, ...others] : entries;
+    }, [audioDataList, objProject.soundLaneStates, activeSoundLaneId]);
+
     useEffect(() => {
         if (!hasHydratedSettings) return;
         if (!hasHydratedProject) return;
@@ -562,6 +575,7 @@ export default function WorkArea() {
                                 isPlaying={objProject.isPlaying}
                                 setIsPlaying={setIsPlaying}
                                 Duration={duration}
+                                timeRange={timeRange}
                                 addAudioData={addAudioData}
                                 removeAudioData={removeAudioData}
                                 removeMultipleAudioData={
@@ -577,18 +591,19 @@ export default function WorkArea() {
                     >
                         <div className="editor-lane-card" ref={editorLaneCardRef}>
                             <div className="flex flex-col gap-4">
-                                {audioDataList.map((audio, index) => (
+                                {sortedLaneEntries.map((entry) => (
                                     <SoundLane
-                                        key={`audio-${audio.id}`}
-                                        index={index}
-                                        audioId={audio.id}
+                                        key={`audio-${entry.audio.id}`}
+                                        index={entry.index}
+                                        audioId={entry.audio.id}
                                         refSoundLaneState={
-                                            objProject.soundLaneStates[index]
+                                            objProject.soundLaneStates[entry.index]
                                         }
                                         setSoundLaneState={
                                             setIndexSoundLaneState
                                         }
                                         timeRange={timeRange}
+                                        onActivate={setActiveSoundLaneId}
                                     />
                                 ))}
                             </div>

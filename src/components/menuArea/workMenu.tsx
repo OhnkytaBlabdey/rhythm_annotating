@@ -17,6 +17,7 @@ interface _prop {
     isPlaying: boolean;
     setIsPlaying: (_: boolean) => void;
     Duration: number;
+    timeRange?: [number, number];
     addAudioData: (audioData: AudioData) => void;
     removeAudioData: (audioId: string) => void;
     removeMultipleAudioData: (audioIds: string[]) => void;
@@ -29,6 +30,13 @@ function WorkMenu(prop: _prop) {
     return (
         <div className="WorkMenu">
             <div className="editor-toolbar-actions">
+                {prop.timeRange && (
+                    <span className="editor-meta-text whitespace-nowrap">
+                        {prop.timeRange[0].toFixed(4)} -{" "}
+                        {prop.timeRange[1].toFixed(4)} |{" "}
+                        {(prop.timeRange[1] - prop.timeRange[0]).toFixed(4)}s
+                    </span>
+                )}
                 <AddSound key={"add sound"} addAudioData={prop.addAudioData} />
                 <DeleteActiveSound
                     key={"delete sound"}
