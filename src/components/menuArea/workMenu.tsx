@@ -30,6 +30,12 @@ function WorkMenu(prop: _prop) {
     return (
         <div className="WorkMenu">
             <div className="editor-toolbar-actions">
+                <AddSound key={"add sound"} addAudioData={prop.addAudioData} />
+                <DeleteActiveSound
+                    key={"delete sound"}
+                    refSoundLaneStates={prop.refSoundLaneStates}
+                    removeMultipleAudioData={prop.removeMultipleAudioData}
+                />
                 {prop.timeRange && (
                     <span className="editor-meta-text whitespace-nowrap">
                         {prop.timeRange[0].toFixed(4)} -{" "}
@@ -37,12 +43,6 @@ function WorkMenu(prop: _prop) {
                         {(prop.timeRange[1] - prop.timeRange[0]).toFixed(4)}s
                     </span>
                 )}
-                <AddSound key={"add sound"} addAudioData={prop.addAudioData} />
-                <DeleteActiveSound
-                    key={"delete sound"}
-                    refSoundLaneStates={prop.refSoundLaneStates}
-                    removeMultipleAudioData={prop.removeMultipleAudioData}
-                />
                 <TimeRangeController
                     key={"time scale"}
                     refTimeMultiplier={prop.refTimeMultiplier}

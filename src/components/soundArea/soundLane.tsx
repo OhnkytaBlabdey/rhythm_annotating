@@ -9,6 +9,7 @@ import FoldWave from "./soundMenu/waveMenu/foldWave";
 import SpectrumMenu from "./soundMenu/spectrumMenu/spectrumMenu";
 import FoldSpectrum from "./soundMenu/spectrumMenu/foldSpectrum";
 import NoteMenu from "./noteArea/noteMenu/noteMenu";
+import Image from "@/components/Image";
 import { useContext, useCallback, useMemo, useState } from "react";
 import { AudioDataCtx } from "../audioContext";
 import { SoundLaneState, defaultNoteLaneData } from "@/interface/audioData";
@@ -766,7 +767,6 @@ export default function SoundLane(prop: _prop) {
             onImportText: handleImportText,
             exportText: JSON.stringify(exportPayload, null, 2),
             lastError: currentLaneError,
-            onAddNoteLane: handleAddNoteLane,
         };
     }, [
         resolvedActiveLaneId,
@@ -781,7 +781,6 @@ export default function SoundLane(prop: _prop) {
         updateLaneData,
         setLaneError,
         clearLaneError,
-        handleAddNoteLane,
     ]);
 
     if (!audioData) {
@@ -916,7 +915,23 @@ export default function SoundLane(prop: _prop) {
                     onClick={(e) => e.stopPropagation()}
                 >
                     <div className="editor-inspector-panel w-[176px] shrink-0 self-stretch">
-                        <div className="editor-pane-caption">Note Lane</div>
+                        <div className="flex items-center gap-2 px-2 pt-2">
+                            <div className="editor-pane-caption">Note Lane</div>
+                            <button
+                                type="button"
+                                className="inline-flex items-center justify-center w-5 h-5 border-0 bg-transparent cursor-pointer rounded-md p-0 opacity-55 hover:opacity-100 hover:bg-[rgba(15,118,110,0.12)] transition-[opacity,background-color] duration-200"
+                                onClick={handleAddNoteLane}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                title="添加记谱"
+                            >
+                                <Image
+                                    src="/assets/icons/newNoteLane.png"
+                                    alt="添加记谱"
+                                    width={14}
+                                    height={14}
+                                />
+                            </button>
+                        </div>
                         {activeNoteMenuProps && (
                             <NoteMenu {...activeNoteMenuProps} />
                         )}
