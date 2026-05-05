@@ -88,9 +88,10 @@ function renderWaveToCanvas(
     }
 }
 
+const WAVELANE_TOTAL_HEIGHT = 110;
+
 function WaveLane(p: _p) {
     const CANVAS_PHYSICAL_WIDTH = 1200;
-    const CANVAS_BASE_HEIGHT = 100;
 
     const audioDataList = useContext(AudioDataCtx);
     const audioData = audioDataList.find((a) => a.id === p.audioId);
@@ -171,8 +172,7 @@ function WaveLane(p: _p) {
         if (!canvasRef.current) return;
         if (!waveformCacheRef.current) return;
         canvasRef.current.width = CANVAS_PHYSICAL_WIDTH;
-        canvasRef.current.height =
-            CANVAS_BASE_HEIGHT * waveformCacheRef.current.channelCount;
+        canvasRef.current.height = WAVELANE_TOTAL_HEIGHT;
     }, [isCacheReady]);
 
     /**
@@ -191,7 +191,8 @@ function WaveLane(p: _p) {
                     p.timeRange,
                     waveformCacheRef.current.sampleRate,
                     waveformCacheRef.current.length,
-                    CANVAS_BASE_HEIGHT,
+                    WAVELANE_TOTAL_HEIGHT /
+                        waveformCacheRef.current.channelCount,
                     p.waveState.amplitudeMultiplier,
                 );
             }
@@ -210,11 +211,11 @@ function WaveLane(p: _p) {
                     <canvas
                         ref={canvasRef}
                         width={CANVAS_PHYSICAL_WIDTH}
-                        height={CANVAS_BASE_HEIGHT}
+                        height={WAVELANE_TOTAL_HEIGHT}
                         style={{
                             border: "1px solid #ccc",
                             width: "100%",
-                            height: "auto",
+                            height: `${WAVELANE_TOTAL_HEIGHT}px`,
                         }}
                     />
                 )}

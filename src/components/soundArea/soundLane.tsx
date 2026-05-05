@@ -1037,6 +1037,21 @@ export default function SoundLane(prop: _prop) {
                                     onActivate={() =>
                                         setActiveNoteLaneId(lane.id)
                                     }
+                                    startTime={lane.startTime ?? null}
+                                    endTime={lane.endTime ?? null}
+                                    setStartTime={(time) =>
+                                        updateLaneData(lane.id, (prevLane) => ({
+                                            ...prevLane,
+                                            startTime: time,
+                                        }))
+                                    }
+                                    setEndTime={(time) =>
+                                        updateLaneData(lane.id, (prevLane) => ({
+                                            ...prevLane,
+                                            endTime: time,
+                                        }))
+                                    }
+                                    laneId={lane.id}
                                 />
                             );
                         })}

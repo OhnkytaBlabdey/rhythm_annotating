@@ -9,6 +9,7 @@ export interface ChartNote {
     head?: Fraction;
     body?: Fraction[];
     tail?: Fraction;
+    annotation?: string;
 }
 
 export interface ChartMeasure {
@@ -33,4 +34,6 @@ export interface NoteLaneData {
     division: number;
     defaultBpm: number;
     chartData: ChartSegment[];
+    startTime?: number | null;
+    endTime?: number | null;
 }

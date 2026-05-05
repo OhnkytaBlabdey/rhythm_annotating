@@ -9,6 +9,9 @@ export type ShortcutAction =
     | "note.mode.insertLn"
     | "note.mode.select"
     | "note.mode.paste"
+    | "note.mode.insertStart"
+    | "note.mode.insertEnd"
+    | "note.mode.annotate"
     | "note.division.increment"
     | "note.division.decrement";
 
@@ -137,6 +140,30 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
         description: "切换到粘贴模式",
         section: "记谱输入",
         defaultCombo: "5",
+        inputType: "keyboard",
+    },
+    {
+        action: "note.mode.insertStart",
+        label: "起始标记",
+        description: "切换到起始标记模式",
+        section: "记谱输入",
+        defaultCombo: "6",
+        inputType: "keyboard",
+    },
+    {
+        action: "note.mode.insertEnd",
+        label: "结束标记",
+        description: "切换到结束标记模式",
+        section: "记谱输入",
+        defaultCombo: "7",
+        inputType: "keyboard",
+    },
+    {
+        action: "note.mode.annotate",
+        label: "标注模式",
+        description: "切换到标注编辑模式",
+        section: "记谱输入",
+        defaultCombo: "8",
         inputType: "keyboard",
     },
     {

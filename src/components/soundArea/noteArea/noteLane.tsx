@@ -37,6 +37,11 @@ interface NoteLaneProps {
     selectedMeasureTime?: number | null;
     onSelectMeasure?: (time: number | null) => void;
     onActivate?: () => void;
+    startTime?: number | null;
+    endTime?: number | null;
+    setStartTime: (time: number | null) => void;
+    setEndTime: (time: number | null) => void;
+    laneId: string;
 }
 
 interface NoteAnchor {
@@ -122,6 +127,27 @@ function colorByType(type: number): string {
     return TYPE_COLORS[idx];
 }
 
+function roundRect(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    r: number,
+) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+}
+
 function fractionKey(input: Fraction | undefined): string | null {
     const f = normalizeFraction(input);
     if (!f) return null;
@@ -177,6 +203,11 @@ export default function NoteLane({
     selectedMeasureTime,
     onSelectMeasure,
     onActivate,
+    startTime,
+    endTime,
+    setStartTime,
+    setEndTime,
+    laneId,
 }: NoteLaneProps) {
     const { matchesKeyShortcut } = useAppSettings();
     const wrapperRef = useRef<HTMLDivElement>(null);
@@ -191,6 +222,10 @@ export default function NoteLane({
         null,
     );
     const [dragState, setDragState] = useState<DragState | null>(null);
+    const [annotationEditing, setAnnotationEditing] = useState<string | null>(
+        null,
+    );
+    const [annotationInputValue, setAnnotationInputValue] = useState("");
 
     const segments = useMemo(
         () => [...chartData].sort((a, b) => a.time - b.time),
@@ -647,6 +682,54 @@ export default function NoteLane({
             }
         }
 
+        // Draw start/end mode preview (red square at snap position)
+        if (
+            (editState.mode === "insert-start" ||
+                editState.mode === "insert-end") &&
+            snapTime !== null
+        ) {
+            const x = mapTimeToX(snapTime);
+            ctx.fillStyle = "#ef4444aa";
+            ctx.fillRect(x - 8, height / 2 - 8, 16, 16);
+        }
+
+        // Draw persistent start/end markers
+        if (startTime !== null && startTime !== undefined) {
+            if (startTime >= rangeStart && startTime <= rangeEnd) {
+                const sx = mapTimeToX(startTime);
+                ctx.strokeStyle = "#ef4444";
+                ctx.lineWidth = 2;
+                ctx.setLineDash([6, 3]);
+                ctx.beginPath();
+                ctx.moveTo(sx, 0);
+                ctx.lineTo(sx, height);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                // label
+                ctx.fillStyle = "#ef4444";
+                ctx.font = "10px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText("始", sx, 11);
+            }
+        }
+        if (endTime !== null && endTime !== undefined) {
+            if (endTime >= rangeStart && endTime <= rangeEnd) {
+                const ex = mapTimeToX(endTime);
+                ctx.strokeStyle = "#ef4444";
+                ctx.lineWidth = 2;
+                ctx.setLineDash([6, 3]);
+                ctx.beginPath();
+                ctx.moveTo(ex, 0);
+                ctx.lineTo(ex, height);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = "#ef4444";
+                ctx.font = "10px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText("终", ex, 11);
+            }
+        }
+
         if (editState.mode === "paste" && snapTime !== null) {
             const y = height / 2;
             const baseTime =
@@ -707,6 +790,21 @@ export default function NoteLane({
                         continue;
                     }
 
+                    // Filter by start/end time
+                    const noteTime = anchors[0].time;
+                    if (
+                        startTime !== null &&
+                        startTime !== undefined &&
+                        noteTime < startTime
+                    )
+                        continue;
+                    if (
+                        endTime !== null &&
+                        endTime !== undefined &&
+                        noteTime > endTime
+                    )
+                        continue;
+
                     const color = colorByType(note.type);
                     const y = centerY;
                     const isSelected = editState.selectedIds.has(note.id);
@@ -756,6 +854,46 @@ export default function NoteLane({
                             );
                         }
                     }
+
+                    // Draw annotation box in annotate mode
+                    if (editState.mode === "annotate") {
+                        const headAnchor = anchors[0];
+                        if (
+                            headAnchor.time >= rangeStart &&
+                            headAnchor.time <= rangeEnd
+                        ) {
+                            const ax = mapTimeToX(headAnchor.time);
+                            const aboxY = centerY + 20;
+                            const aboxW = 60;
+                            const aboxH = 18;
+                            const aboxX = ax - aboxW / 2;
+                            ctx.fillStyle = "#ffffffdd";
+                            ctx.strokeStyle = "#64748b";
+                            ctx.lineWidth = 1;
+                            roundRect(
+                                ctx,
+                                aboxX,
+                                aboxY,
+                                aboxW,
+                                aboxH,
+                                6,
+                            );
+                            ctx.fill();
+                            ctx.stroke();
+                            if (note.annotation) {
+                                ctx.fillStyle = "#1e293b";
+                                ctx.font = "10px sans-serif";
+                                ctx.textAlign = "center";
+                                ctx.fillText(
+                                    note.annotation.length > 8
+                                        ? note.annotation.slice(0, 7) + "…"
+                                        : note.annotation,
+                                    ax,
+                                    aboxY + 13,
+                                );
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -788,6 +926,8 @@ export default function NoteLane({
         segments,
         renderValidationError,
         snapTime,
+        startTime,
+        endTime,
         width,
     ]);
 
@@ -980,6 +1120,16 @@ export default function NoteLane({
                 }
                 return;
             }
+
+            if (editState.mode === "insert-start") {
+                setStartTime(time);
+                return;
+            }
+
+            if (editState.mode === "insert-end") {
+                setEndTime(time);
+                return;
+            }
         },
         [
             commitChart,
@@ -990,6 +1140,8 @@ export default function NoteLane({
             safeSubdivision,
             segments,
             setEditState,
+            setStartTime,
+            setEndTime,
         ],
     );
 
@@ -1025,6 +1177,18 @@ export default function NoteLane({
             const { time, note } = updatePointer(e.clientX);
             if (time === null) return;
             onSelectMeasure?.(time);
+
+            if (editState.mode === "annotate") {
+                if (note) {
+                    const fullNote = segments
+                        .flatMap((seg) => seg.measures)
+                        .flatMap((m) => m.notes)
+                        .find((n) => n.id === note.id);
+                    setAnnotationEditing(note.id);
+                    setAnnotationInputValue(fullNote?.annotation ?? "");
+                }
+                return;
+            }
 
             if (editState.mode === "select") {
                 if (note) {
@@ -1136,7 +1300,10 @@ export default function NoteLane({
                     | "note.mode.insertWeak"
                     | "note.mode.insertLn"
                     | "note.mode.select"
-                    | "note.mode.paste";
+                    | "note.mode.paste"
+                    | "note.mode.insertStart"
+                    | "note.mode.insertEnd"
+                    | "note.mode.annotate";
                 mode: NoteEditState["mode"];
             }> = [
                 { action: "note.mode.browse", mode: "browse" },
@@ -1145,6 +1312,9 @@ export default function NoteLane({
                 { action: "note.mode.insertLn", mode: "insert-ln" },
                 { action: "note.mode.select", mode: "select" },
                 { action: "note.mode.paste", mode: "paste" },
+                { action: "note.mode.insertStart", mode: "insert-start" },
+                { action: "note.mode.insertEnd", mode: "insert-end" },
+                { action: "note.mode.annotate", mode: "annotate" },
             ];
 
             for (const item of modeActions) {
@@ -1241,6 +1411,69 @@ export default function NoteLane({
                         <div className={style.noteLaneOverlayText}>
                             {renderValidationError}
                         </div>
+                    </div>
+                )}
+                {annotationEditing !== null && (
+                    <div className={style.annotationOverlay}>
+                        <input
+                            className={style.annotationInput}
+                            value={annotationInputValue}
+                            onChange={(e) =>
+                                setAnnotationInputValue(e.target.value)
+                            }
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    const next = segments.map((seg) => ({
+                                        ...seg,
+                                        measures: seg.measures.map((m) => ({
+                                            ...m,
+                                            notes: m.notes.map((n) =>
+                                                n.id === annotationEditing
+                                                    ? {
+                                                          ...n,
+                                                          annotation:
+                                                              annotationInputValue ||
+                                                              undefined,
+                                                      }
+                                                    : n,
+                                            ),
+                                        })),
+                                    }));
+                                    setChartData(next, true);
+                                    setAnnotationEditing(null);
+                                    setAnnotationInputValue("");
+                                }
+                                if (e.key === "Escape") {
+                                    e.preventDefault();
+                                    setAnnotationEditing(null);
+                                    setAnnotationInputValue("");
+                                }
+                            }}
+                            onBlur={() => {
+                                const next = segments.map((seg) => ({
+                                    ...seg,
+                                    measures: seg.measures.map((m) => ({
+                                        ...m,
+                                        notes: m.notes.map((n) =>
+                                            n.id === annotationEditing
+                                                ? {
+                                                      ...n,
+                                                      annotation:
+                                                          annotationInputValue ||
+                                                          undefined,
+                                                  }
+                                                : n,
+                                        ),
+                                    })),
+                                }));
+                                setChartData(next, true);
+                                setAnnotationEditing(null);
+                                setAnnotationInputValue("");
+                            }}
+                            placeholder="输入标注文本"
+                            autoFocus
+                        />
                     </div>
                 )}
             </div>

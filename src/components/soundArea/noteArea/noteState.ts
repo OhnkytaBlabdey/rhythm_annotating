@@ -7,7 +7,10 @@ export type EditMode =
     | "insert-weak" // tap note, type 1 (weak beat)
     | "insert-ln" // long note, two-click: head then tail
     | "select" // select / drag notes
-    | "paste"; // paste clipboard notes at cursor
+    | "paste" // paste clipboard notes at cursor
+    | "insert-start" // set start marker
+    | "insert-end" // set end marker
+    | "annotate"; // edit annotation text
 
 /** Phase of long-note input (two-click workflow) */
 export type LnPhase = "head" | "tail";
