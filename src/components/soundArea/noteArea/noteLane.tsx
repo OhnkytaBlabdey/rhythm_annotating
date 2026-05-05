@@ -226,6 +226,8 @@ export default function NoteLane({
         null,
     );
     const [annotationInputValue, setAnnotationInputValue] = useState("");
+    const [annotationBoxX, setAnnotationBoxX] = useState(0);
+    const [annotationBoxY, setAnnotationBoxY] = useState(0);
     const editingRef = useRef<{
         noteId: string | null;
         text: string;
@@ -1272,6 +1274,30 @@ export default function NoteLane({
                         .flatMap((seg) => seg.measures)
                         .flatMap((m) => m.notes)
                         .find((n) => n.id === hitNoteId);
+                    // Record annotation box screen position
+                    const hitAnchor = (() => {
+                        for (const seg of segments) {
+                            if (!Number.isFinite(seg.tempo) || seg.tempo <= 0)
+                                continue;
+                            const bd = 60 / seg.tempo;
+                            for (let mi = 0; mi < seg.measures.length; mi++) {
+                                for (const n of seg.measures[mi].notes) {
+                                    if (n.id !== hitNoteId) continue;
+                                    const a = toAnchors(
+                                        n,
+                                        seg.time + mi * bd,
+                                        bd,
+                                    );
+                                    if (a.length > 0) return a[0];
+                                }
+                            }
+                        }
+                        return null;
+                    })();
+                    if (hitAnchor) {
+                        setAnnotationBoxX(mapTimeToX(hitAnchor.time));
+                        setAnnotationBoxY(height / 2 + 20);
+                    }
                     setAnnotationEditing(hitNoteId);
                     setAnnotationInputValue(fullNote?.annotation ?? "");
                 } else if (annotationEditing !== null) {
@@ -1539,6 +1565,10 @@ export default function NoteLane({
                 {annotationEditing !== null && (
                     <div
                         className={style.annotationOverlay}
+                        style={{
+                            left: annotationBoxX - 30,
+                            top: annotationBoxY,
+                        }}
                         onMouseDown={(e) => e.stopPropagation()}
                     >
                         <input

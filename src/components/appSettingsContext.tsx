@@ -202,11 +202,16 @@ export function AppSettingsProvider({
             return DEFAULT_SETTINGS;
         }
     });
-    const hasHydratedSettings = true;
+    const [hasHydratedSettings, setHasHydratedSettings] = useState(false);
 
     useEffect(() => {
+        setHasHydratedSettings(true);
+    }, []);
+
+    useEffect(() => {
+        if (!hasHydratedSettings) return;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-    }, [settings]);
+    }, [settings, hasHydratedSettings]);
 
     const saveShortcuts = useCallback((next: ShortcutMap) => {
         const normalized = normalizeShortcuts(next);
