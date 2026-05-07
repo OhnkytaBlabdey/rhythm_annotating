@@ -592,67 +592,94 @@ export default function SoundLane(prop: _prop) {
                 const copied = activeLane.chartData
                     .flatMap((seg) => seg.measures)
                     .flatMap((m) => m.notes)
-                    .filter((n) => prev.selectedIds.has(n.id));
+                    .filter((n) => prev.selectedIds.has(n.id))
+                    .map((n) => ({
+                        ...n,
+                        body: n.body ? [...n.body] : undefined,
+                    }));
                 return { ...prev, clipboard: copied };
             });
         };
 
         const handleCut = () => {
+            const currentEditState =
+                laneEditStateMap[activeLane.id] ??
+                defaultNoteEditState(activeLane.defaultBpm);
+            if (currentEditState.selectedIds.size === 0) return;
+
+            const ids = currentEditState.selectedIds;
+            const copied = activeLane.chartData
+                .flatMap((seg) => seg.measures)
+                .flatMap((m) => m.notes)
+                .filter((n) => ids.has(n.id))
+                .map((n) => ({
+                    ...n,
+                    body: n.body ? [...n.body] : undefined,
+                }));
+
+            const next = activeLane.chartData.map((seg) => ({
+                ...seg,
+                measures: seg.measures.map((m) => ({
+                    notes: m.notes.filter((n) => !ids.has(n.id)),
+                })),
+            }));
+            const error = validateChartData(next);
+            if (error) {
+                setLaneError(activeLane.id, error);
+                return;
+            }
+            clearLaneError(activeLane.id);
+            updateLaneData(activeLane.id, (prevLane) => ({
+                ...prevLane,
+                chartData: next,
+            }));
             setLaneEditState(activeLane.id, (prev) => {
-                if (prev.selectedIds.size === 0) return prev;
-                const copied = activeLane.chartData
-                    .flatMap((seg) => seg.measures)
-                    .flatMap((m) => m.notes)
-                    .filter((n) => prev.selectedIds.has(n.id));
-                const ids = prev.selectedIds;
-                const next = activeLane.chartData.map((seg) => ({
-                    ...seg,
-                    measures: seg.measures.map((m) => ({
-                        notes: m.notes.filter((n) => !ids.has(n.id)),
-                    })),
-                }));
-                const error = validateChartData(next);
-                if (error) {
-                    setLaneError(activeLane.id, error);
-                    return prev;
-                }
-                clearLaneError(activeLane.id);
-                pushUndo(activeLane.chartData);
-                updateLaneData(activeLane.id, (prevLane) => ({
-                    ...prevLane,
-                    chartData: next,
-                }));
+                const undoStack = [
+                    cloneChart(activeLane.chartData),
+                    ...prev.undoStack,
+                ].slice(0, MAX_UNDO);
                 return {
                     ...prev,
                     clipboard: copied,
+                    undoStack,
+                    redoStack: [],
                     selectedIds: new Set<string>(),
                 };
             });
         };
 
         const handleDelete = () => {
+            const currentEditState =
+                laneEditStateMap[activeLane.id] ??
+                defaultNoteEditState(activeLane.defaultBpm);
+            if (currentEditState.selectedIds.size === 0) return;
+
+            const ids = currentEditState.selectedIds;
+            const next = activeLane.chartData.map((seg) => ({
+                ...seg,
+                measures: seg.measures.map((m) => ({
+                    notes: m.notes.filter((n) => !ids.has(n.id)),
+                })),
+            }));
+            const error = validateChartData(next);
+            if (error) {
+                setLaneError(activeLane.id, error);
+                return;
+            }
+            clearLaneError(activeLane.id);
+            updateLaneData(activeLane.id, (prevLane) => ({
+                ...prevLane,
+                chartData: next,
+            }));
             setLaneEditState(activeLane.id, (prev) => {
-                if (prev.selectedIds.size === 0) return prev;
-                const ids = prev.selectedIds;
-                const next = activeLane.chartData.map((seg) => ({
-                    ...seg,
-                    measures: seg.measures.map((m) => ({
-                        notes: m.notes.filter((n) => !ids.has(n.id)),
-                    })),
-                }));
-                const error = validateChartData(next);
-                if (error) {
-                    setLaneError(activeLane.id, error);
-                    return prev;
-                }
-                clearLaneError(activeLane.id);
-                pushUndo(activeLane.chartData);
-                updateLaneData(activeLane.id, (prevLane) => ({
-                    ...prevLane,
-                    chartData: next,
-                }));
+                const undoStack = [
+                    cloneChart(activeLane.chartData),
+                    ...prev.undoStack,
+                ].slice(0, MAX_UNDO);
                 return {
                     ...prev,
+                    undoStack,
+                    redoStack: [],
                     selectedIds: new Set<string>(),
                 };
             });

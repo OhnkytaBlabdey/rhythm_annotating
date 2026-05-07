@@ -215,9 +215,6 @@ export default function NoteLane({
     const [width, setWidth] = useState(1200);
     const [snapTime, setSnapTime] = useState<number | null>(null);
     const [hoverNoteId, setHoverNoteId] = useState<string | null>(null);
-    const [lastPastedGhostTimes, setLastPastedGhostTimes] = useState<number[]>(
-        [],
-    );
     const [anchorSelectionId, setAnchorSelectionId] = useState<string | null>(
         null,
     );
@@ -237,6 +234,11 @@ export default function NoteLane({
     editingRef.current.text = annotationInputValue;
 
     const annotationInputRef = useRef<HTMLInputElement | null>(null);
+    const snapTimeRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        snapTimeRef.current = snapTime;
+    });
 
     useEffect(() => {
         if (annotationEditing !== null) {
@@ -817,27 +819,6 @@ export default function NoteLane({
             }
         }
 
-        if (editState.mode === "paste" && snapTime !== null) {
-            const y = height / 2;
-            const baseTime =
-                editState.clipboard.length > 0
-                    ? editState.clipboard
-                          .map((note) => toBeatValue(note.head) ?? 0)
-                          .reduce(
-                              (a, b) => Math.min(a, b),
-                              Number.POSITIVE_INFINITY,
-                          )
-                    : 0;
-            for (const note of editState.clipboard) {
-                const rel = (toBeatValue(note.head) ?? 0) - baseTime;
-                const x = mapTimeToX(
-                    snapTime + rel * (60 / Math.max(1, editState.currentBpm)),
-                );
-                ctx.fillStyle = "#38bdf866";
-                ctx.fillRect(x - 6, y - 8, 12, 16);
-            }
-        }
-
         const centerY = height / 2;
 
         for (let i = 0; i < majorTicks.length; i++) {
@@ -1011,27 +992,15 @@ export default function NoteLane({
                 }
             }
         }
-
-        if (lastPastedGhostTimes.length > 0) {
-            ctx.fillStyle = "#38bdf855";
-            for (const t of lastPastedGhostTimes) {
-                if (t < rangeStart || t > rangeEnd) continue;
-                const x = mapTimeToX(t);
-                ctx.fillRect(x - 6, centerY - 8, 12, 16);
-            }
-        }
     }, [
         majorTicks,
-        editState.clipboard,
         editState.currentBpm,
         editState.lnHeadTime,
         editState.mode,
         editState.selectedIds,
-        getTempoAtTime,
         gridTicks,
         height,
         hoverNoteId,
-        lastPastedGhostTimes,
         mapTimeToX,
         rangeEnd,
         rangeStart,
@@ -1237,11 +1206,20 @@ export default function NoteLane({
             if (editState.mode === "paste") {
                 if (editState.clipboard.length === 0) return;
                 const target = resolveInsertTarget(segments, time);
-                const pastedTimes: number[] = [];
-                const stepBeat = 1 / Math.max(1, safeSubdivision);
+                const refHeadBeat = editState.clipboard.reduce(
+                    (min, note) => {
+                        const b = toBeatValue(note.head);
+                        return b !== null && b < min ? b : min;
+                    },
+                    Number.POSITIVE_INFINITY,
+                );
+                const refBeat =
+                    Number.isFinite(refHeadBeat) ? refHeadBeat : 0;
                 for (let i = 0; i < editState.clipboard.length; i++) {
                     const copy = editState.clipboard[i];
-                    const headBeat = target.beat + i * stepBeat;
+                    const copyHeadBeat = toBeatValue(copy.head) ?? 0;
+                    const relBeat = copyHeadBeat - refBeat;
+                    const headBeat = target.beat + relBeat;
                     const tailBeat =
                         copy.tail && copy.head
                             ? headBeat +
@@ -1265,13 +1243,8 @@ export default function NoteLane({
                     target.chart[target.segmentIndex].measures[
                         target.measureIndex
                     ].notes.push(note);
-                    pastedTimes.push(
-                        target.measureStart + headBeat * target.beatDuration,
-                    );
                 }
-                if (commitChart(target.chart, true)) {
-                    setLastPastedGhostTimes(pastedTimes);
-                }
+                commitChart(target.chart, true);
                 return;
             }
 
@@ -1498,21 +1471,15 @@ export default function NoteLane({
                         });
                         setAnchorSelectionId(note.id);
                     } else {
-                        setEditState((prev) => {
-                            const alreadyOnlyThis =
-                                prev.selectedIds.size === 1 &&
-                                prev.selectedIds.has(note.id);
-                            return {
+                        const isSelected =
+                            editState.selectedIds.has(note.id);
+                        if (!isSelected) {
+                            setEditState((prev) => ({
                                 ...prev,
-                                selectedIds: alreadyOnlyThis
-                                    ? new Set<string>()
-                                    : new Set<string>([note.id]),
-                            };
-                        });
+                                selectedIds: new Set<string>([note.id]),
+                            }));
+                        }
                         setAnchorSelectionId(note.id);
-                    }
-
-                    if (editState.selectedIds.has(note.id)) {
                         setDragState({
                             startSnapTime: time,
                             baseChartData: cloneChart(segments),
@@ -1638,14 +1605,137 @@ export default function NoteLane({
                 return;
             }
 
-            if (e.ctrlKey && (e.key === "z" || e.key === "Z")) {
+            if (e.ctrlKey && (e.key === "z" || e.key === "Z" || e.code === "KeyZ")) {
                 e.preventDefault();
                 onUndo();
                 return;
             }
-            if (e.ctrlKey && (e.key === "y" || e.key === "Y")) {
+            if (e.ctrlKey && (e.key === "y" || e.key === "Y" || e.code === "KeyY")) {
                 e.preventDefault();
                 onRedo();
+                return;
+            }
+            if (e.ctrlKey && (e.key === "c" || e.key === "C")) {
+                e.preventDefault();
+                if (editState.selectedIds.size > 0) {
+                    setEditState((prev) => {
+                        const copied = segments
+                            .flatMap((seg) => seg.measures)
+                            .flatMap((m) => m.notes)
+                            .filter((n) => prev.selectedIds.has(n.id))
+                            .map((n) => ({
+                                ...n,
+                                body: n.body ? [...n.body] : undefined,
+                            }));
+                        return { ...prev, clipboard: copied };
+                    });
+                } else if (hoverNoteId) {
+                    setEditState((prev) => {
+                        const note = segments
+                            .flatMap((seg) => seg.measures)
+                            .flatMap((m) => m.notes)
+                            .find((n) => n.id === hoverNoteId);
+                        if (!note) return prev;
+                        return {
+                            ...prev,
+                            clipboard: [
+                                {
+                                    ...note,
+                                    body: note.body
+                                        ? [...note.body]
+                                        : undefined,
+                                },
+                            ],
+                        };
+                    });
+                }
+                return;
+            }
+            if (e.ctrlKey && (e.key === "x" || e.key === "X")) {
+                e.preventDefault();
+                if (editState.selectedIds.size > 0) {
+                    const ids = new Set(editState.selectedIds);
+                    setEditState((prev) => {
+                        const copied = segments
+                            .flatMap((seg) => seg.measures)
+                            .flatMap((m) => m.notes)
+                            .filter((n) => ids.has(n.id))
+                            .map((n) => ({
+                                ...n,
+                                body: n.body ? [...n.body] : undefined,
+                            }));
+                        return { ...prev, clipboard: copied };
+                    });
+                    deleteById(ids);
+                } else if (hoverNoteId) {
+                    setEditState((prev) => {
+                        const note = segments
+                            .flatMap((seg) => seg.measures)
+                            .flatMap((m) => m.notes)
+                            .find((n) => n.id === hoverNoteId);
+                        if (!note) return prev;
+                        return {
+                            ...prev,
+                            clipboard: [
+                                {
+                                    ...note,
+                                    body: note.body
+                                        ? [...note.body]
+                                        : undefined,
+                                },
+                            ],
+                        };
+                    });
+                    deleteById(new Set<string>([hoverNoteId]));
+                }
+                return;
+            }
+            if (e.ctrlKey && (e.key === "v" || e.key === "V")) {
+                e.preventDefault();
+                const clipboard = editState.clipboard;
+                const pasteTime = snapTimeRef.current;
+                if (clipboard.length === 0 || pasteTime === null) return;
+                const target = resolveInsertTarget(segments, pasteTime);
+                const refHeadBeat = clipboard.reduce(
+                    (min, note) => {
+                        const b = toBeatValue(note.head);
+                        return b !== null && b < min ? b : min;
+                    },
+                    Number.POSITIVE_INFINITY,
+                );
+                const refBeat =
+                    Number.isFinite(refHeadBeat) ? refHeadBeat : 0;
+                for (let i = 0; i < clipboard.length; i++) {
+                    const copy = clipboard[i];
+                    const copyHeadBeat = toBeatValue(copy.head) ?? 0;
+                    const relBeat = copyHeadBeat - refBeat;
+                    const headBeat = target.beat + relBeat;
+                    const tailBeat =
+                        copy.tail && copy.head
+                            ? headBeat +
+                              ((toBeatValue(copy.tail) ?? 0) -
+                                  (toBeatValue(copy.head) ?? 0))
+                            : undefined;
+                    const note: ChartNote = {
+                        ...copy,
+                        id: generateNoteId(),
+                        head: { a: Math.round(headBeat * 10000), b: 10000 },
+                        tail:
+                            tailBeat !== undefined
+                                ? {
+                                      a: Math.round(
+                                          Math.max(headBeat, tailBeat) *
+                                              10000,
+                                      ),
+                                      b: 10000,
+                                  }
+                                : undefined,
+                    };
+                    target.chart[target.segmentIndex].measures[
+                        target.measureIndex
+                    ].notes.push(note);
+                }
+                commitChart(target.chart, true);
                 return;
             }
             if (e.key === "Delete") {
@@ -1662,13 +1752,17 @@ export default function NoteLane({
         },
         [
             annotationEditing,
+            commitChart,
             deleteById,
+            editState.clipboard,
             editState.selectedIds,
             hoverNoteId,
             matchesKeyShortcut,
             onRedo,
             onUndo,
+            resolveInsertTarget,
             safeSubdivision,
+            segments,
             setBeatSubdivision,
             setEditState,
         ],
