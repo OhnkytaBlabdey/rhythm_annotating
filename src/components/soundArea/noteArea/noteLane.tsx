@@ -537,7 +537,13 @@ export default function NoteLane({
                 });
             }
 
-            const segmentIndex = next.length - 1;
+            let segmentIndex = 0;
+            for (let i = next.length - 1; i >= 0; i--) {
+                if (absoluteTime >= next[i].time - 1e-6) {
+                    segmentIndex = i;
+                    break;
+                }
+            }
             const segment = next[segmentIndex];
             const tempo =
                 Number.isFinite(segment.tempo) && segment.tempo > 0
@@ -1060,10 +1066,8 @@ export default function NoteLane({
                         if (head !== null) {
                             const abs =
                                 measureStart + head * beatDuration + deltaTime;
-                            const newBeat = Math.max(
-                                0,
-                                (abs - measureStart) / beatDuration,
-                            );
+                            const newBeat =
+                                (abs - measureStart) / beatDuration;
                             note.head = {
                                 a: Math.round(newBeat * 10000),
                                 b: 10000,
@@ -1073,10 +1077,8 @@ export default function NoteLane({
                         if (tail !== null) {
                             const absTail =
                                 measureStart + tail * beatDuration + deltaTime;
-                            const newTail = Math.max(
-                                0,
-                                (absTail - measureStart) / beatDuration,
-                            );
+                            const newTail =
+                                (absTail - measureStart) / beatDuration;
                             note.tail = {
                                 a: Math.round(newTail * 10000),
                                 b: 10000,
@@ -1615,7 +1617,7 @@ export default function NoteLane({
                 onRedo();
                 return;
             }
-            if (e.ctrlKey && (e.key === "c" || e.key === "C")) {
+            if (matchesKeyShortcut("note.copy", e.nativeEvent)) {
                 e.preventDefault();
                 if (editState.selectedIds.size > 0) {
                     setEditState((prev) => {
@@ -1651,7 +1653,7 @@ export default function NoteLane({
                 }
                 return;
             }
-            if (e.ctrlKey && (e.key === "x" || e.key === "X")) {
+            if (matchesKeyShortcut("note.cut", e.nativeEvent)) {
                 e.preventDefault();
                 if (editState.selectedIds.size > 0) {
                     const ids = new Set(editState.selectedIds);
@@ -1690,11 +1692,13 @@ export default function NoteLane({
                 }
                 return;
             }
-            if (e.ctrlKey && (e.key === "v" || e.key === "V")) {
+            if (matchesKeyShortcut("note.paste", e.nativeEvent)) {
                 e.preventDefault();
                 const clipboard = editState.clipboard;
-                const pasteTime = snapTimeRef.current;
-                if (clipboard.length === 0 || pasteTime === null) return;
+                if (clipboard.length === 0) return;
+                const pasteTime =
+                    snapTimeRef.current ??
+                    (timeRange[0] + timeRange[1]) / 2;
                 const target = resolveInsertTarget(segments, pasteTime);
                 const refHeadBeat = clipboard.reduce(
                     (min, note) => {
@@ -1738,14 +1742,13 @@ export default function NoteLane({
                 commitChart(target.chart, true);
                 return;
             }
-            if (e.key === "Delete") {
+            if (matchesKeyShortcut("note.delete", e.nativeEvent)) {
+                e.preventDefault();
                 if (editState.selectedIds.size > 0) {
-                    e.preventDefault();
                     deleteById(new Set(editState.selectedIds));
                     return;
                 }
                 if (hoverNoteId) {
-                    e.preventDefault();
                     deleteById(new Set<string>([hoverNoteId]));
                 }
             }
@@ -1765,6 +1768,7 @@ export default function NoteLane({
             segments,
             setBeatSubdivision,
             setEditState,
+            timeRange,
         ],
     );
 

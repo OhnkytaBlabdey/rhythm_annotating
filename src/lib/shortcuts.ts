@@ -13,7 +13,11 @@ export type ShortcutAction =
     | "note.mode.insertEnd"
     | "note.mode.annotate"
     | "note.division.increment"
-    | "note.division.decrement";
+    | "note.division.decrement"
+    | "note.copy"
+    | "note.cut"
+    | "note.paste"
+    | "note.delete";
 
 export type ShortcutMap = Record<ShortcutAction, string>;
 
@@ -180,6 +184,38 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
         description: "单拍小节内等分减一",
         section: "记谱输入",
         defaultCombo: "[",
+        inputType: "keyboard",
+    },
+    {
+        action: "note.copy",
+        label: "复制",
+        description: "复制选中的 note 到剪贴板",
+        section: "记谱编辑",
+        defaultCombo: "Ctrl+C",
+        inputType: "keyboard",
+    },
+    {
+        action: "note.cut",
+        label: "剪切",
+        description: "剪切选中的 note 到剪贴板",
+        section: "记谱编辑",
+        defaultCombo: "Ctrl+X",
+        inputType: "keyboard",
+    },
+    {
+        action: "note.paste",
+        label: "粘贴",
+        description: "在光标位置粘贴剪贴板中的 note",
+        section: "记谱编辑",
+        defaultCombo: "Ctrl+V",
+        inputType: "keyboard",
+    },
+    {
+        action: "note.delete",
+        label: "删除",
+        description: "删除选中的 note",
+        section: "记谱编辑",
+        defaultCombo: "Delete",
         inputType: "keyboard",
     },
 ];

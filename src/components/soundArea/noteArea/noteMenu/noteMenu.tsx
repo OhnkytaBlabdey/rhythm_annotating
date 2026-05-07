@@ -102,7 +102,7 @@ export default function NoteMenu(p: _p) {
         { mode: "insert-weak", label: "弱拍", title: "插入弱拍 (type 1)" },
         { mode: "insert-ln", label: "长键", title: "插入长键 (两步点击)" },
         { mode: "select", label: "选中", title: "选中模式" },
-        { mode: "paste", label: "粘贴", title: "粘贴模式 (Ctrl+V 直接粘贴)" },
+        { mode: "paste", label: "粘贴", title: `粘贴模式 (${getKeyboardShortcutLabel("note.paste") || "Ctrl+V"} 直接粘贴)` },
         { mode: "insert-start", label: "起始", title: "设置起始标记" },
         { mode: "insert-end", label: "结束", title: "设置结束标记" },
         { mode: "annotate", label: "标注", title: "标注模式" },
@@ -145,19 +145,19 @@ export default function NoteMenu(p: _p) {
             <div className={cls("button-group", "edit-grid")}>
                 <ActionButton
                     label="删除"
-                    title="删除选中 Note (Del)"
+                    title={`删除选中 Note (${getKeyboardShortcutLabel("note.delete") || "Del"})`}
                     disabled={!p.hasSelection}
                     onClick={p.onDelete}
                 />
                 <ActionButton
                     label="复制"
-                    title="复制选中 Note (Ctrl+C)"
+                    title={`复制选中 Note (${getKeyboardShortcutLabel("note.copy") || "Ctrl+C"})`}
                     disabled={!p.hasSelection}
                     onClick={p.onCopy}
                 />
                 <ActionButton
                     label="剪切"
-                    title="剪切选中 Note (Ctrl+X)"
+                    title={`剪切选中 Note (${getKeyboardShortcutLabel("note.cut") || "Ctrl+X"})`}
                     disabled={!p.hasSelection}
                     onClick={p.onCut}
                 />
