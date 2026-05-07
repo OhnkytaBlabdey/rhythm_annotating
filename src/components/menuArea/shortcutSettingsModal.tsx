@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import style from "./shortcutSettingsModal.module.css";
 import {
     DEFAULT_SHORTCUTS,
@@ -126,7 +127,7 @@ export default function ShortcutSettingsModal({
         onClose();
     };
 
-    return (
+    const modal = (
         <div
             className={style.backdrop}
             onClick={onClose}
@@ -316,4 +317,7 @@ export default function ShortcutSettingsModal({
             </div>
         </div>
     );
+
+    if (typeof document === "undefined") return modal;
+    return createPortal(modal, document.body);
 }

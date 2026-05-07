@@ -62,6 +62,33 @@ interface NoteHit {
 interface DragState {
     startSnapTime: number;
     baseChartData: ChartSegment[];
+    minSelectedTime: number;
+    maxSelectedTime: number;
+}
+
+function getSelectedTimeBounds(
+    data: ChartSegment[],
+    ids: Set<string>,
+): { minTime: number; maxTime: number } | null {
+    let minTime = Number.POSITIVE_INFINITY;
+    let maxTime = Number.NEGATIVE_INFINITY;
+    for (const segment of data) {
+        const beatDuration = 60 / Math.max(1, segment.tempo);
+        for (let mi = 0; mi < segment.measures.length; mi++) {
+            const measureStart = segment.time + mi * beatDuration;
+            for (const note of segment.measures[mi].notes) {
+                if (!ids.has(note.id)) continue;
+                const headBeat = toBeatValue(note.head);
+                if (headBeat !== null) {
+                    const t = measureStart + headBeat * beatDuration;
+                    if (t < minTime) minTime = t;
+                    if (t > maxTime) maxTime = t;
+                }
+            }
+        }
+    }
+    if (!Number.isFinite(minTime)) return null;
+    return { minTime, maxTime };
 }
 
 const TYPE_COLORS = [
@@ -1282,7 +1309,23 @@ export default function NoteLane({
             }
             const { time } = updatePointer(e.clientX);
             if (dragState && time !== null) {
-                const delta = time - dragState.startSnapTime;
+                const lowerBound = Math.max(
+                    0,
+                    startTime ?? 0,
+                );
+                const upperBound =
+                    endTime != null
+                        ? endTime
+                        : songDuration;
+                let delta = time - dragState.startSnapTime;
+                delta = Math.max(
+                    delta,
+                    lowerBound - dragState.minSelectedTime,
+                );
+                delta = Math.min(
+                    delta,
+                    upperBound - dragState.maxSelectedTime,
+                );
                 const moved = moveSelectedNotes(dragState.baseChartData, delta);
                 commitChart(moved, false);
             }
@@ -1290,8 +1333,11 @@ export default function NoteLane({
         [
             commitChart,
             dragState,
+            endTime,
             moveSelectedNotes,
             renderValidationError,
+            songDuration,
+            startTime,
             updatePointer,
         ],
     );
@@ -1482,9 +1528,18 @@ export default function NoteLane({
                             }));
                         }
                         setAnchorSelectionId(note.id);
+                        const dragIds = isSelected
+                            ? editState.selectedIds
+                            : new Set<string>([note.id]);
+                        const bounds = getSelectedTimeBounds(
+                            segments,
+                            dragIds,
+                        );
                         setDragState({
                             startSnapTime: time,
                             baseChartData: cloneChart(segments),
+                            minSelectedTime: bounds?.minTime ?? time,
+                            maxSelectedTime: bounds?.maxTime ?? time,
                         });
                     }
                 } else if (!e.ctrlKey && !e.shiftKey) {
@@ -1525,14 +1580,30 @@ export default function NoteLane({
 
     const handleMouseUp = useCallback(() => {
         if (dragState) {
-            const moved = moveSelectedNotes(
-                dragState.baseChartData,
-                (snapTime ?? dragState.startSnapTime) - dragState.startSnapTime,
+            const lowerBound = Math.max(
+                0,
+                startTime ?? 0,
             );
+            const upperBound =
+                endTime != null
+                    ? endTime
+                    : songDuration;
+            let delta =
+                (snapTime ?? dragState.startSnapTime) -
+                dragState.startSnapTime;
+            delta = Math.max(
+                delta,
+                lowerBound - dragState.minSelectedTime,
+            );
+            delta = Math.min(
+                delta,
+                upperBound - dragState.maxSelectedTime,
+            );
+            const moved = moveSelectedNotes(dragState.baseChartData, delta);
             commitChart(moved, true);
             setDragState(null);
         }
-    }, [commitChart, dragState, moveSelectedNotes, snapTime]);
+    }, [commitChart, dragState, endTime, moveSelectedNotes, snapTime, songDuration, startTime]);
 
     const handleContextMenu = useCallback(
         (e: MouseEvent<HTMLCanvasElement>) => {
