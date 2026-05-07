@@ -740,7 +740,13 @@ export default function NoteLane({
             (editState.mode === "insert-strong" ||
                 editState.mode === "insert-weak" ||
                 editState.mode === "insert-ln") &&
-            snapTime !== null
+            snapTime !== null &&
+            !(
+                !isStartEndMode &&
+                hasStartOrEnd &&
+                (snapTime < (startTime ?? -Infinity) ||
+                    snapTime > (endTime ?? Infinity))
+            )
         ) {
             const x = mapTimeToX(snapTime);
             const y = height / 2;
@@ -1148,6 +1154,17 @@ export default function NoteLane({
             if (time < 0) return;
 
             if (
+                editState.mode !== "insert-start" &&
+                editState.mode !== "insert-end" &&
+                ((startTime !== null && startTime !== undefined) ||
+                    (endTime !== null && endTime !== undefined)) &&
+                (time < (startTime ?? -Infinity) ||
+                    time > (endTime ?? Infinity))
+            ) {
+                return;
+            }
+
+            if (
                 editState.mode === "insert-strong" ||
                 editState.mode === "insert-weak"
             ) {
@@ -1442,6 +1459,17 @@ export default function NoteLane({
             }
 
             if (editState.mode === "select") {
+                const hasRange =
+                    (startTime !== null && startTime !== undefined) ||
+                    (endTime !== null && endTime !== undefined);
+                if (
+                    hasRange &&
+                    (time < (startTime ?? -Infinity) ||
+                        time > (endTime ?? Infinity))
+                ) {
+                    return;
+                }
+
                 if (note) {
                     if (e.shiftKey && anchorSelectionId) {
                         const sorted = [...noteHits].sort(
