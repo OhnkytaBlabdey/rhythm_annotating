@@ -1,5 +1,19 @@
 import { NoteLaneData } from "@/components/soundArea/noteArea/chartTypes";
 
+export interface BpmEstimationSegment {
+    startTime: number;
+    endTime: number;
+    bpm: number;
+}
+
+export type BpmEstimationStatus = "pending" | "computing" | "ready" | "error";
+
+export interface BpmEstimation {
+    segments: BpmEstimationSegment[];
+    status: BpmEstimationStatus;
+    error?: string;
+}
+
 /**
  * 完整的音频文件数据，存储在全局 context 中
  */
@@ -23,6 +37,7 @@ export interface SoundLaneState {
     noteLaneOffset: number;    // 记谱图形偏移(秒)，仅canvas像素位移
     waveLane: WaveLaneState;
     spectrumLane: SpectrumLaneState;
+    bpmEstimation?: BpmEstimation;
 }
 
 /**
@@ -64,6 +79,7 @@ export function defaultSoundLaneState(audioId: string): SoundLaneState {
         noteLaneOffset: 0,
         waveLane: defaultWaveLaneState(),
         spectrumLane: defaultSpectrumLaneState(),
+        bpmEstimation: { segments: [], status: "pending" },
     };
 }
 
@@ -75,16 +91,19 @@ export function defaultNoteLaneState(): NoteLaneState {
     };
 }
 
-export function defaultNoteLaneData(): NoteLaneData {
+export function defaultNoteLaneData(
+    defaultBpm?: number,
+): NoteLaneData {
     const lane = defaultNoteLaneState();
+    const bpm = defaultBpm ?? lane.defaultBpm;
     return {
         id: lane.id,
-        defaultBpm: lane.defaultBpm,
+        defaultBpm: bpm,
         division: lane.division,
         chartData: [
             {
                 time: 0,
-                tempo: lane.defaultBpm,
+                tempo: bpm,
                 measures: [{ notes: [] }],
             },
         ],
@@ -138,5 +157,23 @@ export function normalizeSoundLaneState(raw: SoundLaneState): SoundLaneState {
                     isFolded: lane.isFolded ?? false,
                   }))
                 : [defaultNoteLaneData()],
+        bpmEstimation: normalizeBpmEstimation(raw.bpmEstimation),
+    };
+}
+
+function normalizeBpmEstimation(
+    raw: unknown,
+): BpmEstimation | undefined {
+    if (!raw || typeof raw !== "object") {
+        return { segments: [], status: "pending" };
+    }
+    const e = raw as Partial<BpmEstimation>;
+    const status = e.status ?? "pending";
+    const resolvedStatus: BpmEstimationStatus =
+        status === "computing" ? "pending" : status;
+    return {
+        segments: Array.isArray(e.segments) ? e.segments : [],
+        status: resolvedStatus,
+        error: typeof e.error === "string" ? e.error : undefined,
     };
 }

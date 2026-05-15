@@ -31,6 +31,9 @@ import {
     validateNoteLaneData,
     normalizeFraction,
 } from "./noteArea/chartAdapter";
+import {
+    resolveDefaultBpmFromEstimation,
+} from "@/lib/bpm/bpmEstimator";
 
 const MAX_UNDO = 50;
 
@@ -219,7 +222,13 @@ export default function SoundLane(prop: _prop) {
     );
 
     const handleAddNoteLane = useCallback(() => {
-        const nextLane = defaultNoteLaneData();
+        const estimatedBpm = resolveDefaultBpmFromEstimation(
+            prop.refSoundLaneState.bpmEstimation,
+            [],
+        );
+        const nextLane = defaultNoteLaneData(
+            estimatedBpm ?? undefined,
+        );
         prop.setSoundLaneState(prop.index, {
             ...prop.refSoundLaneState,
             noteLanes: [...noteLanes, nextLane],
@@ -731,6 +740,9 @@ export default function SoundLane(prop: _prop) {
             hasSelection: editState.selectedIds.size > 0,
             hasClipboard: editState.clipboard.length > 0,
             currentBpm: activeLane.defaultBpm,
+            bpmLocked:
+                prop.refSoundLaneState.bpmEstimation?.status ===
+                "computing",
             setCurrentBpm: (bpm: number) => {
                 const safeBpm = Math.max(1, Math.floor(bpm));
                 setLaneEditState(activeLane.id, (prev) => ({

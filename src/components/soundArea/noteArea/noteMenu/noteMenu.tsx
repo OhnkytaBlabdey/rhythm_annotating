@@ -15,6 +15,7 @@ interface _p {
     hasSelection: boolean;
     hasClipboard: boolean;
     currentBpm: number;
+    bpmLocked?: boolean;
     setCurrentBpm: (bpm: number) => void;
     currentMeasureBpm: number | null;
     canEditCurrentMeasureBpm: boolean;
@@ -214,6 +215,7 @@ export default function NoteMenu(p: _p) {
                     max={999}
                     step={1}
                     value={p.currentBpm}
+                    disabled={p.bpmLocked ?? false}
                     onMouseDown={stopInteraction}
                     onClick={stopInteraction}
                     onKeyDown={stopInteraction}
@@ -223,7 +225,11 @@ export default function NoteMenu(p: _p) {
                         if (v > 0 && Number.isFinite(v)) p.setCurrentBpm(v);
                     }}
                     className={cls("bpm-input-compact")}
-                    title="当前轨道默认 BPM，修改后将重设后续空小节"
+                    title={
+                        p.bpmLocked
+                            ? "BPM 估测中，请稍候..."
+                            : "当前轨道默认 BPM，修改后将重设后续空小节"
+                    }
                 />
                 <span className={cls("bpm-unit")}>bpm</span>
                 <span className={cls("bpm-unit")}>选中</span>

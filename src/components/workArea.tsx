@@ -29,6 +29,7 @@ import {
     collectPersistSliceStates,
     registerPersistSlice,
 } from "@/lib/persistence/sliceRegistry";
+import { runBpmEstimation } from "@/lib/bpm/bpmEstimator";
 
 const WHEEL_PAN_RATIO = 0.05;
 
@@ -306,10 +307,56 @@ export default function WorkArea() {
             brightnessOffset: spectrumView.brightnessOffset,
             resolutionScale: spectrumView.resolutionScale,
         };
+
         setProject((prev) => ({
             ...prev,
             soundLaneStates: [...prev.soundLaneStates, nextLane],
         }));
+
+        if (audioData.decodedBuffer) {
+            const channelData: Float32Array[] = [];
+            for (
+                let ch = 0;
+                ch < audioData.decodedBuffer.numberOfChannels;
+                ch++
+            ) {
+                channelData.push(
+                    audioData.decodedBuffer.getChannelData(ch),
+                );
+            }
+            const sampleRate = audioData.decodedBuffer.sampleRate;
+            const audioId = audioData.id;
+
+            setProject((prev) => {
+                const idx = prev.soundLaneStates.findIndex(
+                    (s) => s.audioId === audioId,
+                );
+                if (idx === -1) return prev;
+                const next = [...prev.soundLaneStates];
+                next[idx] = {
+                    ...next[idx],
+                    bpmEstimation: { segments: [], status: "computing" },
+                };
+                return { ...prev, soundLaneStates: next };
+            });
+
+            runBpmEstimation(channelData, sampleRate).then(
+                (estimation) => {
+                    setProject((prev) => {
+                        const idx = prev.soundLaneStates.findIndex(
+                            (s) => s.audioId === audioId,
+                        );
+                        if (idx === -1) return prev;
+                        const next = [...prev.soundLaneStates];
+                        next[idx] = {
+                            ...next[idx],
+                            bpmEstimation: estimation,
+                        };
+                        return { ...prev, soundLaneStates: next };
+                    });
+                },
+            );
+        }
     }
 
     function resetEditor() {
