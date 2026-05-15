@@ -1,3 +1,10 @@
+nodeLinker: hoisted
+allowBuilds:
+  electron: true
+  sharp: true
+  unrs-resolver: true
 onlyBuiltDependencies:
+  - electron
   - sharp
   - unrs-resolver
+blockExoticSubdeps: false
