@@ -1,7 +1,7 @@
 .wrap {
     display: flex;
     align-items: center;
-    width: min(480px, 72vw);
+    width: min(400px, 72vw);
     height: 42px;
     padding: 0 8px;
 }

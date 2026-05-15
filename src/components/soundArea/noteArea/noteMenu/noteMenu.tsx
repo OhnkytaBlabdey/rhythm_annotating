@@ -188,8 +188,8 @@ export default function NoteMenu(p: _p) {
             </div>
 
             {/* History */}
-            <div className={cls("section-label")}>历史</div>
-            <div className={cls("button-group")}>
+            <div className={cls("compact-row")}>
+                <span className={cls("inline-label")}>历史</span>
                 <ActionButton
                     label="撤回"
                     title="撤回 (Ctrl+Z)"
@@ -205,8 +205,8 @@ export default function NoteMenu(p: _p) {
             </div>
 
             {/* 拍 */}
-            <div className={cls("section-label")}>拍</div>
-            <div className={cls("bpm-row")}>
+            <div className={cls("compact-row")}>
+                <span className={cls("inline-label")}>拍</span>
                 <span className={cls("bpm-unit")}>默认</span>
                 <input
                     type="number"
@@ -222,13 +222,10 @@ export default function NoteMenu(p: _p) {
                         const v = Number(e.target.value);
                         if (v > 0 && Number.isFinite(v)) p.setCurrentBpm(v);
                     }}
-                    className={cls("bpm-input")}
+                    className={cls("bpm-input-compact")}
                     title="当前轨道默认 BPM，修改后将重设后续空小节"
                 />
                 <span className={cls("bpm-unit")}>bpm</span>
-            </div>
-
-            <div className={cls("bpm-row")}>
                 <span className={cls("bpm-unit")}>选中</span>
                 <input
                     type="number"
@@ -253,13 +250,10 @@ export default function NoteMenu(p: _p) {
                             p.setCurrentMeasureBpm(v);
                         }
                     }}
-                    className={cls("bpm-input")}
+                    className={cls("bpm-input-compact")}
                     title="当前选中小节 BPM，仅修改该小节"
                 />
                 <span className={cls("bpm-unit")}>bpm</span>
-            </div>
-
-            <div className={cls("bpm-row")}>
                 <input
                     type="number"
                     min={1}
@@ -274,7 +268,7 @@ export default function NoteMenu(p: _p) {
                         const v = Number(e.target.value);
                         if (v >= 1 && Number.isFinite(v)) p.setDivision(v);
                     }}
-                    className={cls("bpm-input")}
+                    className={cls("bpm-input-compact")}
                     title={`当前 NoteLane 的单拍等分${
                         getKeyboardShortcutLabel("note.division.increment")
                             ? `，增加: ${getKeyboardShortcutLabel(

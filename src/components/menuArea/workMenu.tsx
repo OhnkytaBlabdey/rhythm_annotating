@@ -43,8 +43,9 @@ function WorkMenu(prop: _prop) {
                             fontFamily:
                                 "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
                             display: "inline-block",
-                            minWidth: "250px",
-                            textAlign: "right",
+                            minWidth: "210px",
+                            fontSize: "10px",
+                            textAlign: "left",
                         }}
                     >
                         {prop.timeRange[0].toFixed(4)} -{" "}

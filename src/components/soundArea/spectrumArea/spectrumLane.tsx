@@ -481,7 +481,7 @@ function SpectrumLane(p: _p) {
 
         ctx.putImageData(imageData, 0, 0);
 
-        if (spectrumOffset > 0) {
+        if (spectrumOffset > 0 && tL < spectrumOffset) {
             const span = tR - tL;
             const pixelShift = Math.round((spectrumOffset / span) * canvasWidth);
             if (pixelShift > 0 && pixelShift < canvasWidth) {

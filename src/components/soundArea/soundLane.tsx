@@ -945,7 +945,7 @@ export default function SoundLane(prop: _prop) {
                         )}
                     </div>
                     <div className="flex-1 min-w-0">
-                        {!prop.refSoundLaneState.spectrumLane.isFolded && (
+                        <div className={prop.refSoundLaneState.spectrumLane.isFolded ? 'hidden' : ''}>
                             <SpectrumLane
                                 audioId={prop.audioId}
                                 timeRange={prop.timeRange}
@@ -959,7 +959,7 @@ export default function SoundLane(prop: _prop) {
                                     });
                                 }}
                             />
-                        )}
+                        </div>
                     </div>
                 </div>
 
@@ -999,7 +999,7 @@ export default function SoundLane(prop: _prop) {
                                 />
                             </button>
                         </div>
-                        {activeNoteMenuProps && (
+                        {activeNoteMenuProps && !noteLanes.every((l) => l.isFolded) && (
                             <NoteMenu {...activeNoteMenuProps} />
                         )}
                     </div>

@@ -101,6 +101,33 @@
     color: var(--editor-muted);
 }
 
+.compact-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.inline-label {
+    font-size: 9px;
+    color: var(--editor-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+    margin-right: 2px;
+}
+
+.bpm-input-compact {
+    width: 42px;
+    min-height: 24px;
+    padding: 0 4px;
+    font-size: 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(141, 111, 74, 0.24);
+    background: rgba(255, 255, 255, 0.94);
+    color: #241f19;
+    text-align: right;
+}
+
 .error {
     color: var(--editor-danger);
     font-size: 12px;

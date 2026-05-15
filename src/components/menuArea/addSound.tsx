@@ -1,5 +1,4 @@
 import { AudioData } from "@/interface/audioData";
-import Image from "@/components/Image";
 import React, { useContext, useRef, useState } from "react";
 import { AudioDataCtx } from "../audioContext";
 
@@ -116,12 +115,6 @@ function AddSound(prop: _prop) {
                 title="Click to AddSound"
                 className="editor-toolbar-button"
             >
-                <Image
-                    src="/assets/icons/newSoundLane.png"
-                    alt="Add Sound Lane"
-                    width={36}
-                    height={24}
-                />
                 <span>添加音频</span>
             </button>
             {warning && (

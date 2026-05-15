@@ -71,7 +71,7 @@ select {
   display: grid;
   grid-template-columns: auto auto auto 1fr auto auto auto;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
 }
 
 .editor-toolbar-button {
