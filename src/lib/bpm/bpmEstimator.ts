@@ -27,7 +27,7 @@ export async function runBpmEstimation(
 
         const duration = mono.length / sampleRate;
         const segments: BpmEstimationSegment[] = [
-            { startTime: 0, endTime: duration, bpm },
+            { startTime: 0, endTime: duration, bpm, source: "computed" },
         ];
 
         return { segments, status: "ready" };
@@ -73,8 +73,11 @@ export function resolveDefaultBpmFromEstimation(
         if (targetTime > 0) break;
     }
 
-    const seg = estimation.segments.find(
+    const computed = estimation.segments.filter(
+        (s) => s.source === "computed",
+    );
+    const seg = computed.find(
         (s) => targetTime >= s.startTime && targetTime < s.endTime,
     );
-    return seg?.bpm ?? estimation.segments[0].bpm;
+    return seg?.bpm ?? computed[0]?.bpm ?? null;
 }

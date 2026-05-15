@@ -4,6 +4,7 @@ export interface BpmEstimationSegment {
     startTime: number;
     endTime: number;
     bpm: number;
+    source: "computed" | "fallback";
 }
 
 export type BpmEstimationStatus = "pending" | "computing" | "ready" | "error";
@@ -171,9 +172,16 @@ function normalizeBpmEstimation(
     const status = e.status ?? "pending";
     const resolvedStatus: BpmEstimationStatus =
         status === "computing" || status === "error" ? "pending" : status;
-    return {
-        segments: Array.isArray(e.segments) ? e.segments : [],
-        status: resolvedStatus,
-        error: typeof e.error === "string" ? e.error : undefined,
-    };
+    const segments: BpmEstimationSegment[] = Array.isArray(e.segments)
+        ? e.segments.map((s: Partial<BpmEstimationSegment>) => ({
+            startTime: typeof s.startTime === "number" ? s.startTime : 0,
+            endTime: typeof s.endTime === "number" ? s.endTime : 0,
+            bpm: typeof s.bpm === "number" ? s.bpm : 120,
+            source:
+                s.source === "computed" || s.source === "fallback"
+                    ? s.source
+                    : "fallback",
+        }))
+        : [];
+    return { segments, status: resolvedStatus, error: typeof e.error === "string" ? e.error : undefined };
 }
