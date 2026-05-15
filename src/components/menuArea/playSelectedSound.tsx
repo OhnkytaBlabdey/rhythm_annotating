@@ -84,6 +84,7 @@ function PlaySelected(prop: _p) {
 
     async function playAll(
         audioBuffers: ArrayBuffer[],
+        offsets: number[],
         currentTime: number = 0,
         onComplete?: () => void,
     ) {
@@ -122,12 +123,12 @@ function PlaySelected(prop: _p) {
         await Promise.all(decodePromises);
 
         let maxDuration = 0;
-        for (const { source, decoded } of decodedSources) {
-            source.start(ctxRef.current.currentTime, currentTime);
-
-            const duration = decoded.duration - currentTime;
-            maxDuration = Math.max(maxDuration, duration);
-
+        for (let i = 0; i < decodedSources.length; i++) {
+            const { source, decoded } = decodedSources[i];
+            const laneOffset = Math.max(0, offsets[i] ?? 0);
+            source.start(ctxRef.current.currentTime + laneOffset, currentTime);
+            const totalDuration = laneOffset + (decoded.duration - currentTime);
+            maxDuration = Math.max(maxDuration, totalDuration);
             sourcesRef.current.push(source);
         }
 
@@ -203,8 +204,12 @@ function PlaySelected(prop: _p) {
 
             playingSelectionKeyRef.current = selectionKey;
             const audioBuffers = targetAudios.map((audio) => audio.buffer);
+            const offsets = targetAudios.map((audio) => {
+                const lane = prop.refSoundLaneStates.find(s => s.audioId === audio.id);
+                return lane?.offset ?? 0;
+            });
 
-            void playAll(audioBuffers, prop.refCurrentTime, () => {
+            void playAll(audioBuffers, offsets, prop.refCurrentTime, () => {
                 console.log("All audios completed");
             }).then(() => {
                 if (

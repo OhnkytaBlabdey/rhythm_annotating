@@ -603,6 +603,7 @@ export default function WorkArea() {
                                             setIndexSoundLaneState
                                         }
                                         timeRange={timeRange}
+                                        isPlaying={objProject.isPlaying}
                                         onActivate={setActiveSoundLaneId}
                                     />
                                 ))}
