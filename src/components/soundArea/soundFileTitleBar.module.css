@@ -22,8 +22,15 @@
 .offset-row {
     display: flex;
     align-items: center;
-    gap: 2px;
+    gap: 4px;
     flex-shrink: 0;
+}
+
+.offset-label {
+    font-size: 9px;
+    color: var(--editor-muted);
+    font-weight: 500;
+    white-space: nowrap;
 }
 
 .offset-input {

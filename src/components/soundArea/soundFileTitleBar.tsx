@@ -19,6 +19,7 @@ export default function SoundFileTitleBar(prop: _prop) {
     return (
         <div className={cls("box", prop.isActive ? "on-focus" : "off-focus")}>
             <div className={cls("offset-row")}>
+                <span className={cls("offset-label")}>音频偏移</span>
                 <input
                     type="number"
                     step={1}

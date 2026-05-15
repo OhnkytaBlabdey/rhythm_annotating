@@ -88,6 +88,7 @@ export function defaultNoteLaneData(): NoteLaneData {
                 measures: [{ notes: [] }],
             },
         ],
+        isFolded: false,
     };
 }
 
@@ -132,7 +133,10 @@ export function normalizeSoundLaneState(raw: SoundLaneState): SoundLaneState {
         },
         noteLanes:
             Array.isArray(raw.noteLanes) && raw.noteLanes.length > 0
-                ? raw.noteLanes
+                ? raw.noteLanes.map((lane: NoteLaneData) => ({
+                    ...lane,
+                    isFolded: lane.isFolded ?? false,
+                  }))
                 : [defaultNoteLaneData()],
     };
 }

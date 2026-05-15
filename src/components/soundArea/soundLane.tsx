@@ -230,6 +230,14 @@ export default function SoundLane(prop: _prop) {
         }));
     }, [noteLanes, prop]);
 
+    const handleToggleNoteFold = useCallback(() => {
+        const allFolded = noteLanes.every((l) => l.isFolded);
+        prop.setSoundLaneState(prop.index, {
+            ...prop.refSoundLaneState,
+            noteLanes: noteLanes.map((l) => ({ ...l, isFolded: !allFolded })),
+        });
+    }, [noteLanes, prop]);
+
     /** Deep-clone chartData for undo snapshot */
     const cloneChart = useCallback(
         (data: ChartSegment[]): ChartSegment[] =>
@@ -856,7 +864,7 @@ export default function SoundLane(prop: _prop) {
                         className="editor-inspector-panel w-[176px] shrink-0"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className="flex items-center gap-2 px-2 pt-2">
+                        <div className="flex items-center gap-2">
                             <div className="editor-pane-caption">Wave</div>
                             <FoldWave
                                 audioId={prop.audioId}
@@ -872,16 +880,18 @@ export default function SoundLane(prop: _prop) {
                                 }}
                             />
                         </div>
-                        <WaveMenu
-                            audioId={prop.audioId}
-                            waveState={prop.refSoundLaneState.waveLane}
-                            setWaveState={(waveLane) => {
-                                prop.setSoundLaneState(prop.index, {
-                                    ...prop.refSoundLaneState,
-                                    waveLane,
-                                });
-                            }}
-                        />
+                        {!prop.refSoundLaneState.waveLane.isFolded && (
+                            <WaveMenu
+                                audioId={prop.audioId}
+                                waveState={prop.refSoundLaneState.waveLane}
+                                setWaveState={(waveLane) => {
+                                    prop.setSoundLaneState(prop.index, {
+                                        ...prop.refSoundLaneState,
+                                        waveLane,
+                                    });
+                                }}
+                            />
+                        )}
                     </div>
                     <div className="flex-1 min-w-0">
                         {!prop.refSoundLaneState.waveLane.isFolded && (
@@ -905,7 +915,7 @@ export default function SoundLane(prop: _prop) {
                         className="editor-inspector-panel w-[176px] shrink-0"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className="flex items-center gap-2 px-2 pt-2">
+                        <div className="flex items-center gap-2">
                             <div className="editor-pane-caption">Spectrum</div>
                             <FoldSpectrum
                                 audioId={prop.audioId}
@@ -921,16 +931,18 @@ export default function SoundLane(prop: _prop) {
                                 }}
                             />
                         </div>
-                        <SpectrumMenu
-                            audioId={prop.audioId}
-                            spectrumState={prop.refSoundLaneState.spectrumLane}
-                            setSpectrumState={(spectrumLane) => {
-                                prop.setSoundLaneState(prop.index, {
-                                    ...prop.refSoundLaneState,
-                                    spectrumLane,
-                                });
-                            }}
-                        />
+                        {!prop.refSoundLaneState.spectrumLane.isFolded && (
+                            <SpectrumMenu
+                                audioId={prop.audioId}
+                                spectrumState={prop.refSoundLaneState.spectrumLane}
+                                setSpectrumState={(spectrumLane) => {
+                                    prop.setSoundLaneState(prop.index, {
+                                        ...prop.refSoundLaneState,
+                                        spectrumLane,
+                                    });
+                                }}
+                            />
+                        )}
                     </div>
                     <div className="flex-1 min-w-0">
                         {!prop.refSoundLaneState.spectrumLane.isFolded && (
@@ -957,8 +969,21 @@ export default function SoundLane(prop: _prop) {
                     onClick={(e) => e.stopPropagation()}
                 >
                     <div className="editor-inspector-panel w-[176px] shrink-0 self-stretch">
-                        <div className="flex items-center gap-2 px-2 pt-2">
+                        <div className="flex items-center gap-2">
                             <div className="editor-pane-caption">Note Lane</div>
+                            <button
+                                type="button"
+                                onClick={handleToggleNoteFold}
+                                title={noteLanes.every((l) => l.isFolded) ? "展开记谱" : "折叠记谱"}
+                                className="inline-flex items-center justify-center w-5 h-5 border-0 bg-transparent cursor-pointer rounded-md p-0 opacity-55 hover:opacity-100 hover:bg-[rgba(15,118,110,0.12)] transition-[opacity,background-color] duration-200"
+                            >
+                                <Image
+                                    src={noteLanes.every((l) => l.isFolded) ? "/assets/icons/unfold.png" : "/assets/icons/fold.png"}
+                                    alt={noteLanes.every((l) => l.isFolded) ? "展开记谱" : "折叠记谱"}
+                                    width={14}
+                                    height={14}
+                                />
+                            </button>
                             <button
                                 type="button"
                                 className="inline-flex items-center justify-center w-5 h-5 border-0 bg-transparent cursor-pointer rounded-md p-0 opacity-55 hover:opacity-100 hover:bg-[rgba(15,118,110,0.12)] transition-[opacity,background-color] duration-200"
@@ -980,6 +1005,7 @@ export default function SoundLane(prop: _prop) {
                     </div>
                     <div className="flex-1 min-w-0 flex flex-col gap-2">
                         {sortedNoteLanes.map((lane: NoteLaneData) => {
+                            if (lane.isFolded) return null;
                             const editState =
                                 laneEditStateMap[lane.id] ??
                                 defaultNoteEditState(lane.defaultBpm);

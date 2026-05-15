@@ -37,7 +37,16 @@ function WorkMenu(prop: _prop) {
                     removeMultipleAudioData={prop.removeMultipleAudioData}
                 />
                 {prop.timeRange && (
-                    <span className="editor-meta-text whitespace-nowrap">
+                    <span
+                        className="editor-meta-text whitespace-nowrap"
+                        style={{
+                            fontFamily:
+                                "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                            display: "inline-block",
+                            minWidth: "250px",
+                            textAlign: "right",
+                        }}
+                    >
                         {prop.timeRange[0].toFixed(4)} -{" "}
                         {prop.timeRange[1].toFixed(4)} |{" "}
                         {(prop.timeRange[1] - prop.timeRange[0]).toFixed(4)}s

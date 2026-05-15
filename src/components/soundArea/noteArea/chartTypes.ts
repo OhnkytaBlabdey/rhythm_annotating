@@ -36,4 +36,5 @@ export interface NoteLaneData {
     chartData: ChartSegment[];
     startTime?: number | null;
     endTime?: number | null;
+    isFolded?: boolean;
 }
