@@ -16,6 +16,20 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
+  ...(process.env.NODE_ENV === "development" && basePath
+    ? {
+        async redirects() {
+          return [
+            {
+              source: "/",
+              destination: basePath,
+              basePath: false as const,
+              permanent: false,
+            },
+          ];
+        },
+      }
+    : {}),
 };
 
 export default nextConfig;
