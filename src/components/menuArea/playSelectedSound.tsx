@@ -14,6 +14,11 @@ interface _p {
     refSoundLaneStates: SoundLaneState[];
 }
 
+function getActiveLanes(states: SoundLaneState[]): SoundLaneState[] {
+    const active = states.filter(s => s.isActive);
+    return active.length > 0 ? active : states;
+}
+
 function getSelectionKey(soundLaneStates: SoundLaneState[]): string {
     const selectedIds = soundLaneStates
         .filter((state) => state.isActive)
@@ -43,8 +48,9 @@ function PlaySelected(prop: _p) {
         [prop.refSoundLaneStates],
     );
     const minAudioOffset = useMemo(() => {
-        if (prop.refSoundLaneStates.length === 0) return 0;
-        return Math.min(...prop.refSoundLaneStates.map(s => s.offset ?? 0));
+        const lanes = getActiveLanes(prop.refSoundLaneStates);
+        if (lanes.length === 0) return 0;
+        return Math.min(...lanes.map(s => s.offset ?? 0));
     }, [prop.refSoundLaneStates]);
     const globalFreeze = Math.max(0, -minAudioOffset);
 
@@ -164,7 +170,7 @@ function PlaySelected(prop: _p) {
                 console.log("started at " + startTime.current);
             }
 
-            const states = propRef.current.refSoundLaneStates;
+            const states = getActiveLanes(propRef.current.refSoundLaneStates);
             const minOff = states.length > 0 ? Math.min(...states.map(s => s.offset ?? 0)) : 0;
             const freeze = Math.max(0, -minOff);
             const wallElapsed = (timestamp - startTime.current) / 1000;
