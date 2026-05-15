@@ -352,11 +352,13 @@ export default function WorkArea() {
             state: objProject.soundLaneStates[i],
             index: i,
         }));
-        if (!activeSoundLaneId) return entries;
-        const active = entries.find((e) => e.audio.id === activeSoundLaneId);
-        const others = entries.filter((e) => e.audio.id !== activeSoundLaneId);
-        return active ? [active, ...others] : entries;
-    }, [audioDataList, objProject.soundLaneStates, activeSoundLaneId]);
+        const sorted = [...entries].sort((a, b) => {
+            const aActive = a.state?.isActive ? 1 : 0;
+            const bActive = b.state?.isActive ? 1 : 0;
+            return bActive - aActive;
+        });
+        return sorted;
+    }, [audioDataList, objProject.soundLaneStates]);
 
     useEffect(() => {
         if (!hasHydratedSettings) return;

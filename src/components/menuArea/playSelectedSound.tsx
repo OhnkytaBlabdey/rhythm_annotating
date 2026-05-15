@@ -140,12 +140,18 @@ function PlaySelected(prop: _p) {
             return;
         }
 
+        const currentStates = propRef.current.refSoundLaneStates;
+        const activeLanes = getActiveLanes(currentStates);
+        const currentMinOffset = activeLanes.length > 0
+            ? Math.min(...activeLanes.map(s => s.offset ?? 0))
+            : 0;
+
         let maxDuration = 0;
         for (let i = 0; i < decodedSources.length; i++) {
             const { source, decoded } = decodedSources[i];
             const ownOffset = audioOffsets[i] ?? 0;
-            const audioDelay = minAudioOffset < 0
-                ? ownOffset - minAudioOffset
+            const audioDelay = currentMinOffset < 0
+                ? ownOffset - currentMinOffset
                 : Math.max(0, ownOffset);
             source.start(ctxRef.current.currentTime + audioDelay, currentTime);
             const totalDuration = audioDelay + (decoded.duration - currentTime);
