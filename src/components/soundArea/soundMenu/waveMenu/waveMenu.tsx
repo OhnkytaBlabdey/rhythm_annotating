@@ -25,8 +25,8 @@ function WaveMenu(p: _p) {
                 <input
                     type="number"
                     min={0}
-                    step={0.01}
-                    value={p.waveState.offset ?? 0}
+                    step={1}
+                    value={Math.round((p.waveState.offset ?? 0) * 1000)}
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => e.stopPropagation()}
                     onKeyDown={(e) => e.stopPropagation()}
@@ -34,13 +34,13 @@ function WaveMenu(p: _p) {
                     onChange={(e) => {
                         const v = Number(e.target.value);
                         if (v >= 0 && Number.isFinite(v)) {
-                            p.setWaveState({ ...p.waveState, offset: v });
+                            p.setWaveState({ ...p.waveState, offset: v / 1000 });
                         }
                     }}
                     className="w-[60px] min-h-[30px] rounded-lg border border-solid border-[rgba(141,111,74,0.24)] bg-[rgba(255,255,255,0.94)] px-2 text-[11px] text-right text-[#241f19]"
-                    title="WaveLane 图形偏移 (秒)"
+                    title="WaveLane 图形偏移 (毫秒)"
                 />
-                <span className="text-[10px] opacity-55">偏移(s)</span>
+                <span className="text-[10px] opacity-55">偏移(ms)</span>
             </div>
         </div>
     );

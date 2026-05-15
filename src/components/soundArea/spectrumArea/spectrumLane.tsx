@@ -358,9 +358,8 @@ function SpectrumLane(p: _p) {
         const desiredHeight = Math.round(spectrumLen / binsPerPixel);
         const renderHeight = clampNumber(desiredHeight, 32, MAX_RENDER_HEIGHT);
 
+        const [tL, tR] = p.timeRange;
         const spectrumOffset = p.spectrumState.offset ?? 0;
-        const tL = p.timeRange[0] - spectrumOffset;
-        const tR = p.timeRange[1] - spectrumOffset;
         const prevDraw = prevDrawRef.current;
         if (
             prevDraw &&
@@ -481,6 +480,22 @@ function SpectrumLane(p: _p) {
         }
 
         ctx.putImageData(imageData, 0, 0);
+
+        if (spectrumOffset > 0) {
+            const span = tR - tL;
+            const pixelShift = Math.round((spectrumOffset / span) * canvasWidth);
+            if (pixelShift > 0 && pixelShift < canvasWidth) {
+                const srcWidth = canvasWidth - pixelShift;
+                const shiftedData = ctx.getImageData(0, 0, srcWidth, renderHeight);
+                ctx.fillStyle = "#000000";
+                ctx.fillRect(0, 0, canvasWidth, renderHeight);
+                ctx.putImageData(shiftedData, pixelShift, 0);
+            } else if (pixelShift >= canvasWidth) {
+                ctx.fillStyle = "#000000";
+                ctx.fillRect(0, 0, canvasWidth, renderHeight);
+            }
+        }
+
         prevDrawRef.current = {
             tL,
             tR,

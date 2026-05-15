@@ -124,6 +124,28 @@ export default function NoteMenu(p: _p) {
 
     return (
         <div className={cls("menu")}>
+            {/* Offset */}
+            <div className={cls("section-label")}>偏移</div>
+            <div className={cls("bpm-row")}>
+                <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={Math.round(p.noteLaneOffset * 1000)}
+                    onMouseDown={stopInteraction}
+                    onClick={stopInteraction}
+                    onKeyDown={stopInteraction}
+                    onWheel={(e) => e.stopPropagation()}
+                    onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (v >= 0 && Number.isFinite(v)) p.setNoteLaneOffset(v / 1000);
+                    }}
+                    className={cls("bpm-input")}
+                    title="NoteLane 图形偏移 (毫秒)"
+                />
+                <span className={cls("bpm-unit")}>ms</span>
+            </div>
+
             {/* Mode group */}
             <div className={cls("section-label")}>模式</div>
             <div className={cls("button-group", "mode-grid")}>
@@ -268,27 +290,6 @@ export default function NoteMenu(p: _p) {
                     }`}
                 />
                 <span className={cls("bpm-unit")}>n</span>
-            </div>
-
-            <div className={cls("section-label")}>偏移</div>
-            <div className={cls("bpm-row")}>
-                <input
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={p.noteLaneOffset}
-                    onMouseDown={stopInteraction}
-                    onClick={stopInteraction}
-                    onKeyDown={stopInteraction}
-                    onWheel={(e) => e.stopPropagation()}
-                    onChange={(e) => {
-                        const v = Number(e.target.value);
-                        if (v >= 0 && Number.isFinite(v)) p.setNoteLaneOffset(v);
-                    }}
-                    className={cls("bpm-input")}
-                    title="NoteLane 图形偏移 (秒)"
-                />
-                <span className={cls("bpm-unit")}>s</span>
             </div>
 
             <div className={cls("section-label")}>Lane</div>

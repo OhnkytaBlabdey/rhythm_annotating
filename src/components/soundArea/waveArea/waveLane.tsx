@@ -185,21 +185,32 @@ function WaveLane(p: _p) {
             const ctx = canvasRef.current.getContext("2d");
             if (ctx) {
                 const offset = p.waveState.offset ?? 0;
-                const adjustedTimeRange: [number, number] = [
-                    p.timeRange[0] - offset,
-                    p.timeRange[1] - offset,
-                ];
                 renderWaveToCanvas(
                     ctx,
                     waveformCacheRef.current.channelData,
                     waveformCacheRef.current.channelCount,
-                    adjustedTimeRange,
+                    p.timeRange,
                     waveformCacheRef.current.sampleRate,
                     waveformCacheRef.current.length,
                     WAVELANE_TOTAL_HEIGHT /
                         waveformCacheRef.current.channelCount,
                     p.waveState.amplitudeMultiplier,
                 );
+                if (offset > 0) {
+                    const canvas = canvasRef.current;
+                    const span = p.timeRange[1] - p.timeRange[0];
+                    const pixelShift = Math.round((offset / span) * canvas.width);
+                    if (pixelShift > 0 && pixelShift < canvas.width) {
+                        const srcWidth = canvas.width - pixelShift;
+                        const imageData = ctx.getImageData(0, 0, srcWidth, canvas.height);
+                        ctx.fillStyle = "#ffffff";
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        ctx.putImageData(imageData, pixelShift, 0);
+                    } else if (pixelShift >= canvas.width) {
+                        ctx.fillStyle = "#ffffff";
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    }
+                }
             }
         }
     }, [isCacheReady, p.waveState.amplitudeMultiplier, p.waveState.offset, p.timeRange]);
