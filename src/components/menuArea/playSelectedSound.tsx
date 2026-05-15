@@ -127,6 +127,13 @@ function PlaySelected(prop: _p) {
 
         await Promise.all(decodePromises);
 
+        if (!isPlayingRef.current) {
+            decodedSources.forEach(({ source }) => {
+                try { source.stop(); } catch { /* no-op */ }
+            });
+            return;
+        }
+
         let maxDuration = 0;
         for (let i = 0; i < decodedSources.length; i++) {
             const { source, decoded } = decodedSources[i];
@@ -157,8 +164,11 @@ function PlaySelected(prop: _p) {
                 console.log("started at " + startTime.current);
             }
 
+            const states = propRef.current.refSoundLaneStates;
+            const minOff = states.length > 0 ? Math.min(...states.map(s => s.offset ?? 0)) : 0;
+            const freeze = Math.max(0, -minOff);
             const wallElapsed = (timestamp - startTime.current) / 1000;
-            const effectiveElapsed = Math.max(0, wallElapsed - globalFreeze);
+            const effectiveElapsed = Math.max(0, wallElapsed - freeze);
             const nextCurrentTime = initialTimeRef.current + effectiveElapsed;
             if (timestamp - lastUiUpdateRef.current >= UI_UPDATE_INTERVAL_MS) {
                 propRef.current.setCurrentTime(nextCurrentTime);
