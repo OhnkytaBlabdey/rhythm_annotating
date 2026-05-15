@@ -170,7 +170,7 @@ function normalizeBpmEstimation(
     const e = raw as Partial<BpmEstimation>;
     const status = e.status ?? "pending";
     const resolvedStatus: BpmEstimationStatus =
-        status === "computing" ? "pending" : status;
+        status === "computing" || status === "error" ? "pending" : status;
     return {
         segments: Array.isArray(e.segments) ? e.segments : [],
         status: resolvedStatus,
