@@ -32,7 +32,7 @@ export default function SoundFileTitleBar(prop: _prop) {
                         if (Number.isFinite(v)) prop.setOffset(v / 1000);
                     }}
                     className={cls("offset-input")}
-                    title="音频偏移 (毫秒)，正=音频延后，负=图像延后"
+                    title="音频偏移(毫秒)。正=音频延后播放；负=UI冻结延后"
                 />
                 <span className={cls("offset-unit")}>ms</span>
             </div>

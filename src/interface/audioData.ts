@@ -17,10 +17,10 @@ export interface AudioData {
 export interface SoundLaneState {
     audioId: string;
     isActive: boolean;
-    offset: number;
+    offset: number;            // 音频偏移(秒)。正=音频延后播放；负=统一UI冻结|minOffset|后开始走时
     isPlayComplete: boolean;
     noteLanes: NoteLaneData[];
-    noteLaneOffset: number;
+    noteLaneOffset: number;    // 记谱图形偏移(秒)，仅canvas像素位移
     waveLane: WaveLaneState;
     spectrumLane: SpectrumLaneState;
 }
@@ -40,7 +40,7 @@ export interface NoteLaneState {
 export interface WaveLaneState {
     amplitudeMultiplier: number;
     isFolded: boolean;
-    offset: number;
+    offset: number;            // 波形图形偏移(秒)，仅canvas像素位移
 }
 
 /**
@@ -51,7 +51,7 @@ export interface SpectrumLaneState {
     isFolded: boolean;
     brightnessOffset: number;
     resolutionScale: number;
-    offset: number;
+    offset: number;            // 频谱图形偏移(秒)，仅canvas像素位移
 }
 
 export function defaultSoundLaneState(audioId: string): SoundLaneState {

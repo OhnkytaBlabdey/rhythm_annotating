@@ -125,7 +125,7 @@ export default function NoteMenu(p: _p) {
     return (
         <div className={cls("menu")}>
             {/* Offset */}
-            <div className={cls("section-label")}>偏移</div>
+            <div className={cls("section-label")}>图形偏移</div>
             <div className={cls("bpm-row")}>
                 <input
                     type="number"
@@ -141,7 +141,7 @@ export default function NoteMenu(p: _p) {
                         if (v >= 0 && Number.isFinite(v)) p.setNoteLaneOffset(v / 1000);
                     }}
                     className={cls("bpm-input")}
-                    title="NoteLane 图形偏移 (毫秒)"
+                    title="记谱图形偏移(毫秒)，仅canvas像素位移"
                 />
                 <span className={cls("bpm-unit")}>ms</span>
             </div>

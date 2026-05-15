@@ -42,6 +42,11 @@ function PlaySelected(prop: _p) {
         () => getSelectionKey(prop.refSoundLaneStates),
         [prop.refSoundLaneStates],
     );
+    const minAudioOffset = useMemo(() => {
+        if (prop.refSoundLaneStates.length === 0) return 0;
+        return Math.min(...prop.refSoundLaneStates.map(s => s.offset ?? 0));
+    }, [prop.refSoundLaneStates]);
+    const globalFreeze = Math.max(0, -minAudioOffset);
 
     // 保持 propRef 同步
     useEffect(() => {
@@ -84,7 +89,7 @@ function PlaySelected(prop: _p) {
 
     async function playAll(
         audioBuffers: ArrayBuffer[],
-        offsets: number[],
+        audioOffsets: number[],
         currentTime: number = 0,
         onComplete?: () => void,
     ) {
@@ -125,9 +130,12 @@ function PlaySelected(prop: _p) {
         let maxDuration = 0;
         for (let i = 0; i < decodedSources.length; i++) {
             const { source, decoded } = decodedSources[i];
-            const laneOffset = Math.max(0, offsets[i] ?? 0);
-            source.start(ctxRef.current.currentTime + laneOffset, currentTime);
-            const totalDuration = laneOffset + (decoded.duration - currentTime);
+            const ownOffset = audioOffsets[i] ?? 0;
+            const audioDelay = minAudioOffset < 0
+                ? ownOffset - minAudioOffset
+                : Math.max(0, ownOffset);
+            source.start(ctxRef.current.currentTime + audioDelay, currentTime);
+            const totalDuration = audioDelay + (decoded.duration - currentTime);
             maxDuration = Math.max(maxDuration, totalDuration);
             sourcesRef.current.push(source);
         }
@@ -149,8 +157,9 @@ function PlaySelected(prop: _p) {
                 console.log("started at " + startTime.current);
             }
 
-            const elapsedTime = (timestamp - startTime.current) / 1000;
-            const nextCurrentTime = initialTimeRef.current + elapsedTime;
+            const wallElapsed = (timestamp - startTime.current) / 1000;
+            const effectiveElapsed = Math.max(0, wallElapsed - globalFreeze);
+            const nextCurrentTime = initialTimeRef.current + effectiveElapsed;
             if (timestamp - lastUiUpdateRef.current >= UI_UPDATE_INTERVAL_MS) {
                 propRef.current.setCurrentTime(nextCurrentTime);
                 lastUiUpdateRef.current = timestamp;
@@ -158,7 +167,7 @@ function PlaySelected(prop: _p) {
 
             if (
                 maxDurationRef.current > 0 &&
-                elapsedTime >= maxDurationRef.current
+                wallElapsed >= maxDurationRef.current
             ) {
                 propRef.current.setIsPlaying(false);
                 startTime.current = null;
@@ -204,12 +213,12 @@ function PlaySelected(prop: _p) {
 
             playingSelectionKeyRef.current = selectionKey;
             const audioBuffers = targetAudios.map((audio) => audio.buffer);
-            const offsets = targetAudios.map((audio) => {
+            const audioOffsets = targetAudios.map((audio) => {
                 const lane = prop.refSoundLaneStates.find(s => s.audioId === audio.id);
                 return lane?.offset ?? 0;
             });
 
-            void playAll(audioBuffers, offsets, prop.refCurrentTime, () => {
+            void playAll(audioBuffers, audioOffsets, prop.refCurrentTime, () => {
                 console.log("All audios completed");
             }).then(() => {
                 if (

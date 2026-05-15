@@ -10,7 +10,7 @@ import SpectrumMenu from "./soundMenu/spectrumMenu/spectrumMenu";
 import FoldSpectrum from "./soundMenu/spectrumMenu/foldSpectrum";
 import NoteMenu from "./noteArea/noteMenu/noteMenu";
 import Image from "@/components/Image";
-import { useContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useCallback, useMemo, useState } from "react";
 import { AudioDataCtx } from "../audioContext";
 import { SoundLaneState, defaultNoteLaneData } from "@/interface/audioData";
 import NoteLane from "./noteArea/noteLane";
@@ -38,7 +38,6 @@ interface _prop {
     index: number;
     audioId: string;
     timeRange: [number, number];
-    isPlaying: boolean;
     refSoundLaneState: SoundLaneState;
     setSoundLaneState: (i: number, state: SoundLaneState) => void;
     onActivate?: (audioId: string) => void;
@@ -47,18 +46,6 @@ interface _prop {
 export default function SoundLane(prop: _prop) {
     const audioDataList = useContext(AudioDataCtx);
     const audioData = audioDataList.find((a) => a.id === prop.audioId);
-
-    const [playStartTime, setPlayStartTime] = useState<number | null>(null);
-    const prevIsPlayingRef = useRef(prop.isPlaying);
-    useEffect(() => {
-        if (prop.isPlaying && !prevIsPlayingRef.current) {
-            setPlayStartTime(prop.timeRange[0]);
-        }
-        if (!prop.isPlaying) {
-            setPlayStartTime(null);
-        }
-        prevIsPlayingRef.current = prop.isPlaying;
-    }, [prop.isPlaying, prop.timeRange[0]]);
 
     const noteLanes = useMemo(
         () =>
@@ -831,16 +818,6 @@ export default function SoundLane(prop: _prop) {
         clearLaneError,
     ]);
 
-    const effectiveTimeRange = useMemo((): [number, number] => {
-        const off = prop.refSoundLaneState.offset ?? 0;
-        if (off >= 0 || playStartTime === null) return prop.timeRange;
-        const elapsed = prop.timeRange[0] - playStartTime;
-        const lag = Math.min(-off, elapsed);
-        const start = Math.max(0, playStartTime + elapsed - lag);
-        const span = prop.timeRange[1] - prop.timeRange[0];
-        return [start, start + span];
-    }, [prop.timeRange, prop.refSoundLaneState.offset, playStartTime]);
-
     if (!audioData) {
         return <div>Audio not found</div>;
     }
@@ -910,7 +887,7 @@ export default function SoundLane(prop: _prop) {
                         {!prop.refSoundLaneState.waveLane.isFolded && (
                             <WaveLane
                                 audioId={prop.audioId}
-                                timeRange={effectiveTimeRange}
+                                timeRange={prop.timeRange}
                                 waveState={prop.refSoundLaneState.waveLane}
                                 setWaveState={(waveLane) => {
                                     prop.setSoundLaneState(prop.index, {
@@ -959,7 +936,7 @@ export default function SoundLane(prop: _prop) {
                         {!prop.refSoundLaneState.spectrumLane.isFolded && (
                             <SpectrumLane
                                 audioId={prop.audioId}
-                                timeRange={effectiveTimeRange}
+                                timeRange={prop.timeRange}
                                 spectrumState={
                                     prop.refSoundLaneState.spectrumLane
                                 }
@@ -1089,7 +1066,7 @@ export default function SoundLane(prop: _prop) {
                                     key={lane.id}
                                     chartData={lane.chartData}
                                     setChartData={setChartData}
-                                    timeRange={effectiveTimeRange}
+                                    timeRange={prop.timeRange}
                                     graphicalOffset={prop.refSoundLaneState.noteLaneOffset ?? 0}
                                     beatSubdivision={lane.division}
                                     setBeatSubdivision={(division) =>
