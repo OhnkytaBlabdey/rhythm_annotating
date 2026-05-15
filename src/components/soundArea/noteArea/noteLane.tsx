@@ -42,6 +42,7 @@ interface NoteLaneProps {
     setStartTime: (time: number | null) => void;
     setEndTime: (time: number | null) => void;
     laneId: string;
+    graphicalOffset?: number;
 }
 
 interface NoteAnchor {
@@ -235,6 +236,7 @@ export default function NoteLane({
     setStartTime,
     setEndTime,
     laneId,
+    graphicalOffset = 0,
 }: NoteLaneProps) {
     const { matchesKeyShortcut } = useAppSettings();
     const wrapperRef = useRef<HTMLDivElement>(null);
@@ -290,12 +292,12 @@ export default function NoteLane({
     const span = Math.max(1e-6, rangeEnd - rangeStart);
 
     const mapTimeToX = useCallback(
-        (time: number) => ((time - rangeStart) / span) * width,
-        [rangeStart, span, width],
+        (time: number) => ((time + graphicalOffset - rangeStart) / span) * width,
+        [rangeStart, span, width, graphicalOffset],
     );
     const mapXToTime = useCallback(
-        (x: number) => rangeStart + (x / Math.max(1, width)) * span,
-        [rangeStart, span, width],
+        (x: number) => rangeStart + (x / Math.max(1, width)) * span - graphicalOffset,
+        [rangeStart, span, width, graphicalOffset],
     );
 
     const buildGridTicks = useCallback((): GridTick[] => {

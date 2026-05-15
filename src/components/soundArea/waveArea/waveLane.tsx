@@ -184,11 +184,16 @@ function WaveLane(p: _p) {
         if (canvasRef.current && waveformCacheRef.current) {
             const ctx = canvasRef.current.getContext("2d");
             if (ctx) {
+                const offset = p.waveState.offset ?? 0;
+                const adjustedTimeRange: [number, number] = [
+                    p.timeRange[0] - offset,
+                    p.timeRange[1] - offset,
+                ];
                 renderWaveToCanvas(
                     ctx,
                     waveformCacheRef.current.channelData,
                     waveformCacheRef.current.channelCount,
-                    p.timeRange,
+                    adjustedTimeRange,
                     waveformCacheRef.current.sampleRate,
                     waveformCacheRef.current.length,
                     WAVELANE_TOTAL_HEIGHT /
@@ -197,7 +202,7 @@ function WaveLane(p: _p) {
                 );
             }
         }
-    }, [isCacheReady, p.waveState.amplitudeMultiplier, p.timeRange]);
+    }, [isCacheReady, p.waveState.amplitudeMultiplier, p.waveState.offset, p.timeRange]);
 
     /**
      * 时间范围/缓存就绪时实时重绘（仅使用缓存，不涉及计算）

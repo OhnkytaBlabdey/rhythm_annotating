@@ -794,6 +794,13 @@ export default function SoundLane(prop: _prop) {
             onImportText: handleImportText,
             exportText: JSON.stringify(exportPayload, null, 2),
             lastError: currentLaneError,
+            noteLaneOffset: prop.refSoundLaneState.noteLaneOffset ?? 0,
+            setNoteLaneOffset: (offset: number) => {
+                prop.setSoundLaneState(prop.index, {
+                    ...prop.refSoundLaneState,
+                    noteLaneOffset: offset,
+                });
+            },
         };
     }, [
         resolvedActiveLaneId,
@@ -1052,6 +1059,7 @@ export default function SoundLane(prop: _prop) {
                                     chartData={lane.chartData}
                                     setChartData={setChartData}
                                     timeRange={prop.timeRange}
+                                    graphicalOffset={prop.refSoundLaneState.noteLaneOffset ?? 0}
                                     beatSubdivision={lane.division}
                                     setBeatSubdivision={(division) =>
                                         updateLaneData(

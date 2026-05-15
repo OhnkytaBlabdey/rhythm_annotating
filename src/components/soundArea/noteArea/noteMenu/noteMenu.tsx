@@ -31,6 +31,8 @@ interface _p {
     onImportText: (text: string) => string | null;
     exportText: string;
     lastError: string | null;
+    noteLaneOffset: number;
+    setNoteLaneOffset: (v: number) => void;
 }
 
 interface ModeButtonProps {
@@ -266,6 +268,27 @@ export default function NoteMenu(p: _p) {
                     }`}
                 />
                 <span className={cls("bpm-unit")}>n</span>
+            </div>
+
+            <div className={cls("section-label")}>偏移</div>
+            <div className={cls("bpm-row")}>
+                <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={p.noteLaneOffset}
+                    onMouseDown={stopInteraction}
+                    onClick={stopInteraction}
+                    onKeyDown={stopInteraction}
+                    onWheel={(e) => e.stopPropagation()}
+                    onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (v >= 0 && Number.isFinite(v)) p.setNoteLaneOffset(v);
+                    }}
+                    className={cls("bpm-input")}
+                    title="NoteLane 图形偏移 (秒)"
+                />
+                <span className={cls("bpm-unit")}>s</span>
             </div>
 
             <div className={cls("section-label")}>Lane</div>

@@ -164,6 +164,7 @@ function SpectrumLane(p: _p) {
         contrast: number;
         brightnessOffset: number;
         resolutionScale: number;
+        offset: number;
     } | null>(null);
 
     useEffect(() => {
@@ -357,7 +358,9 @@ function SpectrumLane(p: _p) {
         const desiredHeight = Math.round(spectrumLen / binsPerPixel);
         const renderHeight = clampNumber(desiredHeight, 32, MAX_RENDER_HEIGHT);
 
-        const [tL, tR] = p.timeRange;
+        const spectrumOffset = p.spectrumState.offset ?? 0;
+        const tL = p.timeRange[0] - spectrumOffset;
+        const tR = p.timeRange[1] - spectrumOffset;
         const prevDraw = prevDrawRef.current;
         if (
             prevDraw &&
@@ -366,7 +369,8 @@ function SpectrumLane(p: _p) {
             prevDraw.renderHeight === renderHeight &&
             prevDraw.contrast === contrast &&
             prevDraw.brightnessOffset === brightnessOffset &&
-            prevDraw.resolutionScale === resolutionScale
+            prevDraw.resolutionScale === resolutionScale &&
+            prevDraw.offset === spectrumOffset
         ) {
             const prevSpan = Math.max(1e-6, prevDraw.tR - prevDraw.tL);
             const leftPixelShift = Math.abs(
@@ -487,6 +491,7 @@ function SpectrumLane(p: _p) {
             contrast,
             brightnessOffset,
             resolutionScale,
+            offset: spectrumOffset,
         };
     }, [
         p.timeRange,
@@ -496,6 +501,7 @@ function SpectrumLane(p: _p) {
         resolutionScale,
         canvasWidth,
         layerVersion,
+        p.spectrumState.offset,
     ]);
 
     return (

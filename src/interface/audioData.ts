@@ -20,6 +20,7 @@ export interface SoundLaneState {
     offset: number;
     isPlayComplete: boolean;
     noteLanes: NoteLaneData[];
+    noteLaneOffset: number;
     waveLane: WaveLaneState;
     spectrumLane: SpectrumLaneState;
 }
@@ -39,6 +40,7 @@ export interface NoteLaneState {
 export interface WaveLaneState {
     amplitudeMultiplier: number;
     isFolded: boolean;
+    offset: number;
 }
 
 /**
@@ -49,6 +51,7 @@ export interface SpectrumLaneState {
     isFolded: boolean;
     brightnessOffset: number;
     resolutionScale: number;
+    offset: number;
 }
 
 export function defaultSoundLaneState(audioId: string): SoundLaneState {
@@ -58,6 +61,7 @@ export function defaultSoundLaneState(audioId: string): SoundLaneState {
         offset: 0,
         isPlayComplete: false,
         noteLanes: [defaultNoteLaneData()],
+        noteLaneOffset: 0,
         waveLane: defaultWaveLaneState(),
         spectrumLane: defaultSpectrumLaneState(),
     };
@@ -91,6 +95,7 @@ export function defaultWaveLaneState(): WaveLaneState {
     return {
         amplitudeMultiplier: 5,
         isFolded: false,
+        offset: 0,
     };
 }
 
@@ -100,6 +105,7 @@ export function defaultSpectrumLaneState(): SpectrumLaneState {
         isFolded: false,
         brightnessOffset: 0,
         resolutionScale: 1,
+        offset: 0,
     };
 }
 
@@ -112,6 +118,18 @@ export const generateId = (): string => {
 export function normalizeSoundLaneState(raw: SoundLaneState): SoundLaneState {
     return {
         ...raw,
+        offset: raw.offset ?? 0,
+        noteLaneOffset: raw.noteLaneOffset ?? 0,
+        waveLane: {
+            ...defaultWaveLaneState(),
+            ...raw.waveLane,
+            offset: raw.waveLane?.offset ?? 0,
+        },
+        spectrumLane: {
+            ...defaultSpectrumLaneState(),
+            ...raw.spectrumLane,
+            offset: raw.spectrumLane?.offset ?? 0,
+        },
         noteLanes:
             Array.isArray(raw.noteLanes) && raw.noteLanes.length > 0
                 ? raw.noteLanes
