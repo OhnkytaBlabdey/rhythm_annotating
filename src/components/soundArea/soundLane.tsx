@@ -31,6 +31,7 @@ import {
     validateNoteLaneData,
     normalizeFraction,
 } from "./noteArea/chartAdapter";
+import { convertToMalody } from "@/lib/malodyExport";
 
 const MAX_UNDO = 50;
 
@@ -802,6 +803,10 @@ export default function SoundLane(prop: _prop) {
             },
             onImportText: handleImportText,
             exportText: JSON.stringify(exportPayload, null, 2),
+            malodyExportText: convertToMalody(
+                activeLane,
+                audioData?.file ?? "unknown",
+            ),
             lastError: currentLaneError,
             noteLaneOffset: prop.refSoundLaneState.noteLaneOffset ?? 0,
             setNoteLaneOffset: (offset: number) => {
@@ -824,6 +829,7 @@ export default function SoundLane(prop: _prop) {
         updateLaneData,
         setLaneError,
         clearLaneError,
+        audioData,
     ]);
 
     if (!audioData) {

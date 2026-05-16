@@ -30,6 +30,7 @@ interface _p {
     onClearLane: () => void;
     onImportText: (text: string) => string | null;
     exportText: string;
+    malodyExportText: string;
     lastError: string | null;
     noteLaneOffset: number;
     setNoteLaneOffset: (v: number) => void;
@@ -82,6 +83,7 @@ export default function NoteMenu(p: _p) {
     const { getKeyboardShortcutLabel } = useAppSettings();
     const [isImportOpen, setIsImportOpen] = React.useState(false);
     const [isExportOpen, setIsExportOpen] = React.useState(false);
+    const [exportFormat, setExportFormat] = React.useState<"internal" | "malody">("internal");
     const [importText, setImportText] = React.useState("");
     const [importError, setImportError] = React.useState<string | null>(null);
     const [measureBpmInput, setMeasureBpmInput] = React.useState<string>("");
@@ -305,7 +307,10 @@ export default function NoteMenu(p: _p) {
                 <ActionButton
                     label="导出文本"
                     title="导出当前 NoteLane 的 JSON"
-                    onClick={() => setIsExportOpen(true)}
+                    onClick={() => {
+                        setExportFormat("internal");
+                        setIsExportOpen(true);
+                    }}
                 />
                 <ActionButton
                     label="删除本Lane"
@@ -394,12 +399,48 @@ export default function NoteMenu(p: _p) {
                         onMouseDown={stopInteraction}
                     >
                         <div className={cls("modal-title")}>
-                            导出 NoteLane JSON
+                            导出 NoteLane
+                        </div>
+                        <div className={cls("format-bar")}>
+                            <button
+                                type="button"
+                                className={cls(
+                                    "button",
+                                    exportFormat === "internal"
+                                        ? "button-active"
+                                        : "",
+                                )}
+                                onMouseDown={stopInteraction}
+                                onClick={() =>
+                                    setExportFormat("internal")
+                                }
+                            >
+                                内部
+                            </button>
+                            <button
+                                type="button"
+                                className={cls(
+                                    "button",
+                                    exportFormat === "malody"
+                                        ? "button-active"
+                                        : "",
+                                )}
+                                onMouseDown={stopInteraction}
+                                onClick={() =>
+                                    setExportFormat("malody")
+                                }
+                            >
+                                malody
+                            </button>
                         </div>
                         <textarea
                             readOnly
                             className={cls("modal-text")}
-                            value={p.exportText}
+                            value={
+                                exportFormat === "malody"
+                                    ? p.malodyExportText
+                                    : p.exportText
+                            }
                             onMouseDown={stopInteraction}
                             onClick={stopInteraction}
                             onKeyDown={stopInteraction}
@@ -412,7 +453,9 @@ export default function NoteMenu(p: _p) {
                                 onMouseDown={stopInteraction}
                                 onClick={() => {
                                     void navigator.clipboard.writeText(
-                                        p.exportText,
+                                        exportFormat === "malody"
+                                            ? p.malodyExportText
+                                            : p.exportText,
                                     );
                                 }}
                             >
