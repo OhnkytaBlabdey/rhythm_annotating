@@ -208,7 +208,7 @@ export default function NoteMenu(p: _p) {
 
             {/* 拍 */}
             <div className={cls("compact-row")}>
-                <span className={cls("inline-label")}>拍</span>
+                <span className={cls("inline-label")}>BPM</span>
                 <span className={cls("bpm-unit")}>默认</span>
                 <input
                     type="number"
@@ -227,7 +227,6 @@ export default function NoteMenu(p: _p) {
                     className={cls("bpm-input-compact")}
                     title="当前轨道默认 BPM，修改后将重设后续空小节"
                 />
-                <span className={cls("bpm-unit")}>bpm</span>
                 <span className={cls("bpm-unit")}>选中</span>
                 <input
                     type="number"
@@ -255,7 +254,6 @@ export default function NoteMenu(p: _p) {
                     className={cls("bpm-input-compact")}
                     title="当前选中小节 BPM，仅修改该小节"
                 />
-                <span className={cls("bpm-unit")}>bpm</span>
                 <input
                     type="number"
                     min={1}

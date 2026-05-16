@@ -7,6 +7,7 @@ interface _p {
     audioId: string;
     waveState: WaveLaneState;
     setWaveState: (state: WaveLaneState) => void;
+    cursorTime?: number | null;
 }
 
 interface WaveformCache {
@@ -198,9 +199,28 @@ function WaveLane(p: _p) {
                     p.waveState.amplitudeMultiplier,
                     offset,
                 );
+                if (p.cursorTime != null) {
+                    const canvas = canvasRef.current;
+                    const tL = p.timeRange[0];
+                    const tR = p.timeRange[1];
+                    const span = tR - tL;
+                    if (span > 0) {
+                        const x = ((p.cursorTime - (tL - offset)) / span) * canvas.width;
+                        if (x >= 0 && x <= canvas.width) {
+                            ctx.setLineDash([4, 4]);
+                            ctx.strokeStyle = "#facc15";
+                            ctx.lineWidth = 1;
+                            ctx.beginPath();
+                            ctx.moveTo(x, 0);
+                            ctx.lineTo(x, canvas.height);
+                            ctx.stroke();
+                            ctx.setLineDash([]);
+                        }
+                    }
+                }
             }
         }
-    }, [isCacheReady, p.waveState.amplitudeMultiplier, p.waveState.offset, p.timeRange]);
+    }, [isCacheReady, p.waveState.amplitudeMultiplier, p.waveState.offset, p.timeRange, p.cursorTime]);
 
     /**
      * 时间范围/缓存就绪时实时重绘（仅使用缓存，不涉及计算）

@@ -60,9 +60,17 @@ export default function SoundLane(prop: _prop) {
     const [laneEditStateMap, setLaneEditStateMap] = useState<
         Record<string, NoteEditState>
     >({});
-    const [, setLaneCursorTimeMap] = useState<Record<string, number | null>>(
+    const [laneCursorTimeMap, setLaneCursorTimeMap] = useState<Record<string, number | null>>(
         {},
     );
+
+    const cursorTime = useMemo(() => {
+        for (const laneId of Object.keys(laneCursorTimeMap)) {
+            const t = laneCursorTimeMap[laneId];
+            if (t !== null && t !== undefined) return t;
+        }
+        return null;
+    }, [laneCursorTimeMap]);
     const [laneSelectedMeasureTimeMap, setLaneSelectedMeasureTimeMap] =
         useState<Record<string, number | null>>({});
     const [laneErrorMap, setLaneErrorMap] = useState<Record<string, string>>(
@@ -847,7 +855,7 @@ export default function SoundLane(prop: _prop) {
 
     return (
         <div
-            className="SoundLane flex flex-col gap-3 rounded-[26px] border border-[var(--editor-border)] bg-[var(--editor-surface)] p-4 shadow-[0_12px_34px_rgba(53,36,19,0.06)] cursor-pointer"
+            className="SoundLane flex flex-col gap-2 rounded-[26px] border border-[var(--editor-border)] bg-[var(--editor-surface)] px-4 pt-2 pb-2 shadow-[0_12px_34px_rgba(53,36,19,0.06)] cursor-pointer"
             onClick={handleClickToActivate}
         >
             <div className="w-auto">
@@ -864,7 +872,7 @@ export default function SoundLane(prop: _prop) {
                 />
             </div>
 
-            <div className="flex flex-col flex-1 gap-2 mt-2">
+            <div className="flex flex-col flex-1 gap-2">
                 <div className="flex items-start gap-3">
                     <div
                         className="editor-inspector-panel w-[176px] shrink-0"
@@ -911,6 +919,7 @@ export default function SoundLane(prop: _prop) {
                                         waveLane,
                                     });
                                 }}
+                                cursorTime={cursorTime}
                             />
                         )}
                     </div>
@@ -964,6 +973,7 @@ export default function SoundLane(prop: _prop) {
                                         spectrumLane,
                                     });
                                 }}
+                                cursorTime={cursorTime}
                             />
                         </div>
                     </div>

@@ -44,7 +44,7 @@ function WorkMenu(prop: _prop) {
                                 "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
                             display: "inline-block",
                             minWidth: "210px",
-                            fontSize: "10px",
+                            fontSize: "12px",
                             textAlign: "left",
                         }}
                     >
@@ -53,8 +53,9 @@ function WorkMenu(prop: _prop) {
                         {(prop.timeRange[1] - prop.timeRange[0]).toFixed(4)}s
                     </span>
                 )}
-                <TimeRangeController
-                    key={"time scale"}
+                <span style={{ margin: "0 -2px" }}>
+                    <TimeRangeController
+                        key={"time scale"}
                     refTimeMultiplier={prop.refTimeMultiplier}
                     setTimeMultiplier={prop.setTimeMultiplier}
                     refCurrentTime={prop.refCurrentTime}
@@ -62,6 +63,7 @@ function WorkMenu(prop: _prop) {
                     Duration={prop.Duration}
                     isPlaying={prop.isPlaying}
                 />
+                </span>
                 <PlaySelected
                     key={"play selected"}
                     refCurrentTime={prop.refCurrentTime}
