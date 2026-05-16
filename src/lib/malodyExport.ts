@@ -113,13 +113,13 @@ export function convertToMalody(
     const chart: MalodyChart = {
         meta: {
             $ver: 0,
-            creator: "",
+            creator: audioFilename,
             background: audioFilename,
-            version: "",
+            version: audioFilename,
             preview: 0,
             id: 0,
             mode: 0,
-            time: 0,
+            time: Date.now(),
             song: {
                 title: audioFilename,
                 artist: audioFilename,
@@ -128,7 +128,7 @@ export function convertToMalody(
                 artistorg: audioFilename,
             },
             mode_ext: {
-                column: 0,
+                column: 4,
                 bar_begin: 0,
             },
         },
