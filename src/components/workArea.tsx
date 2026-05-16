@@ -29,7 +29,7 @@ import {
     collectPersistSliceStates,
     registerPersistSlice,
 } from "@/lib/persistence/sliceRegistry";
-import { runBpmEstimation } from "@/lib/bpm/bpmEstimator";
+
 
 const WHEEL_PAN_RATIO = 0.05;
 
@@ -197,62 +197,6 @@ export default function WorkArea() {
         };
     }, []);
 
-    // 对从 IndexedDB 恢复的音频（无 decodedBuffer）补跑 BPM 估测
-    useEffect(() => {
-        if (!hasHydratedProject) return;
-
-        const pending = objProject.soundLaneStates
-            .map((state, index) => ({ state, index }))
-            .filter(
-                (entry) =>
-                    entry.state.bpmEstimation?.status === "pending",
-            );
-
-        if (pending.length === 0) return;
-
-        for (const { state, index } of pending) {
-            const audio = audioDataList.find(
-                (a) => a.id === state.audioId,
-            );
-            if (!audio || !audio.buffer) continue;
-
-            const ctx = new AudioContext();
-            ctx.decodeAudioData(audio.buffer.slice(0))
-                .then((decoded) => {
-                    const channelData: Float32Array[] = [];
-                    for (
-                        let ch = 0;
-                        ch < decoded.numberOfChannels;
-                        ch++
-                    ) {
-                        channelData.push(decoded.getChannelData(ch));
-                    }
-                    return runBpmEstimation(
-                        channelData,
-                        decoded.sampleRate,
-                    );
-                })
-                .then((estimation) => {
-                    setProject((prev) => {
-                        const next = [...prev.soundLaneStates];
-                        if (index < next.length) {
-                            next[index] = {
-                                ...next[index],
-                                bpmEstimation: estimation,
-                            };
-                        }
-                        return { ...prev, soundLaneStates: next };
-                    });
-                })
-                .catch((err) => {
-                    console.error("BPM estimation failed", err);
-                })
-                .finally(() => {
-                    ctx.close();
-                });
-        }
-    }, [hasHydratedProject]);
-
     useEffect(() => {
         if (!hasHydratedProject) {
             return;
@@ -369,50 +313,6 @@ export default function WorkArea() {
             soundLaneStates: [...prev.soundLaneStates, nextLane],
         }));
 
-        if (audioData.decodedBuffer) {
-            const channelData: Float32Array[] = [];
-            for (
-                let ch = 0;
-                ch < audioData.decodedBuffer.numberOfChannels;
-                ch++
-            ) {
-                channelData.push(
-                    audioData.decodedBuffer.getChannelData(ch),
-                );
-            }
-            const sampleRate = audioData.decodedBuffer.sampleRate;
-            const audioId = audioData.id;
-
-            setProject((prev) => {
-                const idx = prev.soundLaneStates.findIndex(
-                    (s) => s.audioId === audioId,
-                );
-                if (idx === -1) return prev;
-                const next = [...prev.soundLaneStates];
-                next[idx] = {
-                    ...next[idx],
-                    bpmEstimation: { segments: [], status: "computing" },
-                };
-                return { ...prev, soundLaneStates: next };
-            });
-
-            runBpmEstimation(channelData, sampleRate).then(
-                (estimation) => {
-                    setProject((prev) => {
-                        const idx = prev.soundLaneStates.findIndex(
-                            (s) => s.audioId === audioId,
-                        );
-                        if (idx === -1) return prev;
-                        const next = [...prev.soundLaneStates];
-                        next[idx] = {
-                            ...next[idx],
-                            bpmEstimation: estimation,
-                        };
-                        return { ...prev, soundLaneStates: next };
-                    });
-                },
-            );
-        }
     }
 
     function resetEditor() {

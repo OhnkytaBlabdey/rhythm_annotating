@@ -1,20 +1,5 @@
 import { NoteLaneData } from "@/components/soundArea/noteArea/chartTypes";
 
-export interface BpmEstimationSegment {
-    startTime: number;
-    endTime: number;
-    bpm: number;
-    source: "computed" | "fallback";
-}
-
-export type BpmEstimationStatus = "pending" | "computing" | "ready" | "error";
-
-export interface BpmEstimation {
-    segments: BpmEstimationSegment[];
-    status: BpmEstimationStatus;
-    error?: string;
-}
-
 /**
  * 完整的音频文件数据，存储在全局 context 中
  */
@@ -38,7 +23,7 @@ export interface SoundLaneState {
     noteLaneOffset: number;    // 记谱图形偏移(秒)，仅canvas像素位移
     waveLane: WaveLaneState;
     spectrumLane: SpectrumLaneState;
-    bpmEstimation?: BpmEstimation;
+
 }
 
 /**
@@ -80,7 +65,7 @@ export function defaultSoundLaneState(audioId: string): SoundLaneState {
         noteLaneOffset: 0,
         waveLane: defaultWaveLaneState(),
         spectrumLane: defaultSpectrumLaneState(),
-        bpmEstimation: { segments: [], status: "pending" },
+
     };
 }
 
@@ -158,30 +143,6 @@ export function normalizeSoundLaneState(raw: SoundLaneState): SoundLaneState {
                     isFolded: lane.isFolded ?? false,
                   }))
                 : [defaultNoteLaneData()],
-        bpmEstimation: normalizeBpmEstimation(raw.bpmEstimation),
-    };
-}
 
-function normalizeBpmEstimation(
-    raw: unknown,
-): BpmEstimation | undefined {
-    if (!raw || typeof raw !== "object") {
-        return { segments: [], status: "pending" };
-    }
-    const e = raw as Partial<BpmEstimation>;
-    const status = e.status ?? "pending";
-    const resolvedStatus: BpmEstimationStatus =
-        status === "computing" || status === "error" ? "pending" : status;
-    const segments: BpmEstimationSegment[] = Array.isArray(e.segments)
-        ? e.segments.map((s: Partial<BpmEstimationSegment>) => ({
-            startTime: typeof s.startTime === "number" ? s.startTime : 0,
-            endTime: typeof s.endTime === "number" ? s.endTime : 0,
-            bpm: typeof s.bpm === "number" ? s.bpm : 120,
-            source:
-                s.source === "computed" || s.source === "fallback"
-                    ? s.source
-                    : "fallback",
-        }))
-        : [];
-    return { segments, status: resolvedStatus, error: typeof e.error === "string" ? e.error : undefined };
+    };
 }
