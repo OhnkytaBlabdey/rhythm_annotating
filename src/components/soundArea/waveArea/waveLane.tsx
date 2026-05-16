@@ -29,6 +29,7 @@ function renderWaveToCanvas(
     length: number,
     rowHeight: number,
     amplitudeMultiplier: number,
+    offset: number,
 ) {
     const canvas = ctx.canvas;
     const width = canvas.width;
@@ -38,8 +39,8 @@ function renderWaveToCanvas(
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, width, height);
 
-    const startSample = Math.max(0, Math.floor(t_left * sampleRate));
-    const endSample = Math.min(length, Math.ceil(t_right * sampleRate));
+    const startSample = Math.max(0, Math.floor((t_left - offset) * sampleRate));
+    const endSample = Math.min(length, Math.ceil((t_right - offset) * sampleRate));
     const rangeLength = endSample - startSample;
     if (rangeLength <= 1) return;
     const step = Math.max(1, Math.floor(rangeLength / width));
@@ -195,22 +196,8 @@ function WaveLane(p: _p) {
                     WAVELANE_TOTAL_HEIGHT /
                         waveformCacheRef.current.channelCount,
                     p.waveState.amplitudeMultiplier,
+                    offset,
                 );
-                if (offset > 0) {
-                    const canvas = canvasRef.current;
-                    const span = p.timeRange[1] - p.timeRange[0];
-                    const pixelShift = Math.round((offset / span) * canvas.width);
-                    if (pixelShift > 0 && pixelShift < canvas.width) {
-                        const srcWidth = canvas.width - pixelShift;
-                        const imageData = ctx.getImageData(0, 0, srcWidth, canvas.height);
-                        ctx.fillStyle = "#ffffff";
-                        ctx.fillRect(0, 0, canvas.width, canvas.height);
-                        ctx.putImageData(imageData, pixelShift, 0);
-                    } else if (pixelShift >= canvas.width) {
-                        ctx.fillStyle = "#ffffff";
-                        ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    }
-                }
             }
         }
     }, [isCacheReady, p.waveState.amplitudeMultiplier, p.waveState.offset, p.timeRange]);

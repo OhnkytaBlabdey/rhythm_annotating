@@ -415,18 +415,15 @@ function SpectrumLane(p: _p) {
         const imageData = ctx.createImageData(canvasWidth, renderHeight);
         const data = imageData.data;
 
-        const startFrame = Math.floor((tL * sampleRate) / hopSize);
-        const endFrame = Math.floor((tR * sampleRate) / hopSize);
-        const frameCount = Math.max(1, endFrame - startFrame);
-
         const safeMaxMagnitude = Math.max(maxMagnitude, 1e-12);
         const minDb = -80;
         const maxDb = 0;
         const gamma = Math.max(0.35, 1.15 - contrast * 0.6);
 
         for (let x = 0; x < canvasWidth; x++) {
-            const framePos =
-                startFrame + (x / Math.max(1, canvasWidth - 1)) * frameCount;
+            const displayTime = tL + (x / Math.max(1, canvasWidth - 1)) * (tR - tL) - spectrumOffset;
+            const framePos = (displayTime * sampleRate) / hopSize;
+            if (framePos < 0 || framePos >= frameData.length - 1) continue;
             const frameIdx0 = Math.min(
                 frameData.length - 1,
                 Math.max(0, Math.floor(framePos)),
@@ -480,21 +477,6 @@ function SpectrumLane(p: _p) {
         }
 
         ctx.putImageData(imageData, 0, 0);
-
-        if (spectrumOffset > 0 && tL < spectrumOffset) {
-            const span = tR - tL;
-            const pixelShift = Math.round((spectrumOffset / span) * canvasWidth);
-            if (pixelShift > 0 && pixelShift < canvasWidth) {
-                const srcWidth = canvasWidth - pixelShift;
-                const shiftedData = ctx.getImageData(0, 0, srcWidth, renderHeight);
-                ctx.fillStyle = "#000000";
-                ctx.fillRect(0, 0, canvasWidth, renderHeight);
-                ctx.putImageData(shiftedData, pixelShift, 0);
-            } else if (pixelShift >= canvasWidth) {
-                ctx.fillStyle = "#000000";
-                ctx.fillRect(0, 0, canvasWidth, renderHeight);
-            }
-        }
 
         prevDrawRef.current = {
             tL,
