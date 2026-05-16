@@ -164,6 +164,12 @@
     color: #241f19;
 }
 
+.format-bar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
 .modal-text {
     width: 100%;
     min-height: 260px;

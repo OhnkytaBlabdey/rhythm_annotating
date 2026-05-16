@@ -12,6 +12,7 @@ interface _p {
     audioId: string;
     spectrumState: SpectrumLaneState;
     setSpectrumState: (state: SpectrumLaneState) => void;
+    cursorTime?: number | null;
 }
 
 interface SpectrumFrameCache {
@@ -135,12 +136,14 @@ function SpectrumLane(p: _p) {
     const audioData = audioDataList.find((a) => a.id === p.audioId);
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const cursorCanvasRef = useRef<HTMLCanvasElement>(null);
     const workerRef = useRef<Worker | null>(null);
     const cacheRef = useRef<Record<string, SpectrumFrameCache>>({});
     const [layerVersion, setLayerVersion] = useState(0);
     const [ready, setReady] = useState(false);
     const [workerDone, setWorkerDone] = useState(false);
     const [canvasWidth, setCanvasWidth] = useState(1200);
+    const renderHeightRef = useRef(32);
 
     const contrast =
         (p.spectrumState as unknown as { contrast?: number }).contrast ?? 1;
@@ -357,6 +360,7 @@ function SpectrumLane(p: _p) {
         );
         const desiredHeight = Math.round(spectrumLen / binsPerPixel);
         const renderHeight = clampNumber(desiredHeight, 32, MAX_RENDER_HEIGHT);
+        renderHeightRef.current = renderHeight;
 
         const [tL, tR] = p.timeRange;
         const spectrumOffset = p.spectrumState.offset ?? 0;
@@ -415,18 +419,15 @@ function SpectrumLane(p: _p) {
         const imageData = ctx.createImageData(canvasWidth, renderHeight);
         const data = imageData.data;
 
-        const startFrame = Math.floor((tL * sampleRate) / hopSize);
-        const endFrame = Math.floor((tR * sampleRate) / hopSize);
-        const frameCount = Math.max(1, endFrame - startFrame);
-
         const safeMaxMagnitude = Math.max(maxMagnitude, 1e-12);
         const minDb = -80;
         const maxDb = 0;
         const gamma = Math.max(0.35, 1.15 - contrast * 0.6);
 
         for (let x = 0; x < canvasWidth; x++) {
-            const framePos =
-                startFrame + (x / Math.max(1, canvasWidth - 1)) * frameCount;
+            const displayTime = tL + (x / Math.max(1, canvasWidth - 1)) * (tR - tL) - spectrumOffset;
+            const framePos = (displayTime * sampleRate) / hopSize;
+            if (framePos < 0 || framePos >= frameData.length - 1) continue;
             const frameIdx0 = Math.min(
                 frameData.length - 1,
                 Math.max(0, Math.floor(framePos)),
@@ -481,21 +482,6 @@ function SpectrumLane(p: _p) {
 
         ctx.putImageData(imageData, 0, 0);
 
-        if (spectrumOffset > 0 && tL < spectrumOffset) {
-            const span = tR - tL;
-            const pixelShift = Math.round((spectrumOffset / span) * canvasWidth);
-            if (pixelShift > 0 && pixelShift < canvasWidth) {
-                const srcWidth = canvasWidth - pixelShift;
-                const shiftedData = ctx.getImageData(0, 0, srcWidth, renderHeight);
-                ctx.fillStyle = "#000000";
-                ctx.fillRect(0, 0, canvasWidth, renderHeight);
-                ctx.putImageData(shiftedData, pixelShift, 0);
-            } else if (pixelShift >= canvasWidth) {
-                ctx.fillStyle = "#000000";
-                ctx.fillRect(0, 0, canvasWidth, renderHeight);
-            }
-        }
-
         prevDrawRef.current = {
             tL,
             tR,
@@ -519,23 +505,67 @@ function SpectrumLane(p: _p) {
         p.spectrumState.offset,
     ]);
 
+    useEffect(() => {
+        const cursorCanvas = cursorCanvasRef.current;
+        if (!cursorCanvas) return;
+        const mainCanvas = canvasRef.current;
+        if (!mainCanvas) return;
+        const cursorTime = p.cursorTime;
+        const w = mainCanvas.width;
+        const h = renderHeightRef.current;
+        if (cursorCanvas.width !== w) cursorCanvas.width = w;
+        if (cursorCanvas.height !== h) cursorCanvas.height = h;
+        const ctx = cursorCanvas.getContext("2d");
+        if (!ctx) return;
+        ctx.clearRect(0, 0, w, h);
+        if (cursorTime == null) return;
+        const [tL, tR] = p.timeRange;
+        const span = tR - tL;
+        if (span <= 0) return;
+        const spectrumOffset = p.spectrumState.offset ?? 0;
+        const x = ((cursorTime - tL + spectrumOffset) / span) * w;
+        if (x < 0 || x > w) return;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = "#facc15";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+    }, [p.cursorTime, p.timeRange, p.spectrumState.offset, canvasWidth, layerVersion]);
+
     return (
-        <canvas
-            ref={canvasRef}
-            width={canvasWidth}
-            height={CANVAS_HEIGHT}
-            data-lane="true"
-            title={
-                workerDone || ready
-                    ? "Spectrum ready: multi-resolution STFT"
-                    : "Computing multi-resolution spectrum"
-            }
-            style={{
-                border: "1px solid #ccc",
-                width: "100%",
-                height: "auto",
-            }}
-        />
+        <div style={{ position: "relative", lineHeight: 0 }}>
+            <canvas
+                ref={canvasRef}
+                width={canvasWidth}
+                height={CANVAS_HEIGHT}
+                data-lane="true"
+                title={
+                    workerDone || ready
+                        ? "Spectrum ready: multi-resolution STFT"
+                        : "Computing multi-resolution spectrum"
+                }
+                style={{
+                    border: "1px solid #ccc",
+                    width: "100%",
+                    height: "auto",
+                }}
+            />
+            <canvas
+                ref={cursorCanvasRef}
+                width={canvasWidth}
+                height={renderHeightRef.current}
+                style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    height: "100%",
+                    pointerEvents: "none",
+                }}
+            />
+        </div>
     );
 }
 
