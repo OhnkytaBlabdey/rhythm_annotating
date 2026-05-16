@@ -522,8 +522,7 @@ function SpectrumLane(p: _p) {
         const [tL, tR] = p.timeRange;
         const span = tR - tL;
         if (span <= 0) return;
-        const spectrumOffset = p.spectrumState.offset ?? 0;
-        const x = ((cursorTime - tL + spectrumOffset) / span) * w;
+        const x = ((cursorTime - tL) / span) * w;
         if (x < 0 || x > w) return;
         ctx.setLineDash([4, 4]);
         ctx.strokeStyle = "#facc15";
@@ -532,7 +531,7 @@ function SpectrumLane(p: _p) {
         ctx.moveTo(x, 0);
         ctx.lineTo(x, h);
         ctx.stroke();
-    }, [p.cursorTime, p.timeRange, p.spectrumState.offset, canvasWidth, layerVersion]);
+    }, [p.cursorTime, p.timeRange, canvasWidth, layerVersion]);
 
     return (
         <div style={{ position: "relative", lineHeight: 0 }}>

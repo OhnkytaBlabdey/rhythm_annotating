@@ -1846,8 +1846,8 @@ export default function NoteLane({
     );
 
     useEffect(() => {
-        onSnapTimeChange?.(snapTime);
-    }, [onSnapTimeChange, snapTime]);
+        onSnapTimeChange?.(snapTime !== null ? snapTime + graphicalOffset : null);
+    }, [onSnapTimeChange, snapTime, graphicalOffset]);
 
     return (
         <div
