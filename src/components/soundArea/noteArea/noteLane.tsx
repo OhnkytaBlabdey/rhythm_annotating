@@ -434,7 +434,13 @@ export default function NoteLane({
                 const seg = sorted[i];
                 if (!Number.isFinite(seg.tempo) || seg.tempo <= 0) continue;
                 if (seg.measures.length === 0) {
-                    if (time >= seg.time - 1e-6) return seg.tempo;
+                    const nextSeg = sorted[i + 1];
+                    if (
+                        time >= seg.time - 1e-6 &&
+                        (!nextSeg || time < nextSeg.time - 1e-6)
+                    ) {
+                        return seg.tempo;
+                    }
                     continue;
                 }
                 const beatDuration = 60 / seg.tempo;

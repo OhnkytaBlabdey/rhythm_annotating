@@ -380,7 +380,7 @@ export default function SoundLane(prop: _prop) {
                     rebuilt.push({
                         time: nextTime,
                         tempo: tailVirtualTempo,
-                        measures: [],
+                        measures: [{ notes: [] }],
                     });
                 }
             }
