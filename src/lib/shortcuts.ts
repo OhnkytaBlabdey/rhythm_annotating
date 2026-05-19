@@ -14,6 +14,8 @@ export type ShortcutAction =
     | "note.mode.annotate"
     | "note.division.increment"
     | "note.division.decrement"
+    | "note.measure.insert"
+    | "note.measure.delete"
     | "note.copy"
     | "note.cut"
     | "note.paste"
@@ -184,6 +186,22 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
         description: "单拍小节内等分减一",
         section: "记谱输入",
         defaultCombo: "[",
+        inputType: "keyboard",
+    },
+    {
+        action: "note.measure.insert",
+        label: "插入小节",
+        description: "在光标位置后插入一个空拍小节",
+        section: "记谱编辑",
+        defaultCombo: "Insert",
+        inputType: "keyboard",
+    },
+    {
+        action: "note.measure.delete",
+        label: "删除小节",
+        description: "删除光标所在位置的小节",
+        section: "记谱编辑",
+        defaultCombo: "Shift+Delete",
         inputType: "keyboard",
     },
     {

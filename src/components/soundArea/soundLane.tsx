@@ -33,6 +33,8 @@ import {
     removeTrailingEmptyMeasures,
     collectMeasureTimesAndBpms,
     buildSegmentsFromMeasureList,
+    insertMeasureAtTime,
+    deleteMeasureAtTime,
 } from "./noteArea/chartAdapter";
 import { convertToMalody } from "@/lib/malodyExport";
 
@@ -858,6 +860,27 @@ export default function SoundLane(prop: _prop) {
                     noteLaneOffset: offset,
                 });
             },
+            onInsertMeasure: (time?: number) => {
+                const insertTime = time ?? selectedMeasureTime;
+                if (insertTime == null || !Number.isFinite(insertTime)) return;
+                const next = insertMeasureAtTime(
+                    activeLane.chartData,
+                    insertTime,
+                    activeLane.defaultBpm,
+                );
+                if (!next) return;
+                setChartData(next);
+            },
+            onDeleteMeasure: (time?: number) => {
+                const deleteTime = time ?? selectedMeasureTime;
+                if (deleteTime == null || !Number.isFinite(deleteTime)) return;
+                const next = deleteMeasureAtTime(
+                    activeLane.chartData,
+                    deleteTime,
+                );
+                if (!next) return;
+                setChartData(next);
+            },
         };
     }, [
         resolvedActiveLaneId,
@@ -1177,6 +1200,37 @@ export default function SoundLane(prop: _prop) {
                                         setActiveNoteLaneId(lane.id)
                                     }
                                     laneId={lane.id}
+                                    onInsertMeasure={(time?: number) => {
+                                        const insertTime =
+                                            time ?? selectedMeasureTime;
+                                        if (
+                                            insertTime == null ||
+                                            !Number.isFinite(insertTime)
+                                        )
+                                            return;
+                                        const next = insertMeasureAtTime(
+                                            lane.chartData,
+                                            insertTime,
+                                            lane.defaultBpm,
+                                        );
+                                        if (!next) return;
+                                        setChartData(next);
+                                    }}
+                                    onDeleteMeasure={(time?: number) => {
+                                        const deleteTime =
+                                            time ?? selectedMeasureTime;
+                                        if (
+                                            deleteTime == null ||
+                                            !Number.isFinite(deleteTime)
+                                        )
+                                            return;
+                                        const next = deleteMeasureAtTime(
+                                            lane.chartData,
+                                            deleteTime,
+                                        );
+                                        if (!next) return;
+                                        setChartData(next);
+                                    }}
                                 />
                             );
                         })}

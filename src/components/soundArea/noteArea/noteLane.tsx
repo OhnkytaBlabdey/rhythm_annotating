@@ -42,6 +42,8 @@ interface NoteLaneProps {
     onActivate?: () => void;
     laneId: string;
     graphicalOffset?: number;
+    onInsertMeasure?: (time?: number) => void;
+    onDeleteMeasure?: (time?: number) => void;
 }
 
 interface NoteAnchor {
@@ -232,6 +234,8 @@ export default function NoteLane({
     onActivate,
     laneId,
     graphicalOffset = 0,
+    onInsertMeasure,
+    onDeleteMeasure,
 }: NoteLaneProps) {
     const { matchesKeyShortcut } = useAppSettings();
     const wrapperRef = useRef<HTMLDivElement>(null);
@@ -1745,6 +1749,17 @@ export default function NoteLane({
                 return;
             }
 
+            if (matchesKeyShortcut("note.measure.insert", e.nativeEvent)) {
+                e.preventDefault();
+                onInsertMeasure?.(snapTimeRef.current ?? undefined);
+                return;
+            }
+            if (matchesKeyShortcut("note.measure.delete", e.nativeEvent)) {
+                e.preventDefault();
+                onDeleteMeasure?.(snapTimeRef.current ?? undefined);
+                return;
+            }
+
             if (e.ctrlKey && (e.key === "z" || e.key === "Z" || e.code === "KeyZ")) {
                 e.preventDefault();
                 onUndo();
@@ -1899,6 +1914,8 @@ export default function NoteLane({
             editState.selectedIds,
             hoverNoteId,
             matchesKeyShortcut,
+            onInsertMeasure,
+            onDeleteMeasure,
             onRedo,
             onUndo,
             resolveInsertTarget,

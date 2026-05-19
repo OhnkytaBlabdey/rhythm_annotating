@@ -687,6 +687,152 @@ export function buildSegmentsFromMeasureList(
     return segments;
 }
 
+// ---- measure insertion / deletion ----
+
+interface MeasureChunk {
+    tempo: number;
+    measures: ChartMeasure[];
+}
+
+function locateSegmentMeasureAtTime(
+    chartData: ChartSegment[],
+    time: number,
+): { segmentIndex: number; measureIndex: number; measureStart: number } | null {
+    if (!Number.isFinite(time)) return null;
+    const sorted = [...chartData].sort((a, b) => a.time - b.time);
+    for (let s = 0; s < sorted.length; s++) {
+        const seg = sorted[s];
+        const tempo = Number.isFinite(seg.tempo) && seg.tempo > 0 ? seg.tempo : 120;
+        const beatDuration = 60 / tempo;
+        for (let m = 0; m < seg.measures.length; m++) {
+            const measureStart = seg.time + m * beatDuration;
+            const measureEnd = measureStart + beatDuration;
+            const isLastMeasure =
+                s === sorted.length - 1 && m === seg.measures.length - 1;
+            if (
+                time >= measureStart - 1e-6 &&
+                (time < measureEnd - 1e-6 ||
+                    (isLastMeasure && time <= measureEnd + 1e-6))
+            ) {
+                return { segmentIndex: s, measureIndex: m, measureStart };
+            }
+        }
+    }
+    return null;
+}
+
+function rebuildChartSegments(chunks: MeasureChunk[], initialTime: number): ChartSegment[] {
+    const rebuilt: ChartSegment[] = [];
+    let nextTime = initialTime;
+    for (const chunk of chunks) {
+        if (chunk.measures.length === 0) continue;
+        const safeTempo = Math.max(1, Math.floor(chunk.tempo));
+        const tail = rebuilt[rebuilt.length - 1];
+        if (tail && Math.abs(tail.tempo - safeTempo) < 1e-6) {
+            tail.measures.push(...chunk.measures);
+        } else {
+            rebuilt.push({ time: nextTime, tempo: safeTempo, measures: chunk.measures });
+        }
+        nextTime += chunk.measures.length * (60 / safeTempo);
+    }
+    return rebuilt;
+}
+
+export function insertMeasureAtTime(
+    chartData: ChartSegment[],
+    time: number,
+    defaultBpm: number,
+): ChartSegment[] | null {
+    const safeBpm = Math.max(1, Math.floor(defaultBpm));
+    if (chartData.length === 0) {
+        return [{ time: 0, tempo: safeBpm, measures: [{ notes: [] }] }];
+    }
+
+    const sorted = [...chartData].sort((a, b) => a.time - b.time);
+    const located = locateSegmentMeasureAtTime(sorted, time);
+    const chunks: MeasureChunk[] = [];
+    const initialTime = sorted[0]?.time ?? 0;
+
+    if (!located) {
+        let inserted = false;
+        for (const seg of sorted) {
+            const segTempo = Math.max(1, Math.floor(seg.tempo));
+            if (seg.measures.length === 0) continue;
+            if (!inserted && time < seg.time - 1e-6) {
+                const lastChunk = chunks[chunks.length - 1];
+                if (lastChunk && Math.abs(lastChunk.tempo - safeBpm) < 1e-6) {
+                    lastChunk.measures.push({ notes: [] });
+                } else {
+                    chunks.push({ tempo: safeBpm, measures: [{ notes: [] }] });
+                }
+                inserted = true;
+            }
+            chunks.push({ tempo: segTempo, measures: seg.measures });
+        }
+        if (!inserted) {
+            chunks.push({ tempo: safeBpm, measures: [{ notes: [] }] });
+        }
+    } else {
+        for (let s = 0; s < sorted.length; s++) {
+            const seg = sorted[s];
+            const segTempo = Math.max(1, Math.floor(seg.tempo));
+            if (seg.measures.length === 0) continue;
+            if (s !== located.segmentIndex) {
+                chunks.push({ tempo: segTempo, measures: seg.measures });
+                continue;
+            }
+            const before = seg.measures.slice(0, located.measureIndex + 1);
+            const after = seg.measures.slice(located.measureIndex + 1);
+            if (before.length > 0) {
+                chunks.push({ tempo: segTempo, measures: before });
+            }
+            chunks.push({ tempo: segTempo, measures: [{ notes: [] }] });
+            if (after.length > 0) {
+                chunks.push({ tempo: segTempo, measures: after });
+            }
+        }
+    }
+
+    return removeTrailingEmptyMeasures(rebuildChartSegments(chunks, initialTime));
+}
+
+export function deleteMeasureAtTime(
+    chartData: ChartSegment[],
+    time: number,
+): ChartSegment[] | null {
+    const sorted = [...chartData].sort((a, b) => a.time - b.time);
+    const located = locateSegmentMeasureAtTime(sorted, time);
+    if (!located) return null;
+
+    const chunks: MeasureChunk[] = [];
+    const initialTime = sorted[0]?.time ?? 0;
+
+    for (let s = 0; s < sorted.length; s++) {
+        const seg = sorted[s];
+        const segTempo = Math.max(1, Math.floor(seg.tempo));
+        if (seg.measures.length === 0) continue;
+        if (s !== located.segmentIndex) {
+            chunks.push({ tempo: segTempo, measures: seg.measures });
+            continue;
+        }
+        const before = seg.measures.slice(0, located.measureIndex);
+        const after = seg.measures.slice(located.measureIndex + 1);
+        if (before.length > 0) {
+            chunks.push({ tempo: segTempo, measures: before });
+        }
+        if (after.length > 0) {
+            chunks.push({ tempo: segTempo, measures: after });
+        }
+    }
+
+    let rebuilt = rebuildChartSegments(chunks, initialTime);
+    if (rebuilt.length === 0) {
+        const fallbackBpm = Math.max(1, Math.floor(sorted[0]?.tempo ?? 120));
+        rebuilt = [{ time: 0, tempo: fallbackBpm, measures: [{ notes: [] }] }];
+    }
+    return removeTrailingEmptyMeasures(rebuilt);
+}
+
 // ---- migration ----
 
 function addBoundaryNoteToChartData(

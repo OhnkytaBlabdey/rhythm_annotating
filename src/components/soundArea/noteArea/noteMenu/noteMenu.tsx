@@ -35,6 +35,8 @@ interface _p {
     lastError: string | null;
     noteLaneOffset: number;
     setNoteLaneOffset: (v: number) => void;
+    onInsertMeasure: (time?: number) => void;
+    onDeleteMeasure: (time?: number) => void;
 }
 
 interface ModeButtonProps {
@@ -290,6 +292,36 @@ export default function NoteMenu(p: _p) {
                     }`}
                 />
                 <span className={cls("bpm-unit")}>n</span>
+            </div>
+
+            <div className={cls("compact-row")}>
+                <span className={cls("inline-label")}>小节</span>
+                <button
+                    type="button"
+                    onClick={() => p.onInsertMeasure()}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    title={
+                        getKeyboardShortcutLabel("note.measure.insert")
+                            ? `在光标处后插一小节 (${getKeyboardShortcutLabel("note.measure.insert")})`
+                            : "在光标处后插一小节"
+                    }
+                    className={cls("button", "measure-btn")}
+                >
+                    ＋
+                </button>
+                <button
+                    type="button"
+                    onClick={() => p.onDeleteMeasure()}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    title={
+                        getKeyboardShortcutLabel("note.measure.delete")
+                            ? `删除光标处小节 (${getKeyboardShortcutLabel("note.measure.delete")})`
+                            : "删除光标处小节"
+                    }
+                    className={cls("button", "measure-btn")}
+                >
+                    －
+                </button>
             </div>
 
             <div className={cls("section-label")}>Lane</div>
