@@ -63,6 +63,7 @@ export default function WorkArea() {
     const editorLaneCardRef = useRef<HTMLDivElement | null>(null);
     const wheelUpdateGuardRef = useRef(false);
     const matchesShortcutRef = useRef(matchesShortcut);
+    matchesShortcutRef.current = matchesShortcut;
     const latestProjectRef = useRef<project>(objProject);
     const latestAudioDataRef = useRef<AudioData[]>(audioDataList);
     const latestTimeViewRef = useRef<TimeViewSettings>(timeView);
@@ -83,10 +84,6 @@ export default function WorkArea() {
     useEffect(() => {
         latestProjectRef.current = objProject;
     }, [objProject]);
-
-    useEffect(() => {
-        matchesShortcutRef.current = matchesShortcut;
-    }, [matchesShortcut]);
 
     useEffect(() => {
         latestAudioDataRef.current = audioDataList;
@@ -436,10 +433,6 @@ export default function WorkArea() {
 
         const onAltKey = (event: KeyboardEvent) => {
             if (event.key !== "Alt") return;
-            const card = editorLaneCardRef.current;
-            if (!card) return;
-            const target = event.target as Node | null;
-            if (!target || !card.contains(target)) return;
             if (isEditableTarget(event.target)) return;
             event.preventDefault();
         };

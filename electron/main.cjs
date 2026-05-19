@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-const { app, BrowserWindow, net, protocol, shell } = require("electron");
+const { app, BrowserWindow, Menu, net, protocol, shell } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
@@ -109,6 +109,8 @@ function createWindow() {
             sandbox: false,
         },
     });
+
+    Menu.setApplicationMenu(null);
 
     win.webContents.setWindowOpenHandler(({ url }) => {
         void shell.openExternal(url);

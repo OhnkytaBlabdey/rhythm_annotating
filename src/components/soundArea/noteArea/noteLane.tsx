@@ -310,7 +310,7 @@ export default function NoteLane({
             for (let i = 0; i < segment.measures.length; i++) {
                 const measureStart = segment.time + i * beatDuration;
                 if (
-                    measureStart >= rangeStart - beatDuration &&
+                    measureStart >= rangeStart - graphicalOffset - beatDuration &&
                     measureStart <= rangeEnd + beatDuration
                 ) {
                     ticks.push({ time: measureStart, major: true });
@@ -319,7 +319,7 @@ export default function NoteLane({
                     const t =
                         measureStart + (step * beatDuration) / safeSubdivision;
                     if (
-                        t >= rangeStart - beatDuration &&
+                        t >= rangeStart - graphicalOffset - beatDuration &&
                         t <= rangeEnd + beatDuration
                     ) {
                         ticks.push({ time: t, major: false });
@@ -342,7 +342,7 @@ export default function NoteLane({
             measureStart += beatDuration
         ) {
             if (
-                measureStart >= rangeStart - beatDuration &&
+                measureStart >= rangeStart - graphicalOffset - beatDuration &&
                 measureStart <= rangeEnd + beatDuration
             ) {
                 ticks.push({ time: measureStart, major: true });
@@ -351,7 +351,7 @@ export default function NoteLane({
                 const t =
                     measureStart + (step * beatDuration) / safeSubdivision;
                 if (
-                    t >= rangeStart - beatDuration &&
+                    t >= rangeStart - graphicalOffset - beatDuration &&
                     t <= rangeEnd + beatDuration
                 ) {
                     ticks.push({ time: t, major: false });
@@ -363,6 +363,7 @@ export default function NoteLane({
         return ticks;
     }, [
         editState.currentBpm,
+        graphicalOffset,
         rangeEnd,
         rangeStart,
         safeSubdivision,
@@ -736,13 +737,13 @@ export default function NoteLane({
         }
 
         for (const tick of gridTicks) {
-            if (tick.time < rangeStart || tick.time > rangeEnd) continue;
+            const x = mapTimeToX(tick.time);
+            if (x < -50 || x > width + 50) continue;
             if (!isStartEndMode && hasStartOrEnd) {
                 const s = startTime ?? -Infinity;
                 const e = endTime ?? Infinity;
                 if (tick.time < s || tick.time > e) continue;
             }
-            const x = mapTimeToX(tick.time);
             ctx.strokeStyle = tick.major ? "#94a3b8" : "#334155";
             ctx.lineWidth = tick.major ? 2 : 1;
             ctx.beginPath();
@@ -858,13 +859,13 @@ export default function NoteLane({
 
         for (let i = 0; i < majorTicks.length; i++) {
             const beatStart = majorTicks[i];
-            if (beatStart < rangeStart || beatStart > rangeEnd) continue;
+            const x = mapTimeToX(beatStart);
+            if (x < -20 || x > width + 20) continue;
             if (!isStartEndMode && hasStartOrEnd) {
                 const s = startTime ?? -Infinity;
                 const e = endTime ?? Infinity;
                 if (beatStart < s || beatStart > e) continue;
             }
-            const x = mapTimeToX(beatStart);
             const bpm = Math.round(getTempoAtTime(beatStart));
             ctx.fillStyle = "#cbd5e1";
             ctx.font = "10px sans-serif";
@@ -947,10 +948,8 @@ export default function NoteLane({
                     }
 
                     for (const anchor of anchors) {
-                        if (
-                            anchor.time < rangeStart ||
-                            anchor.time > rangeEnd
-                        ) {
+                        const anchorX = mapTimeToX(anchor.time);
+                        if (anchorX < -20 || anchorX > width + 20) {
                             continue;
                         }
                         if (!isStartEndMode && hasStartOrEnd) {
@@ -980,9 +979,10 @@ export default function NoteLane({
                     // Draw annotation box in annotate mode
                     if (editState.mode === "annotate") {
                         const headAnchor = anchors[0];
+                        const headX = mapTimeToX(headAnchor.time);
                         if (
-                            headAnchor.time >= rangeStart &&
-                            headAnchor.time <= rangeEnd &&
+                            headX >= -20 &&
+                            headX <= width + 20 &&
                             !(
                                 !isStartEndMode &&
                                 hasStartOrEnd &&
@@ -990,11 +990,10 @@ export default function NoteLane({
                                     headAnchor.time > (endTime ?? Infinity))
                             )
                         ) {
-                            const ax = mapTimeToX(headAnchor.time);
                             const aboxY = centerY + 20;
                             const aboxW = 60;
                             const aboxH = 18;
-                            const aboxX = ax - aboxW / 2;
+                            const aboxX = headX - aboxW / 2;
                             if (note.id === annotationEditing) continue;
                             ctx.fillStyle = "#ffffffdd";
                             ctx.strokeStyle = "#64748b";
