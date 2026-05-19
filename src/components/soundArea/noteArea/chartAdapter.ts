@@ -780,7 +780,15 @@ export function migrateNoteLaneData(lane: NoteLaneData): NoteLaneData {
 
     delete next.startTime;
     delete next.endTime;
-    next.dataVersion = 2;
+    next.dataVersion = 3;
+
+    // Normalize: segments with measures:[] should have at least one empty
+    // measure so that rendering / index / BPM lookup functions see them.
+    for (const seg of next.chartData) {
+        if (seg.measures.length === 0) {
+            seg.measures.push({ notes: [] });
+        }
+    }
 
     return next;
 }

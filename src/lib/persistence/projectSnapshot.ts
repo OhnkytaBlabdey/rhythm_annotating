@@ -1,6 +1,6 @@
 import { AudioData, normalizeSoundLaneState } from "@/interface/audioData";
 import { defaultProject, project } from "@/interface/project";
-import { cleanNoteLaneData } from "./chartDataCleanup";
+
 import {
     DEFAULT_SNAPSHOT_KEY,
     PersistedProjectSnapshotV1,
@@ -60,14 +60,6 @@ export async function saveProjectSnapshot(params: {
     const cleanedProject: project = {
         ...params.projectState,
         isPlaying: false,
-        soundLaneStates: params.projectState.soundLaneStates.map(
-            (soundLane) => ({
-                ...soundLane,
-                noteLanes: soundLane.noteLanes.map((lane) =>
-                    cleanNoteLaneData(lane),
-                ),
-            }),
-        ),
     };
 
     const snapshot: PersistedProjectSnapshotV1 = {
