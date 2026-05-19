@@ -67,13 +67,6 @@ export default function SoundLane(prop: _prop) {
         {},
     );
 
-    const cursorTime = useMemo(() => {
-        for (const laneId of Object.keys(laneCursorTimeMap)) {
-            const t = laneCursorTimeMap[laneId];
-            if (t !== null && t !== undefined) return t;
-        }
-        return null;
-    }, [laneCursorTimeMap]);
     const [laneSelectedMeasureTimeMap, setLaneSelectedMeasureTimeMap] =
         useState<Record<string, number | null>>({});
     const [laneErrorMap, setLaneErrorMap] = useState<Record<string, string>>(
@@ -89,6 +82,18 @@ export default function SoundLane(prop: _prop) {
         }
         return noteLanes[0]?.id ?? null;
     }, [activeNoteLaneId, noteLanes]);
+
+    const cursorTime = useMemo(() => {
+        if (resolvedActiveLaneId) {
+            const t = laneCursorTimeMap[resolvedActiveLaneId];
+            if (t !== null && t !== undefined) return t;
+        }
+        for (const laneId of Object.keys(laneCursorTimeMap)) {
+            const t = laneCursorTimeMap[laneId];
+            if (t !== null && t !== undefined) return t;
+        }
+        return null;
+    }, [laneCursorTimeMap, resolvedActiveLaneId]);
 
     const sortedNoteLanes = useMemo(() => {
         const active = noteLanes.find((l) => l.id === resolvedActiveLaneId);

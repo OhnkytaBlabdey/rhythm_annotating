@@ -747,13 +747,34 @@ function addBoundaryNoteToChartData(
 }
 
 export function migrateNoteLaneData(lane: NoteLaneData): NoteLaneData {
-    if (lane.dataVersion && lane.dataVersion >= 2) {
-        return lane;
+    // Normalize empty segments — always run regardless of dataVersion.
+    // Segments with measures:[] should have at least one empty measure so
+    // that rendering / index / BPM lookup functions see them.
+    let chartData = lane.chartData;
+    let hasEmpty = false;
+    for (const seg of chartData) {
+        if (seg.measures.length === 0) {
+            hasEmpty = true;
+            break;
+        }
+    }
+    if (hasEmpty) {
+        chartData = chartData.map((seg) =>
+            seg.measures.length === 0
+                ? { ...seg, measures: [{ notes: [] }] }
+                : seg,
+        );
+    }
+
+    const normalized: NoteLaneData = { ...lane, chartData };
+
+    if (normalized.dataVersion && normalized.dataVersion >= 2) {
+        return normalized;
     }
 
     const next: NoteLaneData = {
-        ...lane,
-        chartData: lane.chartData.map((seg) => ({
+        ...normalized,
+        chartData: normalized.chartData.map((seg) => ({
             ...seg,
             measures: seg.measures.map((m) => ({ notes: [...m.notes] })),
         })),
@@ -781,14 +802,6 @@ export function migrateNoteLaneData(lane: NoteLaneData): NoteLaneData {
     delete next.startTime;
     delete next.endTime;
     next.dataVersion = 3;
-
-    // Normalize: segments with measures:[] should have at least one empty
-    // measure so that rendering / index / BPM lookup functions see them.
-    for (const seg of next.chartData) {
-        if (seg.measures.length === 0) {
-            seg.measures.push({ notes: [] });
-        }
-    }
 
     return next;
 }
