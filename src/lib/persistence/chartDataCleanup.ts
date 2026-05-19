@@ -1,4 +1,4 @@
-import { ChartSegment, NoteLaneData } from "@/components/soundArea/noteArea/chartTypes";
+import { ChartSegment, ChartNote, isNoteBoundary, NoteLaneData } from "@/components/soundArea/noteArea/chartTypes";
 
 function cloneChartData(chartData: ChartSegment[]): ChartSegment[] {
     return chartData.map((segment) => ({
@@ -12,8 +12,8 @@ function cloneChartData(chartData: ChartSegment[]): ChartSegment[] {
     }));
 }
 
-function isMeasureEmpty(measure: { notes: unknown[] }) {
-    return measure.notes.length === 0;
+function isMeasureEmpty(measure: { notes: ChartNote[] }) {
+    return measure.notes.every((n) => isNoteBoundary(n));
 }
 
 function isSegmentEmpty(segment: ChartSegment) {
@@ -22,8 +22,9 @@ function isSegmentEmpty(segment: ChartSegment) {
 
 export function cleanChartData(
     chartData: ChartSegment[],
-    defaultBpm: number,
+    _defaultBpm: number,
 ): ChartSegment[] {
+    void _defaultBpm;
     const cleaned = cloneChartData(chartData);
 
     // strip trailing empty segments (keep at least one)
@@ -41,16 +42,10 @@ export function cleanChartData(
         }
     }
 
-    // if every segment is now empty, return a minimal fallback with no measures
-    // so buildGridTicks will use defaultBpm for virtual rendering only
+    // if every segment is now empty, return empty array so rendering
+    // uses only virtual measures via defaultBpm
     if (cleaned.every((seg) => seg.measures.length === 0)) {
-        return [
-            {
-                time: 0,
-                tempo: defaultBpm,
-                measures: [],
-            },
-        ];
+        return [];
     }
 
     return cleaned;

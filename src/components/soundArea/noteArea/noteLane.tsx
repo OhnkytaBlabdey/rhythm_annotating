@@ -12,11 +12,14 @@ import {
     type SetStateAction,
 } from "react";
 import style from "./noteLane.module.css";
-import { ChartNote, ChartSegment, Fraction } from "./chartTypes";
+import { ChartNote, ChartSegment, Fraction, isNoteBoundary, NOTE_BOUNDARY_START, NOTE_BOUNDARY_END } from "./chartTypes";
 import {
     generateNoteId,
     normalizeFraction,
     validateChartData,
+    findBoundaryNoteTime,
+    removeTrailingEmptyMeasures,
+    fillGapBetweenMeasures,
 } from "./chartAdapter";
 import { NoteEditState } from "./noteState";
 import { useAppSettings } from "@/components/appSettingsContext";
@@ -37,10 +40,6 @@ interface NoteLaneProps {
     selectedMeasureTime?: number | null;
     onSelectMeasure?: (time: number | null) => void;
     onActivate?: () => void;
-    startTime?: number | null;
-    endTime?: number | null;
-    setStartTime: (time: number | null) => void;
-    setEndTime: (time: number | null) => void;
     laneId: string;
     graphicalOffset?: number;
 }
@@ -231,10 +230,6 @@ export default function NoteLane({
     selectedMeasureTime,
     onSelectMeasure,
     onActivate,
-    startTime,
-    endTime,
-    setStartTime,
-    setEndTime,
     laneId,
     graphicalOffset = 0,
 }: NoteLaneProps) {
@@ -282,6 +277,16 @@ export default function NoteLane({
         () => [...chartData].sort((a, b) => a.time - b.time),
         [chartData],
     );
+
+    const startTime = useMemo(
+        () => findBoundaryNoteTime(segments, NOTE_BOUNDARY_START),
+        [segments],
+    );
+    const endTime = useMemo(
+        () => findBoundaryNoteTime(segments, NOTE_BOUNDARY_END),
+        [segments],
+    );
+
     const renderValidationError = useMemo(
         () => validateChartData(segments),
         [segments],
@@ -602,12 +607,13 @@ export default function NoteLane({
     const deleteById = useCallback(
         (ids: Set<string>) => {
             if (ids.size === 0) return;
-            const next = segments.map((segment) => ({
+            let next = segments.map((segment) => ({
                 ...segment,
                 measures: segment.measures.map((measure) => ({
                     notes: measure.notes.filter((note) => !ids.has(note.id)),
                 })),
             }));
+            next = removeTrailingEmptyMeasures(next);
             if (commitChart(next, true)) {
                 setEditState((prev) => ({
                     ...prev,
@@ -909,6 +915,8 @@ export default function NoteLane({
                 }
 
                 for (const note of measure.notes) {
+                    if (isNoteBoundary(note)) continue;
+
                     const anchors = toAnchors(note, measureStart, beatDuration);
                     if (anchors.length === 0) {
                         continue;
@@ -1017,7 +1025,7 @@ export default function NoteLane({
                                     displayText.length > 8
                                         ? displayText.slice(0, 7) + "…"
                                         : displayText,
-                                    ax,
+                                    headX,
                                     aboxY + 13,
                                 );
                             }
@@ -1187,7 +1195,13 @@ export default function NoteLane({
                 target.chart[target.segmentIndex].measures[
                     target.measureIndex
                 ].notes.push(note);
-                commitChart(target.chart, true);
+                const filled = fillGapBetweenMeasures(
+                    target.chart,
+                    target.segmentIndex,
+                    target.measureIndex,
+                    editState.currentBpm,
+                );
+                commitChart(filled, true);
                 return;
             }
 
@@ -1227,7 +1241,13 @@ export default function NoteLane({
                 target.chart[target.segmentIndex].measures[
                     target.measureIndex
                 ].notes.push(note);
-                if (commitChart(target.chart, true)) {
+                const filled = fillGapBetweenMeasures(
+                    target.chart,
+                    target.segmentIndex,
+                    target.measureIndex,
+                    editState.currentBpm,
+                );
+                if (commitChart(filled, true)) {
                     setEditState((prev) => ({ ...prev, lnHeadTime: null }));
                 }
                 return;
@@ -1274,17 +1294,59 @@ export default function NoteLane({
                         target.measureIndex
                     ].notes.push(note);
                 }
-                commitChart(target.chart, true);
+                const filled = fillGapBetweenMeasures(
+                    target.chart,
+                    target.segmentIndex,
+                    target.measureIndex,
+                    editState.currentBpm,
+                );
+                commitChart(filled, true);
                 return;
             }
 
             if (editState.mode === "insert-start") {
-                setStartTime(time);
+                const target = resolveInsertTarget(segments, time);
+                for (const s of target.chart) {
+                    for (const m of s.measures) {
+                        m.notes = m.notes.filter(
+                            (n) => n.type !== NOTE_BOUNDARY_START,
+                        );
+                    }
+                }
+                target.chart[target.segmentIndex].measures[
+                    target.measureIndex
+                ].notes.push({
+                    id: generateNoteId(),
+                    type: NOTE_BOUNDARY_START,
+                    head: {
+                        a: Math.round(target.beat * 10000),
+                        b: 10000,
+                    },
+                });
+                commitChart(target.chart, true);
                 return;
             }
 
             if (editState.mode === "insert-end") {
-                setEndTime(time);
+                const target = resolveInsertTarget(segments, time);
+                for (const s of target.chart) {
+                    for (const m of s.measures) {
+                        m.notes = m.notes.filter(
+                            (n) => n.type !== NOTE_BOUNDARY_END,
+                        );
+                    }
+                }
+                target.chart[target.segmentIndex].measures[
+                    target.measureIndex
+                ].notes.push({
+                    id: generateNoteId(),
+                    type: NOTE_BOUNDARY_END,
+                    head: {
+                        a: Math.round(target.beat * 10000),
+                        b: 10000,
+                    },
+                });
+                commitChart(target.chart, true);
                 return;
             }
         },
@@ -1298,8 +1360,6 @@ export default function NoteLane({
             safeSubdivision,
             segments,
             setEditState,
-            setStartTime,
-            setEndTime,
         ],
     );
 

@@ -30,6 +30,9 @@ import {
     validateChartData,
     validateNoteLaneData,
     normalizeFraction,
+    removeTrailingEmptyMeasures,
+    collectMeasureTimesAndBpms,
+    buildSegmentsFromMeasureList,
 } from "./noteArea/chartAdapter";
 import { convertToMalody } from "@/lib/malodyExport";
 
@@ -229,6 +232,10 @@ export default function SoundLane(prop: _prop) {
 
     const handleAddNoteLane = useCallback(() => {
         const nextLane = defaultNoteLaneData();
+        const measureTimes = collectMeasureTimesAndBpms(noteLanes);
+        if (measureTimes.length > 0) {
+            nextLane.chartData = buildSegmentsFromMeasureList(measureTimes);
+        }
         prop.setSoundLaneState(prop.index, {
             ...prop.refSoundLaneState,
             noteLanes: [...noteLanes, nextLane],
@@ -635,12 +642,13 @@ export default function SoundLane(prop: _prop) {
                     body: n.body ? [...n.body] : undefined,
                 }));
 
-            const next = activeLane.chartData.map((seg) => ({
+            let next = activeLane.chartData.map((seg) => ({
                 ...seg,
                 measures: seg.measures.map((m) => ({
                     notes: m.notes.filter((n) => !ids.has(n.id)),
                 })),
             }));
+            next = removeTrailingEmptyMeasures(next);
             const error = validateChartData(next);
             if (error) {
                 setLaneError(activeLane.id, error);
@@ -673,12 +681,13 @@ export default function SoundLane(prop: _prop) {
             if (currentEditState.selectedIds.size === 0) return;
 
             const ids = currentEditState.selectedIds;
-            const next = activeLane.chartData.map((seg) => ({
+            let next = activeLane.chartData.map((seg) => ({
                 ...seg,
                 measures: seg.measures.map((m) => ({
                     notes: m.notes.filter((n) => !ids.has(n.id)),
                 })),
             }));
+            next = removeTrailingEmptyMeasures(next);
             const error = validateChartData(next);
             if (error) {
                 setLaneError(activeLane.id, error);
@@ -756,23 +765,47 @@ export default function SoundLane(prop: _prop) {
             canEditCurrentMeasureBpm: selectedMeasure !== null,
             setCurrentMeasureBpm: (bpm: number) => {
                 const safeBpm = Math.max(1, Math.floor(bpm));
-                const next = retimeSingleMeasureByBpm(
+                // apply to active lane first to validate
+                const activeNext = retimeSingleMeasureByBpm(
                     activeLane.chartData,
                     selectedMeasureTime,
                     safeBpm,
                 );
-                if (!next) return;
-                const error = validateChartData(next);
+                if (!activeNext) return;
+                const error = validateChartData(activeNext);
                 if (error) {
                     setLaneError(activeLane.id, error);
                     return;
                 }
                 clearLaneError(activeLane.id);
                 pushUndo(activeLane.chartData);
-                updateLaneData(activeLane.id, (prevLane) => ({
-                    ...prevLane,
-                    chartData: next,
-                }));
+
+                // sync BPM to all NoteLanes at the same time position
+                const updates: Array<{ laneId: string; chartData: ChartSegment[] }> = [];
+                for (const lane of noteLanes) {
+                    if (lane.id === activeLane.id) {
+                        updates.push({ laneId: lane.id, chartData: activeNext });
+                    } else {
+                        const laneNext = retimeSingleMeasureByBpm(
+                            lane.chartData,
+                            selectedMeasureTime,
+                            safeBpm,
+                        );
+                        if (laneNext) {
+                            updates.push({ laneId: lane.id, chartData: laneNext });
+                        }
+                    }
+                }
+
+                // apply all updates
+                const nextLanes = noteLanes.map((lane) => {
+                    const upd = updates.find((u) => u.laneId === lane.id);
+                    return upd ? { ...lane, chartData: upd.chartData } : lane;
+                });
+                prop.setSoundLaneState(prop.index, {
+                    ...prop.refSoundLaneState,
+                    noteLanes: nextLanes,
+                });
             },
             division: activeLane.division,
             setDivision: (division: number) =>
@@ -789,19 +822,9 @@ export default function SoundLane(prop: _prop) {
                 updateLaneData(activeLane.id, () => null);
             },
             onClearLane: () => {
-                const resetBpm = Math.max(
-                    1,
-                    Math.floor(activeLane.defaultBpm),
-                );
                 updateLaneData(activeLane.id, (prevLane) => ({
                     ...prevLane,
-                    chartData: [
-                        {
-                            time: 0,
-                            tempo: resetBpm,
-                            measures: [{ notes: [] }],
-                        },
-                    ],
+                    chartData: [],
                 }));
                 setLaneEditState(activeLane.id, (prev) => ({
                     ...prev,
@@ -1141,20 +1164,6 @@ export default function SoundLane(prop: _prop) {
                                     onSelectMeasure={handleSelectMeasure}
                                     onActivate={() =>
                                         setActiveNoteLaneId(lane.id)
-                                    }
-                                    startTime={lane.startTime ?? null}
-                                    endTime={lane.endTime ?? null}
-                                    setStartTime={(time) =>
-                                        updateLaneData(lane.id, (prevLane) => ({
-                                            ...prevLane,
-                                            startTime: time,
-                                        }))
-                                    }
-                                    setEndTime={(time) =>
-                                        updateLaneData(lane.id, (prevLane) => ({
-                                            ...prevLane,
-                                            endTime: time,
-                                        }))
                                     }
                                     laneId={lane.id}
                                 />

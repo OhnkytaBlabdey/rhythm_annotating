@@ -1,4 +1,4 @@
-import { NoteLaneData } from "@/components/soundArea/noteArea/chartTypes";
+import { NoteLaneData, isNoteBoundary } from "@/components/soundArea/noteArea/chartTypes";
 
 interface Fraction {
     a: number;
@@ -87,6 +87,7 @@ export function convertToMalody(
 
         for (const measure of segment.measures) {
             for (const note of measure.notes) {
+                if (isNoteBoundary(note)) continue;
                 const beat = fractionToBeat(
                     globalMeasureIndex,
                     note.head,

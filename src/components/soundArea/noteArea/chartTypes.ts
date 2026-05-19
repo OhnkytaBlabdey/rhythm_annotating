@@ -3,6 +3,12 @@ export interface Fraction {
     b: number;
 }
 
+export const NOTE_STRONG = 0;
+export const NOTE_WEAK = 1;
+export const NOTE_LN = 2;
+export const NOTE_BOUNDARY_START = -1;
+export const NOTE_BOUNDARY_END = -2;
+
 export interface ChartNote {
     id: string;
     type: number;
@@ -10,6 +16,14 @@ export interface ChartNote {
     body?: Fraction[];
     tail?: Fraction;
     annotation?: string;
+}
+
+export function isNoteBoundary(note: ChartNote): boolean {
+    return note.type === NOTE_BOUNDARY_START || note.type === NOTE_BOUNDARY_END;
+}
+
+export function isNoteRegular(note: ChartNote): boolean {
+    return !isNoteBoundary(note);
 }
 
 export interface ChartMeasure {
@@ -34,7 +48,11 @@ export interface NoteLaneData {
     division: number;
     defaultBpm: number;
     chartData: ChartSegment[];
+    /** @deprecated — boundary markers are now stored as boundary notes in chartData */
     startTime?: number | null;
+    /** @deprecated — boundary markers are now stored as boundary notes in chartData */
     endTime?: number | null;
     isFolded?: boolean;
+    /** Schema version for migration; v2 uses boundary notes */
+    dataVersion?: number;
 }

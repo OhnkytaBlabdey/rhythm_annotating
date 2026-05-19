@@ -5,6 +5,9 @@ import {
     ChartSegment,
     RawChartSegment,
     Fraction,
+    isNoteBoundary,
+    NOTE_BOUNDARY_START,
+    NOTE_BOUNDARY_END,
 } from "./chartTypes";
 
 let _idCounter = 0;
@@ -143,6 +146,7 @@ function validateMeasureNotes(notes: ChartNote[]): string | null {
 
     const lnRanges: Array<{ id: string; head: Fraction; tail: Fraction }> = [];
     for (const note of notes) {
+        if (isNoteBoundary(note)) continue;
         const head = fractionKey(note.head);
         if (!head) {
             return "Note 缺少合法头部时刻";
@@ -263,6 +267,7 @@ function collectAbsoluteNotes(chartData: ChartSegment[]): AbsoluteNote[] {
             const measureStart = segment.time + m * beatDuration;
             const measure = segment.measures[m];
             for (const note of measure.notes) {
+                if (isNoteBoundary(note)) continue;
                 const abs = toAbsoluteNote(note, measureStart, beatDuration);
                 if (abs) {
                     out.push(abs);
@@ -492,4 +497,280 @@ export function parseImportedNoteLaneText(
     }
 
     return { lane: nextLane };
+}
+
+// ---- boundary note helpers ----
+
+export function findBoundaryNoteTime(
+    chartData: ChartSegment[],
+    type: number,
+): number | null {
+    for (const seg of chartData) {
+        if (!Number.isFinite(seg.tempo) || seg.tempo <= 0) continue;
+        const bd = 60 / seg.tempo;
+        for (let mi = 0; mi < seg.measures.length; mi++) {
+            for (const n of seg.measures[mi].notes) {
+                if (n.type === type && n.head) {
+                    const head = normalizeFraction(n.head);
+                    if (head) {
+                        return seg.time + mi * bd + (head.a / head.b) * bd;
+                    }
+                }
+            }
+        }
+    }
+    return null;
+}
+
+// ---- cascade cleanup ----
+
+export function removeTrailingEmptyMeasures(
+    data: ChartSegment[],
+): ChartSegment[] {
+    if (data.length === 0) return [];
+    const cloned = data.map((seg) => ({
+        ...seg,
+        measures: seg.measures.map((m) => ({ notes: [...m.notes] })),
+    }));
+    for (let s = cloned.length - 1; s >= 0; s--) {
+        const seg = cloned[s];
+        while (
+            seg.measures.length > 0 &&
+            seg.measures[seg.measures.length - 1].notes.every((n) =>
+                isNoteBoundary(n),
+            )
+        ) {
+            seg.measures.pop();
+        }
+        if (seg.measures.length === 0) {
+            cloned.pop();
+        } else {
+            break;
+        }
+    }
+    return cloned;
+}
+
+// ---- gap fill ----
+
+export function fillGapBetweenMeasures(
+    data: ChartSegment[],
+    targetSegIdx: number,
+    targetMeasureIdx: number,
+    _defaultBpm: number,
+): ChartSegment[] {
+    void _defaultBpm;
+    if (data.length === 0) return data;
+
+    // find the last measure that has at least one regular (non-boundary) note,
+    // scanning backwards from just before the target
+    let lastRealSeg = -1;
+    let lastRealMeasure = -1;
+
+    for (let s = targetSegIdx; s >= 0 && lastRealSeg < 0; s--) {
+        const seg = data[s];
+        const endM =
+            s === targetSegIdx ? targetMeasureIdx - 1 : seg.measures.length - 1;
+        for (let m = endM; m >= 0; m--) {
+            if (seg.measures[m].notes.some((n) => !isNoteBoundary(n))) {
+                lastRealSeg = s;
+                lastRealMeasure = m;
+                break;
+            }
+        }
+    }
+
+    if (lastRealSeg < 0) return data; // no previous real measure, nothing to fill
+
+    // check if target is adjacent (immediately after lastReal)
+    if (
+        targetSegIdx === lastRealSeg &&
+        targetMeasureIdx === lastRealMeasure + 1
+    ) {
+        return data; // adjacent, no gap
+    }
+
+    // fill gap within the same segment: ensure measures exist
+    // between lastRealMeasure+1 and targetMeasureIdx
+    if (targetSegIdx === lastRealSeg) {
+        const cloned = data.map((seg) => ({
+            ...seg,
+            measures: seg.measures.map((m) => ({ notes: [...m.notes] })),
+        }));
+        const seg = cloned[targetSegIdx];
+        while (seg.measures.length < targetMeasureIdx) {
+            seg.measures.push({ notes: [] });
+        }
+        return cloned;
+    }
+
+    // target is in a later segment — fill intermediate measures
+    const cloned = data.map((seg) => ({
+        ...seg,
+        measures: seg.measures.map((m) => ({ notes: [...m.notes] })),
+    }));
+
+    // ensure all measures in lastReal segment from lastRealMeasure+1 onward exist
+    const lastSeg = cloned[lastRealSeg];
+    while (lastSeg.measures.length > lastRealMeasure + 1) {
+        // measures already exist, just ensure they're there
+    }
+
+    // ensure measures in intermediate segments
+    for (let s = lastRealSeg + 1; s < targetSegIdx; s++) {
+        const bridgeSeg = cloned[s];
+        // ensure all measures exist (they should already)
+        for (let m = 0; m < bridgeSeg.measures.length; m++) {
+            bridgeSeg.measures[m] = bridgeSeg.measures[m] || { notes: [] };
+        }
+    }
+
+    // ensure measures up to targetMeasureIdx in target segment
+    const targetSeg = cloned[targetSegIdx];
+    while (targetSeg.measures.length < targetMeasureIdx) {
+        targetSeg.measures.push({ notes: [] });
+    }
+
+    return cloned;
+}
+
+// ---- BPM list collection ----
+
+export function collectMeasureTimesAndBpms(
+    allLanes: NoteLaneData[],
+): Array<{ time: number; bpm: number }> {
+    const seen = new Set<number>();
+    const out: Array<{ time: number; bpm: number }> = [];
+    for (const lane of allLanes) {
+        for (const seg of lane.chartData) {
+            if (!Number.isFinite(seg.tempo) || seg.tempo <= 0) continue;
+            const bd = 60 / seg.tempo;
+            for (let mi = 0; mi < seg.measures.length; mi++) {
+                const t = seg.time + mi * bd;
+                const key = Math.round(t * 1000);
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    out.push({ time: t, bpm: seg.tempo });
+                }
+            }
+        }
+    }
+    return out.sort((a, b) => a.time - b.time);
+}
+
+export function buildSegmentsFromMeasureList(
+    measures: Array<{ time: number; bpm: number }>,
+): ChartSegment[] {
+    if (measures.length === 0) return [];
+    const segments: ChartSegment[] = [];
+    let current: ChartSegment | null = null;
+    for (const { time, bpm } of measures) {
+        if (
+            !current ||
+            Math.abs(current.tempo - bpm) > 1e-6
+        ) {
+            current = { time, tempo: bpm, measures: [] };
+            segments.push(current);
+        }
+        current.measures.push({ notes: [] });
+    }
+    return segments;
+}
+
+// ---- migration ----
+
+function addBoundaryNoteToChartData(
+    chartData: ChartSegment[],
+    time: number,
+    type: number,
+    defaultBpm: number,
+): void {
+    if (!Number.isFinite(time) || time < 0) return;
+
+    if (chartData.length === 0) {
+        chartData.push({
+            time: 0,
+            tempo: Math.max(1, defaultBpm),
+            measures: [],
+        });
+    }
+
+    if (chartData[0].time > 0) {
+        chartData[0].time = 0;
+    }
+
+    // find or create the segment for this time
+    let segIdx = 0;
+    for (let i = chartData.length - 1; i >= 0; i--) {
+        if (time >= chartData[i].time - 1e-6) {
+            segIdx = i;
+            break;
+        }
+    }
+
+    const seg = chartData[segIdx];
+    const tempo =
+        Number.isFinite(seg.tempo) && seg.tempo > 0 ? seg.tempo : Math.max(1, defaultBpm);
+    const bd = 60 / tempo;
+    const rel = Math.max(0, time - seg.time);
+    const measureIdx = Math.floor(rel / bd);
+
+    while (seg.measures.length <= measureIdx) {
+        seg.measures.push({ notes: [] });
+    }
+
+    const measureStart = seg.time + measureIdx * bd;
+    const beat = (time - measureStart) / bd;
+
+    // remove any existing boundary note of the same type
+    for (const s of chartData) {
+        for (const m of s.measures) {
+            m.notes = m.notes.filter((n) => n.type !== type);
+        }
+    }
+
+    seg.measures[measureIdx].notes.push({
+        id: generateNoteId(),
+        type,
+        head: { a: Math.round(beat * 10000), b: 10000 },
+    });
+}
+
+export function migrateNoteLaneData(lane: NoteLaneData): NoteLaneData {
+    if (lane.dataVersion && lane.dataVersion >= 2) {
+        return lane;
+    }
+
+    const next: NoteLaneData = {
+        ...lane,
+        chartData: lane.chartData.map((seg) => ({
+            ...seg,
+            measures: seg.measures.map((m) => ({ notes: [...m.notes] })),
+        })),
+    };
+
+    const bpm = next.defaultBpm ?? 120;
+
+    if (next.startTime != null) {
+        addBoundaryNoteToChartData(
+            next.chartData,
+            next.startTime,
+            NOTE_BOUNDARY_START,
+            bpm,
+        );
+    }
+    if (next.endTime != null) {
+        addBoundaryNoteToChartData(
+            next.chartData,
+            next.endTime,
+            NOTE_BOUNDARY_END,
+            bpm,
+        );
+    }
+
+    delete next.startTime;
+    delete next.endTime;
+    next.dataVersion = 2;
+
+    return next;
 }

@@ -1,4 +1,5 @@
 import { NoteLaneData } from "@/components/soundArea/noteArea/chartTypes";
+import { migrateNoteLaneData } from "@/components/soundArea/noteArea/chartAdapter";
 
 /**
  * 完整的音频文件数据，存储在全局 context 中
@@ -86,14 +87,9 @@ export function defaultNoteLaneData(
         id: lane.id,
         defaultBpm: bpm,
         division: lane.division,
-        chartData: [
-            {
-                time: 0,
-                tempo: bpm,
-                measures: [{ notes: [] }],
-            },
-        ],
+        chartData: [],
         isFolded: false,
+        dataVersion: 2,
     };
 }
 
@@ -138,7 +134,7 @@ export function normalizeSoundLaneState(raw: SoundLaneState): SoundLaneState {
         },
         noteLanes:
             Array.isArray(raw.noteLanes) && raw.noteLanes.length > 0
-                ? raw.noteLanes.map((lane: NoteLaneData) => ({
+                ? raw.noteLanes.map((lane: NoteLaneData) => migrateNoteLaneData({
                     ...lane,
                     isFolded: lane.isFolded ?? false,
                   }))
