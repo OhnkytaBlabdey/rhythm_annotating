@@ -543,7 +543,17 @@ export function removeTrailingEmptyMeasures(
             seg.measures.pop();
         }
         if (seg.measures.length === 0) {
+            const poppedTempo = seg.tempo;
             cloned.pop();
+            const newTail = cloned[cloned.length - 1];
+            if (
+                newTail &&
+                Number.isFinite(newTail.tempo) &&
+                Number.isFinite(poppedTempo) &&
+                Math.abs(newTail.tempo - poppedTempo) > 1e-6
+            ) {
+                break;
+            }
         } else {
             break;
         }

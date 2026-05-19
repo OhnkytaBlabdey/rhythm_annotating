@@ -736,6 +736,12 @@ export default function SoundLane(prop: _prop) {
             ? { error: validateNoteLaneData(activeLane)!, lane: activeLane }
             : activeLane;
 
+        const { id: _stripId, ...laneWithoutId } = activeLane;
+        const exportTextPayload =
+            exportPayload === activeLane
+                ? laneWithoutId
+                : { error: (exportPayload as { error: string }).error, lane: laneWithoutId };
+
         return {
             mode: editState.mode,
             setMode: (m: EditMode) =>
@@ -834,7 +840,7 @@ export default function SoundLane(prop: _prop) {
                 clearLaneError(activeLane.id);
             },
             onImportText: handleImportText,
-            exportText: JSON.stringify(exportPayload, null, 2),
+            exportText: JSON.stringify(exportTextPayload, null, 2),
             malodyExportText: convertToMalody(
                 activeLane,
                 audioData?.file ?? "unknown",
