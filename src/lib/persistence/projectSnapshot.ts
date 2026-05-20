@@ -1,5 +1,6 @@
 import { AudioData, normalizeSoundLaneState } from "@/interface/audioData";
 import { defaultProject, project } from "@/interface/project";
+import { recomputeSegmentTimes, stripChartDataTimes } from "@/components/soundArea/noteArea/chartAdapter";
 
 import {
     DEFAULT_SNAPSHOT_KEY,
@@ -11,6 +12,32 @@ import {
     toAudioRefs,
     upsertAudioRecord,
 } from "./indexedDb";
+
+function stripProjectChartTimes(p: project): project {
+    return {
+        ...p,
+        soundLaneStates: p.soundLaneStates.map((lane) => ({
+            ...lane,
+            noteLanes: (lane.noteLanes ?? []).map((nl) => ({
+                ...nl,
+                chartData: stripChartDataTimes(nl.chartData),
+            })),
+        })),
+    } as project;
+}
+
+function recomputeProjectChartTimes(p: project): project {
+    return {
+        ...p,
+        soundLaneStates: p.soundLaneStates.map((lane) => ({
+            ...lane,
+            noteLanes: (lane.noteLanes ?? []).map((nl) => ({
+                ...nl,
+                chartData: recomputeSegmentTimes(nl.chartData as any),
+            })),
+        })),
+    };
+}
 
 function normalizeProject(input: unknown): project {
     if (!input || typeof input !== "object") {
@@ -66,7 +93,7 @@ export async function saveProjectSnapshot(params: {
         version: 1,
         key: DEFAULT_SNAPSHOT_KEY,
         savedAt: Date.now(),
-        project: cleanedProject,
+        project: stripProjectChartTimes(cleanedProject),
         audioRefs: toAudioRefs(params.audioDataList),
         slices: params.slices,
     };
@@ -109,11 +136,13 @@ export async function hydrateProjectSnapshot(): Promise<{
     const availableRefs = toAudioRefs(availableAudioData);
     const normalizedProject = normalizeProject(snapshot.project);
 
+    const withTimes = recomputeProjectChartTimes(normalizedProject);
+
     return {
         projectState: {
-            ...normalizedProject,
+            ...withTimes,
             soundLaneStates: sanitizeLaneStatesByAudioRefs(
-                normalizedProject.soundLaneStates,
+                withTimes.soundLaneStates,
                 availableRefs,
             ),
             isPlaying: false,

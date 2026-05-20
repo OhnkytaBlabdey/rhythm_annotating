@@ -37,7 +37,7 @@ export interface ChartSegment {
 }
 
 export interface RawChartSegment {
-    time: number;
+    time?: number;
     tempo: number;
     measures?: ChartMeasure[];
     beats?: ChartMeasure[];

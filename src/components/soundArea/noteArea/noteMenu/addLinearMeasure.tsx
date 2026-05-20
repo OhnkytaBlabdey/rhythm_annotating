@@ -41,11 +41,11 @@ function AddLinearMeasure(p: _p) {
                     width={36}
                     height={24}
                 />
-                <span>添加小节</span>
+                <span>添加拍</span>
             </button>
         </div>
     );
 }
 
 export default AddLinearMeasure;
-// 线性添加一个和上一个bpm相同的1/4小节。
+// 线性添加一个和上一个bpm相同的1/4拍。

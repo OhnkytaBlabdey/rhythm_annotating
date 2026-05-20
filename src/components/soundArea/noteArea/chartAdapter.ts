@@ -37,23 +37,24 @@ function sanitizeMeasures(input: ChartMeasure[] | undefined): ChartMeasure[] {
 export function normalizeChartSegments(
     rawSegments: RawChartSegment[],
 ): ChartSegment[] {
-    return rawSegments
-        .filter(
-            (segment) =>
-                Number.isFinite(segment.time) && Number.isFinite(segment.tempo),
-        )
-        .map((segment) => {
-            const measures = sanitizeMeasures(
-                segment.measures ?? segment.beats,
-            );
+    const filtered = rawSegments.filter(
+        (segment) => Number.isFinite(segment.tempo),
+    );
 
-            return {
-                time: segment.time,
-                tempo: segment.tempo,
-                measures,
-            };
-        })
-        .sort((a, b) => a.time - b.time);
+    const hasTime = filtered.some((s) => Number.isFinite(s.time));
+
+    const sorted = hasTime
+        ? [...filtered].sort(
+              (a, b) => (a.time as number) - (b.time as number),
+          )
+        : filtered;
+
+    return recomputeSegmentTimes(
+        sorted.map((segment) => ({
+            tempo: segment.tempo,
+            measures: sanitizeMeasures(segment.measures ?? segment.beats),
+        })),
+    );
 }
 
 /** Parse a NoteLaneSnapshot (Feature 17) back into usable ChartSegment[] */
@@ -420,13 +421,15 @@ function validateImportSegments(rawSegments: unknown): string | null {
         if (!isRecord(segment)) {
             return `第 ${index + 1} 个节拍段不是对象`;
         }
-        const time = Number(segment.time);
         const tempo = Number(segment.tempo);
-        if (!Number.isFinite(time) || time < 0) {
-            return `第 ${index + 1} 个节拍段的 time 非法`;
-        }
         if (!Number.isFinite(tempo) || tempo <= 0) {
             return `第 ${index + 1} 个节拍段的 tempo 非法`;
+        }
+        if (segment.time !== undefined) {
+            const time = Number(segment.time);
+            if (!Number.isFinite(time) || time < 0) {
+                return `第 ${index + 1} 个节拍段的 time 非法`;
+            }
         }
     }
 
@@ -685,6 +688,30 @@ export function buildSegmentsFromMeasureList(
         current.measures.push({ notes: [] });
     }
     return segments;
+}
+
+// ---- time computation ----
+
+export function recomputeSegmentTimes(
+    segments: (Omit<ChartSegment, 'time'> & { time?: number })[],
+): ChartSegment[] {
+    let time = 0;
+    return segments.map((seg) => {
+        const beatDuration = 60 / Math.max(1, seg.tempo);
+        const segWithTime: ChartSegment = {
+            time,
+            tempo: seg.tempo,
+            measures: seg.measures as ChartMeasure[],
+        };
+        time += segWithTime.measures.length * beatDuration;
+        return segWithTime;
+    });
+}
+
+export function stripChartDataTimes(
+    chartData: ChartSegment[],
+): Omit<ChartSegment, 'time'>[] {
+    return chartData.map(({ time: _, ...rest }) => rest);
 }
 
 // ---- measure insertion / deletion ----

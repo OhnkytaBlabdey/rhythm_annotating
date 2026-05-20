@@ -35,6 +35,7 @@ import {
     buildSegmentsFromMeasureList,
     insertMeasureAtTime,
     deleteMeasureAtTime,
+    stripChartDataTimes,
 } from "./noteArea/chartAdapter";
 import { convertToMalody } from "@/lib/malodyExport";
 
@@ -744,7 +745,14 @@ export default function SoundLane(prop: _prop) {
             : activeLane;
 
         const { id: _stripId, ...laneWithoutId } = activeLane;
+        const strippedLane = {
+            ...laneWithoutId,
+            chartData: stripChartDataTimes(activeLane.chartData),
+        };
         const exportTextPayload =
+            exportPayload === activeLane
+                ? strippedLane
+                : { error: (exportPayload as { error: string }).error, lane: strippedLane };
             exportPayload === activeLane
                 ? laneWithoutId
                 : { error: (exportPayload as { error: string }).error, lane: laneWithoutId };

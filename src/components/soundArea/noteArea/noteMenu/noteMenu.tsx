@@ -232,7 +232,7 @@ export default function NoteMenu(p: _p) {
                     title={
                         p.bpmLocked
                             ? "BPM 估测中，请稍候..."
-                            : "当前轨道默认 BPM，修改后将重设后续空小节"
+                            : "当前轨道默认 BPM，修改后将重设后续空拍"
                     }
                 />
                 <span className={cls("bpm-unit")}>选中</span>
@@ -260,7 +260,7 @@ export default function NoteMenu(p: _p) {
                         }
                     }}
                     className={cls("bpm-input-compact")}
-                    title="当前选中小节 BPM，仅修改该小节"
+                    title="当前选中拍 BPM，仅修改该拍"
                 />
                 <input
                     type="number"
@@ -295,15 +295,15 @@ export default function NoteMenu(p: _p) {
             </div>
 
             <div className={cls("compact-row")}>
-                <span className={cls("inline-label")}>小节</span>
+                <span className={cls("inline-label")}>拍</span>
                 <button
                     type="button"
                     onClick={() => p.onInsertMeasure()}
                     onMouseDown={(event) => event.stopPropagation()}
                     title={
                         getKeyboardShortcutLabel("note.measure.insert")
-                            ? `在光标处后插一小节 (${getKeyboardShortcutLabel("note.measure.insert")})`
-                            : "在光标处后插一小节"
+                            ? `在光标处后插一拍 (${getKeyboardShortcutLabel("note.measure.insert")})`
+                            : "在光标处后插一拍"
                     }
                     className={cls("button", "measure-btn")}
                 >
@@ -315,8 +315,8 @@ export default function NoteMenu(p: _p) {
                     onMouseDown={(event) => event.stopPropagation()}
                     title={
                         getKeyboardShortcutLabel("note.measure.delete")
-                            ? `删除光标处小节 (${getKeyboardShortcutLabel("note.measure.delete")})`
-                            : "删除光标处小节"
+                            ? `删除光标处拍 (${getKeyboardShortcutLabel("note.measure.delete")})`
+                            : "删除光标处拍"
                     }
                     className={cls("button", "measure-btn")}
                 >
