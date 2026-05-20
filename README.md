@@ -1,63 +1,65 @@
-# Rhythm Annotating
+# Explicitize - A rhythm annotating tool
 
-一个本地优先的节奏记谱编辑器，基于 Next.js 构建，支持：
+A local-first rhythm annotation editor built with Next.js. Features:
 
-- 音频波形与频谱预览
-- NoteLane 编辑
-- 本地自动存档
-- 内部 JSON 文本导入导出
-- 自定义快捷键
-- Web 静态发布
-- Electron 桌面打包
+- Audio waveform & spectrum preview
+- NoteLane chart editing
+- Local auto-save (IndexedDB)
+- Internal JSON import/export
+- Customizable keyboard & wheel shortcuts
+- Static web export (GitHub Pages)
+- Electron desktop packaging (Windows / macOS / Linux)
 
-## 开发
+[GitHub Repository](https://github.com/OhnkytaBlabdey/rhythm_annotating)
+
+## Development
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-默认 Web 构建会保留 GitHub Pages 用的 `basePath`。
+The default web build includes a `basePath` for GitHub Pages deployment.
 
-## Web 构建
+## Web Build
 
 ```bash
 pnpm build
 ```
 
-输出目录是 `out/`。
+Output directory: `out/`
 
-## 桌面构建
+## Desktop Build
 
-桌面版走的是：
+Desktop builds use a two-stage process:
 
-1. 使用桌面专用配置执行 Next 静态导出
-2. 生成 `dist-desktop-renderer/`
-3. 由 Electron 加载本地 `index.html`
-4. 使用 Electron Forge 打包
+1. Next.js static export with desktop-specific config (`BUILD_TARGET=desktop`)
+2. Output goes to `dist-desktop-renderer/`
+3. Electron loads the local `index.html`
+4. Electron Forge packages the app
 
-### 本地启动桌面版
+### Run desktop locally
 
 ```bash
 pnpm desktop:start
 ```
 
-### 只构建桌面 renderer
+### Build desktop renderer only
 
 ```bash
 pnpm build:desktop:renderer
 ```
 
-### 当前平台打包
+### Package for current platform
 
 ```bash
 pnpm desktop:package
 pnpm desktop:make
 ```
 
-### 六种目标脚本
+### Platform-specific targets
 
-当前仓库内置了 6 个 zip 目标脚本：
+Six zip-target scripts are available:
 
 ```bash
 pnpm desktop:make:win:x64
@@ -68,41 +70,42 @@ pnpm desktop:make:linux:x64
 pnpm desktop:make:linux:arm64
 ```
 
-说明：
+Notes:
 
-- 当前配置明确跳过签名和公证。
-- 这 6 个脚本统一使用 `@electron-forge/maker-zip`，优先保证多平台/多架构产物链路稳定。
-- 我已经在当前仓库上实际验证过 `pnpm desktop:make:win:x64` 可产出桌面包。
-- 不同目标平台/架构的最终成功率仍然取决于宿主环境和 Electron 官方二进制可用性。
+- Signing and notarization are explicitly skipped.
+- All scripts use `@electron-forge/maker-zip` for consistent cross-platform packaging.
+- Success depends on the host environment and Electron binary availability for the target platform.
 
-## 快捷键
+## Shortcuts
 
-在顶部工具栏打开“快捷键”弹窗后，可以为这些动作绑定快捷键：
+Open the shortcuts modal from the toolbar to bind keys for these actions:
 
-- 时间轴缩放和平移
-- 浏览、强拍、弱拍、长条、选择、粘贴模式
-- 单拍等分增加/减少
+- Time range zoom and pan
+- Browse, strong beat, weak beat, long note, select, and paste modes
+- Division increment/decrement
+- Measure insert/delete
+- Copy, cut, paste, delete notes
 
-支持留空禁用。允许临时冲突，但保存时会阻止冲突快捷键。
+Empty bindings are allowed. Conflicting shortcuts are detected and rejected on save.
 
-## 文本导入
+## Text Import
 
-当前只支持内部 JSON 格式，并且会覆盖当前 NoteLane。
+Only internal JSON format is supported; importing overwrites the current NoteLane.
 
-支持的输入形态：
+Accepted input formats:
 
-- 导出的 `NoteLaneData`
-- 包含 `lane` 字段的内部导出对象
-- 纯 `chartData` 数组
+- Exported `NoteLaneData`
+- Internal export objects with a `lane` field
+- Raw `chartData` arrays
 
-导入时会做：
+Import performs:
 
-- JSON 解析错误提示
-- 基础字段校验
-- 谱面结构校验
-- 渲染前二次校验
+- JSON parse error handling
+- Basic field validation
+- Chart structure validation
+- Pre-render re-validation
 
-## 备注
+## Notes
 
-- 桌面构建依赖项目级 `.npmrc` 中的 `node-linker=hoisted`
-- Electron 二进制通过 `pnpm rebuild electron` 安装
+- Desktop builds require `node-linker=hoisted` in `.npmrc`
+- Electron binaries are installed via `pnpm rebuild electron`

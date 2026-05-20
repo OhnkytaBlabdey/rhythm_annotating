@@ -608,6 +608,20 @@ export default function WorkArea() {
                             </div>
                         </div>
                     </div>
+                    {/* About */}
+                    <div className="mt-8 pt-4 border-t border-stone-300 text-center text-sm text-stone-500 pb-6">
+                        <p className="font-medium text-stone-600">Explicitize - A rhythm annotating tool</p>
+                        <p className="mt-1">
+                            <a
+                                href="https://github.com/OhnkytaBlabdey/rhythm_annotating"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="underline hover:text-stone-700 transition-colors"
+                            >
+                                GitHub Repository
+                            </a>
+                        </p>
+                    </div>
                 </div>
             </div>
         </AudioDataCtx.Provider>
