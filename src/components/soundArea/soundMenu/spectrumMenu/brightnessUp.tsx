@@ -28,8 +28,8 @@ function BrightnessUp(p: _p) {
             <Image
                 src="/assets/icons/liangduup.svg"
                 alt="提高亮度"
-                width={24}
-                height={24}
+                width={16}
+                height={16}
             />
         </button>
     );

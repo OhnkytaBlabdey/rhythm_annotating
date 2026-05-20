@@ -28,8 +28,8 @@ function ResolutionDown(p: _p) {
             <Image
                 src="/assets/icons/zoomOut.png"
                 alt="降低分辨率"
-                width={24}
-                height={24}
+                width={16}
+                height={16}
             />
         </button>
     );

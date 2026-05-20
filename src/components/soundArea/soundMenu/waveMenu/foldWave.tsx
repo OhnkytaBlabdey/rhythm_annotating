@@ -29,8 +29,8 @@ function FoldWave(p: _p) {
                         : "/assets/icons/fold.png"
                 }
                 alt={p.isFolded ? "展开幅值" : "折叠幅值"}
-                width={24}
-                height={24}
+                width={14}
+                height={14}
             />
         </button>
     );

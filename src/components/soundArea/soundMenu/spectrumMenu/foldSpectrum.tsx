@@ -29,8 +29,8 @@ function FoldSpectrum(p: _p) {
                         : "/assets/icons/fold.png"
                 }
                 alt={p.isFolded ? "展开频域" : "折叠频域"}
-                width={24}
-                height={24}
+                width={14}
+                height={14}
             />
         </button>
     );

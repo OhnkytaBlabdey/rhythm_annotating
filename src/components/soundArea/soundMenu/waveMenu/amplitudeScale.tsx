@@ -30,8 +30,8 @@ function AmplitudeScale(p: _p) {
                 <Image
                     src="/assets/icons/ampUp.png"
                     alt="放大振幅"
-                    width={24}
-                    height={24}
+                    width={16}
+                    height={16}
                 />
             </button>
             <button
@@ -42,8 +42,8 @@ function AmplitudeScale(p: _p) {
                 <Image
                     src="/assets/icons/ampDown.png"
                     alt="缩小振幅"
-                    width={24}
-                    height={24}
+                    width={16}
+                    height={16}
                 />
             </button>
         </div>

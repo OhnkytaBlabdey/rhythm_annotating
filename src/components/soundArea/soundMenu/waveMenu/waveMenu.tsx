@@ -10,7 +10,7 @@ interface _p {
 
 function WaveMenu(p: _p) {
     return (
-        <div className="px-2 pb-2">
+        <div className="px-2 pb-1">
             <AmplitudeScale
                 audioId={p.audioId}
                 amplitudeMultiplier={p.waveState.amplitudeMultiplier}
@@ -21,7 +21,7 @@ function WaveMenu(p: _p) {
                     });
                 }}
             />
-            <div className="flex items-center gap-1 pt-1">
+            <div className="flex items-center gap-1 pt-0.5">
                 <span className="text-[10px] opacity-55">图形偏移</span>
                 <input
                     type="number"
@@ -38,7 +38,7 @@ function WaveMenu(p: _p) {
                             p.setWaveState({ ...p.waveState, offset: v / 1000 });
                         }
                     }}
-                    className="w-[60px] min-h-[30px] rounded-lg border border-solid border-[rgba(141,111,74,0.24)] bg-[rgba(255,255,255,0.94)] px-2 text-[11px] text-right text-[#241f19]"
+                    className="w-[60px] min-h-[24px] rounded-lg border border-solid border-[rgba(141,111,74,0.24)] bg-[rgba(255,255,255,0.94)] px-2 text-[11px] text-right text-[#241f19]"
                     title="波形图形偏移(毫秒)，仅canvas像素位移"
                 />
                 <span className="text-[10px] opacity-55">ms</span>

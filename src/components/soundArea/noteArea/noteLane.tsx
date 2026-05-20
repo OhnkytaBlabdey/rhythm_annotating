@@ -273,11 +273,14 @@ export default function NoteLane({
     useEffect(() => {
         const img = new Image();
         const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
-        img.src = `${basePath}/assets/icons/bpm.png`;
         img.onload = () => {
             bpmImageRef.current = img;
             setBpmImageLoaded(true);
         };
+        img.onerror = () => {
+            console.warn("bpm.png 加载失败");
+        };
+        img.src = `${basePath}/assets/icons/bpm.png`;
     }, []);
 
     useEffect(() => {
