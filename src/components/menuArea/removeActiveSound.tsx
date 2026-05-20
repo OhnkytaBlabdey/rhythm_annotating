@@ -1,5 +1,6 @@
 import { SoundLaneState } from "@/interface/audioData";
 import React from "react";
+import Image from "@/components/Image";
 
 interface _prop {
     refSoundLaneStates: SoundLaneState[];
@@ -24,7 +25,7 @@ function DeleteActiveSound(prop: _prop) {
                 title="delete sound lane"
                 className="editor-toolbar-button"
             >
-                <span>删除音频</span>
+                <Image src="/assets/icons/deleteSoundLane.png" alt="删除音频" width={20} height={20} />
             </button>
         </div>
     );

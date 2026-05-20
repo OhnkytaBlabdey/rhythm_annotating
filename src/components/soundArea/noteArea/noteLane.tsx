@@ -263,10 +263,20 @@ export default function NoteLane({
 
     const annotationInputRef = useRef<HTMLInputElement | null>(null);
     const snapTimeRef = useRef<number | null>(null);
+    const bpmImageRef = useRef<HTMLImageElement | null>(null);
 
     useEffect(() => {
         snapTimeRef.current = snapTime;
     });
+
+    useEffect(() => {
+        const img = new Image();
+        const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+        img.src = `${basePath}/assets/icons/bpm.png`;
+        img.onload = () => {
+            bpmImageRef.current = img;
+        };
+    }, []);
 
     useEffect(() => {
         if (annotationEditing !== null) {
@@ -892,7 +902,10 @@ export default function NoteLane({
                 11,
             );
             ctx.fillStyle = "#94a3b8";
-            ctx.fillText(`♪${bpm}`, x + 2, height - 4);
+            if (bpmImageRef.current) {
+                ctx.drawImage(bpmImageRef.current, x + 2, height - 16, 12, 12);
+            }
+            ctx.fillText(`${bpm}`, x + 16, height - 4);
         }
 
         for (const segment of segments) {

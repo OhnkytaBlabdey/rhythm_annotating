@@ -38,14 +38,8 @@ interface _p {
     setNoteLaneOffset: (v: number) => void;
     onInsertMeasure: (time?: number) => void;
     onDeleteMeasure: (time?: number) => void;
-    onEditOpen: () => void;
-    editText: string;
-    setEditText: (text: string) => void;
-    editError: string | null;
-    isEditOpen: boolean;
-    onEditSave: () => void;
-    onEditRestore: () => void;
-    onEditCancel: () => void;
+    onEditSave: (text: string) => string | null;
+    getEditText: () => string;
 }
 
 interface ModeButtonProps {
@@ -100,6 +94,10 @@ export default function NoteMenu(p: _p) {
     const [importText, setImportText] = React.useState("");
     const [importError, setImportError] = React.useState<string | null>(null);
     const [measureBpmInput, setMeasureBpmInput] = React.useState<string>("");
+    const [isEditOpen, setIsEditOpen] = React.useState(false);
+    const [editText, setEditText] = React.useState("");
+    const [editError, setEditError] = React.useState<string | null>(null);
+    const [editOriginalText, setEditOriginalText] = React.useState("");
 
     const stopInteraction = (event: React.SyntheticEvent) => {
         event.stopPropagation();
@@ -222,6 +220,38 @@ export default function NoteMenu(p: _p) {
             {/* 拍 */}
             <div className={cls("compact-row")}>
                 <Image src="/assets/icons/setBPM.png" alt="BPM" width={16} height={16} title="BPM" />
+                <input
+                    type="number"
+                    min={1}
+                    max={64}
+                    step={1}
+                    value={p.division}
+                    onMouseDown={stopInteraction}
+                    onClick={stopInteraction}
+                    onKeyDown={stopInteraction}
+                    onWheel={(e) => e.stopPropagation()}
+                    onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (v >= 1 && Number.isFinite(v)) p.setDivision(v);
+                    }}
+                    className={cls("bpm-input-compact")}
+                    title={`当前 NoteLane 的单拍等分${
+                        getKeyboardShortcutLabel("note.division.increment")
+                            ? `，增加: ${getKeyboardShortcutLabel(
+                                  "note.division.increment",
+                              )}`
+                            : ""
+                    }${
+                        getKeyboardShortcutLabel("note.division.decrement")
+                            ? `，减少: ${getKeyboardShortcutLabel(
+                                  "note.division.decrement",
+                              )}`
+                            : ""
+                    }`}
+                />
+                <span className={cls("bpm-unit")}>n</span>
+            </div>
+            <div className={cls("compact-row")}>
                 <span className={cls("bpm-unit")}>默认</span>
                 <input
                     type="number"
@@ -272,36 +302,6 @@ export default function NoteMenu(p: _p) {
                     className={cls("bpm-input-compact")}
                     title="当前选中拍 BPM，仅修改该拍"
                 />
-                <input
-                    type="number"
-                    min={1}
-                    max={64}
-                    step={1}
-                    value={p.division}
-                    onMouseDown={stopInteraction}
-                    onClick={stopInteraction}
-                    onKeyDown={stopInteraction}
-                    onWheel={(e) => e.stopPropagation()}
-                    onChange={(e) => {
-                        const v = Number(e.target.value);
-                        if (v >= 1 && Number.isFinite(v)) p.setDivision(v);
-                    }}
-                    className={cls("bpm-input-compact")}
-                    title={`当前 NoteLane 的单拍等分${
-                        getKeyboardShortcutLabel("note.division.increment")
-                            ? `，增加: ${getKeyboardShortcutLabel(
-                                  "note.division.increment",
-                              )}`
-                            : ""
-                    }${
-                        getKeyboardShortcutLabel("note.division.decrement")
-                            ? `，减少: ${getKeyboardShortcutLabel(
-                                  "note.division.decrement",
-                              )}`
-                            : ""
-                    }`}
-                />
-                <span className={cls("bpm-unit")}>n</span>
             </div>
 
             <div className={cls("compact-row")}>
@@ -317,7 +317,7 @@ export default function NoteMenu(p: _p) {
                     }
                     className={cls("button", "measure-btn")}
                 >
-                    ＋
+                    <Image src="/assets/icons/addMeasure.png" alt="添加拍" width={14} height={14} />
                 </button>
                 <button
                     type="button"
@@ -330,7 +330,7 @@ export default function NoteMenu(p: _p) {
                     }
                     className={cls("button", "measure-btn")}
                 >
-                    －
+                    <Image src="/assets/icons/deleteMeasure.png" alt="删除拍" width={14} height={14} />
                 </button>
             </div>
 
@@ -363,7 +363,13 @@ export default function NoteMenu(p: _p) {
                 </ActionButton>
                 <ActionButton
                     title="编辑当前 NoteLane JSON"
-                    onClick={p.onEditOpen}
+                    onClick={() => {
+                        const text = p.getEditText();
+                        setEditOriginalText(text);
+                        setEditText(text);
+                        setEditError(null);
+                        setIsEditOpen(true);
+                    }}
                 >
                     <Image src="/assets/icons/editNoteLane.svg" alt="编辑" width={16} height={16} />
                 </ActionButton>
@@ -377,11 +383,11 @@ export default function NoteMenu(p: _p) {
 
             {p.lastError && <div className={cls("error")}>{p.lastError}</div>}
 
-            {p.isEditOpen && (
+            {isEditOpen && (
                 <div
                     className={cls("modal-backdrop")}
-                    onClick={p.onEditCancel}
-                    onMouseDown={p.onEditCancel}
+                    onClick={() => { setIsEditOpen(false); setEditError(null); }}
+                    onMouseDown={() => { setIsEditOpen(false); setEditError(null); }}
                 >
                     <div
                         className={cls("modal")}
@@ -393,28 +399,30 @@ export default function NoteMenu(p: _p) {
                         </div>
                         <textarea
                             className={cls("modal-text")}
-                            value={p.editText}
+                            value={editText}
                             onMouseDown={stopInteraction}
                             onClick={stopInteraction}
                             onKeyDown={stopInteraction}
                             onWheel={(event) => event.stopPropagation()}
                             onChange={(event) => {
-                                p.setEditText(event.target.value);
-                                if (p.editError) {
-                                    // clear error on edit
-                                }
+                                setEditText(event.target.value);
+                                if (editError) setEditError(null);
                             }}
                             placeholder="编辑当前 NoteLane 的内部 JSON"
                         />
-                        {p.editError && (
-                            <div className={cls("error")}>{p.editError}</div>
+                        {editError && (
+                            <div className={cls("error")}>{editError}</div>
                         )}
                         <div className={cls("modal-actions")}>
                             <button
                                 type="button"
                                 className={cls("button")}
                                 onMouseDown={stopInteraction}
-                                onClick={p.onEditSave}
+                                onClick={() => {
+                                    const err = p.onEditSave(editText);
+                                    if (err) setEditError(err);
+                                    else setIsEditOpen(false);
+                                }}
                             >
                                 保存
                             </button>
@@ -422,7 +430,10 @@ export default function NoteMenu(p: _p) {
                                 type="button"
                                 className={cls("button")}
                                 onMouseDown={stopInteraction}
-                                onClick={p.onEditRestore}
+                                onClick={() => {
+                                    setEditText(editOriginalText);
+                                    setEditError(null);
+                                }}
                             >
                                 恢复
                             </button>
@@ -430,7 +441,7 @@ export default function NoteMenu(p: _p) {
                                 type="button"
                                 className={cls("button")}
                                 onMouseDown={stopInteraction}
-                                onClick={p.onEditCancel}
+                                onClick={() => { setIsEditOpen(false); setEditError(null); }}
                             >
                                 取消
                             </button>
