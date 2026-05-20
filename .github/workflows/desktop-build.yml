@@ -1,0 +1,54 @@
+name: Build Desktop (x64)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - platform: win32
+            arch: x64
+            runs-on: windows-latest
+          - platform: darwin
+            arch: x64
+            runs-on: macos-latest
+          - platform: linux
+            arch: x64
+            runs-on: ubuntu-latest
+
+    runs-on: ${{ matrix.runs-on }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build desktop renderer
+        run: pnpm run build:desktop:renderer
+
+      - name: Package desktop app
+        run: pnpm exec electron-forge make --platform=${{ matrix.platform }} --arch=${{ matrix.arch }} --targets=@electron-forge/maker-zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rhythm-annotating-${{ matrix.platform }}-${{ matrix.arch }}
+          path: out/make/zip/${{ matrix.platform }}/${{ matrix.arch }}/
