@@ -43,8 +43,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-public/assets/
 *.code-workspace
 *mc
 .claude/
-!**/Thumbs.db
+**/Thumbs.db
