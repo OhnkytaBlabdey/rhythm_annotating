@@ -249,7 +249,7 @@ export default function NoteMenu(p: _p) {
                             : ""
                     }`}
                 />
-                <span className={cls("bpm-unit")}>n</span>
+                <span className={cls("bpm-unit")}>等分</span>
             </div>
             <div className={cls("compact-row")}>
                 <span className={cls("bpm-unit")}>默认</span>
@@ -304,7 +304,7 @@ export default function NoteMenu(p: _p) {
                 />
             </div>
 
-            <div className={cls("compact-row")}>
+            <div className={cls("compact-row")} style={{ gap: "4px" }}>
                 <span className={cls("inline-label")}>拍</span>
                 <button
                     type="button"

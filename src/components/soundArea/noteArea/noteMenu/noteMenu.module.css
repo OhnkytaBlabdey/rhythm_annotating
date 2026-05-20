@@ -117,7 +117,7 @@
 }
 
 .bpm-input-compact {
-    width: 34px;
+    width: 40px;
     min-height: 24px;
     padding: 0 4px;
     font-size: 10px;
@@ -187,9 +187,9 @@
 
 .measure-btn {
     min-height: 22px;
-    padding: 0 6px;
-    font-size: 11px;
-    flex: 1;
+    padding: 0 4px;
+    width: 26px;
+    flex: none;
 }
 
 .lane-grid {

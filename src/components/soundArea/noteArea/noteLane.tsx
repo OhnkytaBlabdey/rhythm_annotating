@@ -264,6 +264,7 @@ export default function NoteLane({
     const annotationInputRef = useRef<HTMLInputElement | null>(null);
     const snapTimeRef = useRef<number | null>(null);
     const bpmImageRef = useRef<HTMLImageElement | null>(null);
+    const [bpmImageLoaded, setBpmImageLoaded] = useState(false);
 
     useEffect(() => {
         snapTimeRef.current = snapTime;
@@ -275,6 +276,7 @@ export default function NoteLane({
         img.src = `${basePath}/assets/icons/bpm.png`;
         img.onload = () => {
             bpmImageRef.current = img;
+            setBpmImageLoaded(true);
         };
     }, []);
 
@@ -1079,6 +1081,7 @@ export default function NoteLane({
         startTime,
         endTime,
         width,
+        bpmImageLoaded,
     ]);
 
     const updatePointer = useCallback(
