@@ -97,7 +97,7 @@
 }
 
 .bpm-unit {
-    font-size: 10px;
+    font-size: 9px;
     color: var(--editor-muted);
 }
 
@@ -117,7 +117,7 @@
 }
 
 .bpm-input-compact {
-    width: 42px;
+    width: 34px;
     min-height: 24px;
     padding: 0 4px;
     font-size: 10px;
@@ -194,7 +194,7 @@
 
 .lane-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 2px;
 }
 

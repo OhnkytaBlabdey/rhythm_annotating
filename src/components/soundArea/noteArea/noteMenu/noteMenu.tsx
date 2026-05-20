@@ -4,6 +4,7 @@ import style from "./noteMenu.module.css";
 import classNames from "classnames/bind";
 import { EditMode } from "../noteState";
 import { useAppSettings } from "@/components/appSettingsContext";
+import Image from "@/components/Image";
 
 const cls = classNames.bind(style);
 
@@ -37,6 +38,14 @@ interface _p {
     setNoteLaneOffset: (v: number) => void;
     onInsertMeasure: (time?: number) => void;
     onDeleteMeasure: (time?: number) => void;
+    onEditOpen: () => void;
+    editText: string;
+    setEditText: (text: string) => void;
+    editError: string | null;
+    isEditOpen: boolean;
+    onEditSave: () => void;
+    onEditRestore: () => void;
+    onEditCancel: () => void;
 }
 
 interface ModeButtonProps {
@@ -61,13 +70,14 @@ function ModeButton({ label, active, onClick, title }: ModeButtonProps) {
 }
 
 interface ActionButtonProps {
-    label: string;
+    label?: string;
     onClick: () => void;
     disabled?: boolean;
     title?: string;
+    children?: React.ReactNode;
 }
 
-function ActionButton({ label, onClick, disabled, title }: ActionButtonProps) {
+function ActionButton({ label, onClick, disabled, title, children }: ActionButtonProps) {
     return (
         <button
             type="button"
@@ -77,7 +87,7 @@ function ActionButton({ label, onClick, disabled, title }: ActionButtonProps) {
             disabled={disabled}
             className={cls("button", disabled ? "button-disabled" : "")}
         >
-            {label}
+            {children ?? label}
         </button>
     );
 }
@@ -211,7 +221,7 @@ export default function NoteMenu(p: _p) {
 
             {/* 拍 */}
             <div className={cls("compact-row")}>
-                <span className={cls("inline-label")}>BPM</span>
+                <Image src="/assets/icons/setBPM.png" alt="BPM" width={16} height={16} title="BPM" />
                 <span className={cls("bpm-unit")}>默认</span>
                 <input
                     type="number"
@@ -327,35 +337,107 @@ export default function NoteMenu(p: _p) {
             <div className={cls("section-label")}>Lane</div>
             <div className={cls("button-group", "lane-grid")}>
                 <ActionButton
-                    label="清空本Lane"
                     title="清空当前 NoteLane 数据"
                     onClick={p.onClearLane}
-                />
+                >
+                    <Image src="/assets/icons/emptyNoteLane.svg" alt="清空" width={16} height={16} />
+                </ActionButton>
                 <ActionButton
-                    label="导入文本"
                     title="从内部 JSON 文本覆盖当前 NoteLane"
                     onClick={() => {
                         setImportError(null);
                         setImportText("");
                         setIsImportOpen(true);
                     }}
-                />
+                >
+                    <Image src="/assets/icons/importNoteLane.svg" alt="导入" width={16} height={16} />
+                </ActionButton>
                 <ActionButton
-                    label="导出文本"
                     title="导出当前 NoteLane 的 JSON"
                     onClick={() => {
                         setExportFormat("internal");
                         setIsExportOpen(true);
                     }}
-                />
+                >
+                    <Image src="/assets/icons/exportNoteLane.svg" alt="导出" width={16} height={16} />
+                </ActionButton>
                 <ActionButton
-                    label="删除本Lane"
+                    title="编辑当前 NoteLane JSON"
+                    onClick={p.onEditOpen}
+                >
+                    <Image src="/assets/icons/editNoteLane.svg" alt="编辑" width={16} height={16} />
+                </ActionButton>
+                <ActionButton
                     title="删除当前 NoteLane"
                     onClick={p.onDeleteLane}
-                />
+                >
+                    <Image src="/assets/icons/deleteNoteLane.svg" alt="删除" width={16} height={16} />
+                </ActionButton>
             </div>
 
             {p.lastError && <div className={cls("error")}>{p.lastError}</div>}
+
+            {p.isEditOpen && (
+                <div
+                    className={cls("modal-backdrop")}
+                    onClick={p.onEditCancel}
+                    onMouseDown={p.onEditCancel}
+                >
+                    <div
+                        className={cls("modal")}
+                        onClick={stopInteraction}
+                        onMouseDown={stopInteraction}
+                    >
+                        <div className={cls("modal-title")}>
+                            编辑 NoteLane JSON
+                        </div>
+                        <textarea
+                            className={cls("modal-text")}
+                            value={p.editText}
+                            onMouseDown={stopInteraction}
+                            onClick={stopInteraction}
+                            onKeyDown={stopInteraction}
+                            onWheel={(event) => event.stopPropagation()}
+                            onChange={(event) => {
+                                p.setEditText(event.target.value);
+                                if (p.editError) {
+                                    // clear error on edit
+                                }
+                            }}
+                            placeholder="编辑当前 NoteLane 的内部 JSON"
+                        />
+                        {p.editError && (
+                            <div className={cls("error")}>{p.editError}</div>
+                        )}
+                        <div className={cls("modal-actions")}>
+                            <button
+                                type="button"
+                                className={cls("button")}
+                                onMouseDown={stopInteraction}
+                                onClick={p.onEditSave}
+                            >
+                                保存
+                            </button>
+                            <button
+                                type="button"
+                                className={cls("button")}
+                                onMouseDown={stopInteraction}
+                                onClick={p.onEditRestore}
+                            >
+                                恢复
+                            </button>
+                            <button
+                                type="button"
+                                className={cls("button")}
+                                onMouseDown={stopInteraction}
+                                onClick={p.onEditCancel}
+                            >
+                                取消
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {isImportOpen && (
                 <div

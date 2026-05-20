@@ -602,6 +602,7 @@ export default function WorkArea() {
                                         }
                                         timeRange={timeRange}
                                         onActivate={setActiveSoundLaneId}
+                                        onDeleteSoundLane={removeAudioData}
                                     />
                                 ))}
                             </div>

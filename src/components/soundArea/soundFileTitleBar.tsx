@@ -1,6 +1,7 @@
 "use client";
 import style from "./soundFileTitleBar.module.css";
 import classNames from "classnames/bind";
+import Image from "@/components/Image";
 
 const cls = classNames.bind(style);
 
@@ -9,6 +10,7 @@ interface _prop {
     isActive?: boolean;
     offset: number;
     setOffset: (v: number) => void;
+    onDelete?: () => void;
 }
 
 export default function SoundFileTitleBar(prop: _prop) {
@@ -38,6 +40,24 @@ export default function SoundFileTitleBar(prop: _prop) {
                 <span className={cls("offset-unit")}>ms</span>
             </div>
             <span className={cls("title-text")}>{prop.soundFile}</span>
+            {prop.onDelete && (
+                <button
+                    type="button"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        prop.onDelete?.();
+                    }}
+                    title="删除此音频"
+                    className="inline-flex items-center justify-center w-5 h-5 border-0 bg-transparent cursor-pointer rounded-md p-0 opacity-55 hover:opacity-100 hover:bg-[rgba(180,35,24,0.12)] transition-[opacity,background-color] duration-200"
+                >
+                    <Image
+                        src="/assets/icons/deleteSoundLane.png"
+                        alt="删除音频"
+                        width={16}
+                        height={16}
+                    />
+                </button>
+            )}
         </div>
     );
 }

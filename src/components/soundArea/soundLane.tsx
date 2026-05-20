@@ -48,6 +48,7 @@ interface _prop {
     refSoundLaneState: SoundLaneState;
     setSoundLaneState: (i: number, state: SoundLaneState) => void;
     onActivate?: (audioId: string) => void;
+    onDeleteSoundLane?: (audioId: string) => void;
 }
 
 export default function SoundLane(prop: _prop) {
@@ -78,6 +79,10 @@ export default function SoundLane(prop: _prop) {
     const [activeNoteLaneId, setActiveNoteLaneId] = useState<string | null>(
         null,
     );
+    const [isEditOpen, setIsEditOpen] = useState(false);
+    const [editText, setEditText] = useState("");
+    const [editError, setEditError] = useState<string | null>(null);
+    const [editOriginalText, setEditOriginalText] = useState("");
 
     const resolvedActiveLaneId = useMemo(() => {
         if (activeNoteLaneId && noteLanes.some((l) => l.id === activeNoteLaneId)) {
@@ -889,6 +894,44 @@ export default function SoundLane(prop: _prop) {
                 if (!next) return;
                 setChartData(next);
             },
+            onEditOpen: () => {
+                const { id: _id, ...laneData } = activeLane;
+                const text = JSON.stringify(laneData, null, 2);
+                setEditOriginalText(text);
+                setEditText(text);
+                setEditError(null);
+                setIsEditOpen(true);
+            },
+            editText,
+            setEditText,
+            editError,
+            isEditOpen,
+            onEditSave: () => {
+                const result = parseImportedNoteLaneText(editText, activeLane);
+                if ("error" in result) {
+                    setEditError(result.error);
+                    return;
+                }
+                clearLaneError(activeLane.id);
+                pushUndo(activeLane.chartData);
+                updateLaneData(activeLane.id, () => result.lane);
+                setLaneEditState(activeLane.id, (prev) => ({
+                    ...prev,
+                    selectedIds: new Set<string>(),
+                    lnHeadTime: null,
+                    currentBpm: result.lane.defaultBpm,
+                }));
+                setIsEditOpen(false);
+                setEditError(null);
+            },
+            onEditRestore: () => {
+                setEditText(editOriginalText);
+                setEditError(null);
+            },
+            onEditCancel: () => {
+                setIsEditOpen(false);
+                setEditError(null);
+            },
         };
     }, [
         resolvedActiveLaneId,
@@ -935,6 +978,7 @@ export default function SoundLane(prop: _prop) {
                             offset: v,
                         });
                     }}
+                    onDelete={prop.onDeleteSoundLane ? () => prop.onDeleteSoundLane?.(prop.audioId) : undefined}
                 />
             </div>
 
@@ -1074,7 +1118,7 @@ export default function SoundLane(prop: _prop) {
                                 title="添加记谱"
                             >
                                 <Image
-                                    src="/assets/icons/newNoteLane.png"
+                                    src="/assets/icons/newNoteLane.svg"
                                     alt="添加记谱"
                                     width={14}
                                     height={14}
