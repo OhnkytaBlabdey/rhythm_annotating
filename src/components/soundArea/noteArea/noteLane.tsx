@@ -1034,6 +1034,7 @@ export default function NoteLane({
                             const aboxH = 18;
                             const aboxX = boxCenterX - aboxW / 2;
                             if (note.id === annotationEditing) continue;
+                            if (editState.mode !== "annotate" && !note.annotation) continue;
                             if (editState.mode === "annotate") {
                                 ctx.fillStyle = "#ffffffdd";
                                 ctx.strokeStyle = "#64748b";
