@@ -21,9 +21,12 @@ import {
 } from "./timeViewUtils";
 import {
     hydrateProjectSnapshot,
+    hydrateImportedSnapshot,
     saveProjectSnapshot,
+    stripProjectChartTimes,
 } from "@/lib/persistence/projectSnapshot";
-import { clearPersistence } from "@/lib/persistence/indexedDb";
+import { clearPersistence, toAudioRefs } from "@/lib/persistence/indexedDb";
+import { exportProjectBlob, importProjectBlob } from "@/lib/persistence/projectExport";
 import {
     applyPersistSliceStates,
     collectPersistSliceStates,
@@ -322,6 +325,62 @@ export default function WorkArea() {
         });
     }
 
+    const handleExport = useCallback(() => {
+        const snapshot = {
+            version: 1 as const,
+            key: "current",
+            savedAt: Date.now(),
+            project: stripProjectChartTimes({
+                ...objProject,
+                isPlaying: false,
+            }),
+            audioRefs: toAudioRefs(audioDataList),
+            slices: collectPersistSliceStates(),
+        };
+        const blob = exportProjectBlob({ snapshot, audioDataList });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+        a.download = `explicitize-${ts}.explz`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, [objProject, audioDataList]);
+
+    const handleImport = useCallback(() => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".explz";
+        input.onchange = () => {
+            const file = input.files?.[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = () => {
+                const result = importProjectBlob(reader.result as ArrayBuffer);
+                if ("error" in result) {
+                    alert(result.error);
+                    return;
+                }
+
+                const hydrated = hydrateImportedSnapshot({
+                    snapshot: result.snapshot,
+                    audioDataList: result.audioDataList,
+                });
+                setProject(hydrated.projectState);
+                setAudioDataList(hydrated.audioDataList);
+                applyPersistSliceStates(hydrated.slices);
+            };
+            reader.onerror = () => {
+                alert("读取文件失败");
+            };
+            reader.readAsArrayBuffer(file);
+        };
+        input.click();
+    }, []);
+
     // 计算总时长
     const duration = audioDataList.reduce(
         (max, audio) => Math.max(max, audio.duration),
@@ -580,6 +639,8 @@ export default function WorkArea() {
                                     removeMultipleAudioData
                                 }
                                 resetEditor={resetEditor}
+                                onExport={handleExport}
+                                onImport={handleImport}
                             />
                         </div>
                     </div>

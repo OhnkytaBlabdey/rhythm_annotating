@@ -13,7 +13,7 @@ import {
     upsertAudioRecord,
 } from "./indexedDb";
 
-function stripProjectChartTimes(p: project): project {
+export function stripProjectChartTimes(p: project): project {
     return {
         ...p,
         soundLaneStates: p.soundLaneStates.map((lane) => ({
@@ -26,7 +26,7 @@ function stripProjectChartTimes(p: project): project {
     } as project;
 }
 
-function recomputeProjectChartTimes(p: project): project {
+export function recomputeProjectChartTimes(p: project): project {
     return {
         ...p,
         soundLaneStates: p.soundLaneStates.map((lane) => ({
@@ -149,5 +149,31 @@ export async function hydrateProjectSnapshot(): Promise<{
         },
         audioDataList: availableAudioData,
         slices: snapshot.slices,
+    };
+}
+
+export function hydrateImportedSnapshot(params: {
+    snapshot: PersistedProjectSnapshotV1;
+    audioDataList: AudioData[];
+}): {
+    projectState: project;
+    audioDataList: AudioData[];
+    slices: Record<string, unknown>;
+} {
+    const availableRefs = toAudioRefs(params.audioDataList);
+    const normalizedProject = normalizeProject(params.snapshot.project);
+    const withTimes = recomputeProjectChartTimes(normalizedProject);
+
+    return {
+        projectState: {
+            ...withTimes,
+            soundLaneStates: sanitizeLaneStatesByAudioRefs(
+                withTimes.soundLaneStates,
+                availableRefs,
+            ),
+            isPlaying: false,
+        },
+        audioDataList: params.audioDataList,
+        slices: params.snapshot.slices,
     };
 }

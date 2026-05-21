@@ -70,7 +70,6 @@ function SpectrumMenu(p: _p) {
                 <span className="text-[10px] opacity-55">图形偏移</span>
                 <input
                     type="number"
-                    min={0}
                     step={1}
                     value={Math.round((p.spectrumState.offset ?? 0) * 1000)}
                     onMouseDown={(e) => e.stopPropagation()}
@@ -79,7 +78,7 @@ function SpectrumMenu(p: _p) {
                     onWheel={(e) => e.stopPropagation()}
                     onChange={(e) => {
                         const v = Number(e.target.value);
-                        if (v >= 0 && Number.isFinite(v)) {
+                        if (Number.isFinite(v)) {
                             p.setSpectrumState({ ...p.spectrumState, offset: v / 1000 });
                         }
                     }}

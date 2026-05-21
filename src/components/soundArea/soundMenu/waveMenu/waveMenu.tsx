@@ -25,7 +25,6 @@ function WaveMenu(p: _p) {
                 <span className="text-[10px] opacity-55">图形偏移</span>
                 <input
                     type="number"
-                    min={0}
                     step={1}
                     value={Math.round((p.waveState.offset ?? 0) * 1000)}
                     onMouseDown={(e) => e.stopPropagation()}
@@ -34,7 +33,7 @@ function WaveMenu(p: _p) {
                     onWheel={(e) => e.stopPropagation()}
                     onChange={(e) => {
                         const v = Number(e.target.value);
-                        if (v >= 0 && Number.isFinite(v)) {
+                        if (Number.isFinite(v)) {
                             p.setWaveState({ ...p.waveState, offset: v / 1000 });
                         }
                     }}

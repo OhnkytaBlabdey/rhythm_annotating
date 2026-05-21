@@ -142,7 +142,6 @@ export default function NoteMenu(p: _p) {
             <div className={cls("bpm-row")}>
                 <input
                     type="number"
-                    min={0}
                     step={1}
                     value={Math.round(p.noteLaneOffset * 1000)}
                     onMouseDown={stopInteraction}
@@ -151,7 +150,7 @@ export default function NoteMenu(p: _p) {
                     onWheel={(e) => e.stopPropagation()}
                     onChange={(e) => {
                         const v = Number(e.target.value);
-                        if (v >= 0 && Number.isFinite(v)) p.setNoteLaneOffset(v / 1000);
+                        if (Number.isFinite(v)) p.setNoteLaneOffset(v / 1000);
                     }}
                     className={cls("bpm-input")}
                     title="记谱图形偏移(毫秒)，仅canvas像素位移"

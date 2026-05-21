@@ -22,6 +22,8 @@ interface _prop {
     removeAudioData: (audioId: string) => void;
     removeMultipleAudioData: (audioIds: string[]) => void;
     resetEditor: () => void;
+    onExport: () => void;
+    onImport: () => void;
 }
 
 function WorkMenu(prop: _prop) {
@@ -76,6 +78,22 @@ function WorkMenu(prop: _prop) {
                     key={"reset editor"}
                     resetEditor={prop.resetEditor}
                 />
+                <button
+                    type="button"
+                    className="editor-toolbar-button"
+                    onClick={prop.onExport}
+                    title="导出项目文件 (.explz)"
+                >
+                    <span>导出</span>
+                </button>
+                <button
+                    type="button"
+                    className="editor-toolbar-button"
+                    onClick={prop.onImport}
+                    title="导入项目文件 (.explz)"
+                >
+                    <span>导入</span>
+                </button>
                 <button
                     type="button"
                     className="editor-toolbar-button"
