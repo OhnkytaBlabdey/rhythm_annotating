@@ -617,34 +617,10 @@ export function fillGapBetweenMeasures(
         return cloned;
     }
 
-    // target is in a later segment — fill intermediate measures
-    const cloned = data.map((seg) => ({
-        ...seg,
-        measures: seg.measures.map((m) => ({ notes: [...m.notes] })),
-    }));
-
-    // ensure all measures in lastReal segment from lastRealMeasure+1 onward exist
-    const lastSeg = cloned[lastRealSeg];
-    while (lastSeg.measures.length > lastRealMeasure + 1) {
-        // measures already exist, just ensure they're there
-    }
-
-    // ensure measures in intermediate segments
-    for (let s = lastRealSeg + 1; s < targetSegIdx; s++) {
-        const bridgeSeg = cloned[s];
-        // ensure all measures exist (they should already)
-        for (let m = 0; m < bridgeSeg.measures.length; m++) {
-            bridgeSeg.measures[m] = bridgeSeg.measures[m] || { notes: [] };
-        }
-    }
-
-    // ensure measures up to targetMeasureIdx in target segment
-    const targetSeg = cloned[targetSegIdx];
-    while (targetSeg.measures.length < targetMeasureIdx) {
-        targetSeg.measures.push({ notes: [] });
-    }
-
-    return cloned;
+    // Different segment: no gap to fill across BPM boundaries.
+    // Each segment is self-contained; resolveInsertTarget already
+    // ensured the target measure exists.
+    return data;
 }
 
 // ---- BPM list collection ----

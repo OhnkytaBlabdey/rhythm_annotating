@@ -12,7 +12,7 @@ import {
     type SetStateAction,
 } from "react";
 import style from "./noteLane.module.css";
-import { ChartNote, ChartSegment, Fraction, isNoteBoundary, NOTE_BOUNDARY_START, NOTE_BOUNDARY_END } from "./chartTypes";
+import { ChartNote, ChartSegment, Fraction, isNoteBoundary, NOTE_BOUNDARY_START, NOTE_BOUNDARY_END, NOTE_LN } from "./chartTypes";
 import {
     generateNoteId,
     normalizeFraction,
@@ -1013,37 +1013,53 @@ export default function NoteLane({
                     }
 
                     // Draw annotation box in annotate mode
-                    if (editState.mode === "annotate") {
-                        const headAnchor = anchors[0];
-                        const headX = mapTimeToX(headAnchor.time);
+                    {
+                        const boxCenterTime =
+                            note.type === NOTE_LN && anchors.length > 1
+                                ? (anchors[0].time + anchors[anchors.length - 1].time) / 2
+                                : anchors[0].time;
+                        const boxCenterX = mapTimeToX(boxCenterTime);
                         if (
-                            headX >= -20 &&
-                            headX <= width + 20 &&
+                            boxCenterX >= -20 &&
+                            boxCenterX <= width + 20 &&
                             !(
                                 !isStartEndMode &&
                                 hasStartOrEnd &&
-                                (headAnchor.time < (startTime ?? -Infinity) ||
-                                    headAnchor.time > (endTime ?? Infinity))
+                                (boxCenterTime < (startTime ?? -Infinity) ||
+                                    boxCenterTime > (endTime ?? Infinity))
                             )
                         ) {
                             const aboxY = centerY + 20;
                             const aboxW = 60;
                             const aboxH = 18;
-                            const aboxX = headX - aboxW / 2;
+                            const aboxX = boxCenterX - aboxW / 2;
                             if (note.id === annotationEditing) continue;
-                            ctx.fillStyle = "#ffffffdd";
-                            ctx.strokeStyle = "#64748b";
-                            ctx.lineWidth = 1;
-                            roundRect(
-                                ctx,
-                                aboxX,
-                                aboxY,
-                                aboxW,
-                                aboxH,
-                                6,
-                            );
-                            ctx.fill();
-                            ctx.stroke();
+                            if (editState.mode === "annotate") {
+                                ctx.fillStyle = "#ffffffdd";
+                                ctx.strokeStyle = "#64748b";
+                                ctx.lineWidth = 1;
+                                roundRect(
+                                    ctx,
+                                    aboxX,
+                                    aboxY,
+                                    aboxW,
+                                    aboxH,
+                                    6,
+                                );
+                                ctx.fill();
+                                ctx.stroke();
+                            } else {
+                                ctx.fillStyle = "#ffffff88";
+                                roundRect(
+                                    ctx,
+                                    aboxX,
+                                    aboxY,
+                                    aboxW,
+                                    aboxH,
+                                    6,
+                                );
+                                ctx.fill();
+                            }
                             const displayText = note.annotation || "";
                             if (displayText) {
                                 ctx.fillStyle = "#1e293b";
@@ -1053,7 +1069,7 @@ export default function NoteLane({
                                     displayText.length > 8
                                         ? displayText.slice(0, 7) + "…"
                                         : displayText,
-                                    headX,
+                                    boxCenterX,
                                     aboxY + 13,
                                 );
                             }
@@ -1481,10 +1497,13 @@ export default function NoteLane({
                         for (const n of segment.measures[mi].notes) {
                             const a = toAnchors(n, mStart, beatDuration);
                             if (a.length === 0) continue;
-                            const headTime = a[0].time;
-                            if (headTime < rangeStart || headTime > rangeEnd)
+                            const boxTime =
+                                n.type === NOTE_LN && a.length > 1
+                                    ? (a[0].time + a[a.length - 1].time) / 2
+                                    : a[0].time;
+                            if (boxTime < rangeStart || boxTime > rangeEnd)
                                 continue;
-                            const bx = mapTimeToX(headTime);
+                            const bx = mapTimeToX(boxTime);
                             if (
                                 clickX >= bx - boxHW &&
                                 clickX <= bx + boxHW &&
@@ -1506,7 +1525,7 @@ export default function NoteLane({
                         .flatMap((m) => m.notes)
                         .find((n) => n.id === hitNoteId);
                     // Record annotation box screen position
-                    const hitAnchor = (() => {
+                    const hitAnchors = (() => {
                         for (const seg of segments) {
                             if (!Number.isFinite(seg.tempo) || seg.tempo <= 0)
                                 continue;
@@ -1519,14 +1538,18 @@ export default function NoteLane({
                                         seg.time + mi * bd,
                                         bd,
                                     );
-                                    if (a.length > 0) return a[0];
+                                    if (a.length > 0) return a;
                                 }
                             }
                         }
                         return null;
                     })();
-                    if (hitAnchor) {
-                        setAnnotationBoxX(mapTimeToX(hitAnchor.time));
+                    if (hitAnchors) {
+                        const boxTime =
+                            fullNote?.type === NOTE_LN && hitAnchors.length > 1
+                                ? (hitAnchors[0].time + hitAnchors[hitAnchors.length - 1].time) / 2
+                                : hitAnchors[0].time;
+                        setAnnotationBoxX(mapTimeToX(boxTime));
                         setAnnotationBoxY(height / 2 + 20);
                     }
                     setAnnotationEditing(hitNoteId);
