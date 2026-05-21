@@ -45,8 +45,8 @@ function WorkMenu(prop: _prop) {
                             fontFamily:
                                 "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
                             display: "inline-block",
-                            minWidth: "210px",
-                            fontSize: "12px",
+                            minWidth: "170px",
+                            fontSize: "14px",
                             textAlign: "left",
                         }}
                     >
@@ -66,41 +66,43 @@ function WorkMenu(prop: _prop) {
                     isPlaying={prop.isPlaying}
                 />
                 </span>
-                <PlaySelected
-                    key={"play selected"}
-                    refCurrentTime={prop.refCurrentTime}
-                    refIsPlaying={prop.isPlaying}
-                    setCurrentTime={prop.setCurrentTime}
-                    setIsPlaying={prop.setIsPlaying}
-                    refSoundLaneStates={prop.refSoundLaneStates}
-                />
-                <ResetEditor
-                    key={"reset editor"}
-                    resetEditor={prop.resetEditor}
-                />
-                <button
-                    type="button"
-                    className="editor-toolbar-button"
-                    onClick={prop.onExport}
-                    title="导出项目文件 (.explz)"
-                >
-                    <span>导出</span>
-                </button>
-                <button
-                    type="button"
-                    className="editor-toolbar-button"
-                    onClick={prop.onImport}
-                    title="导入项目文件 (.explz)"
-                >
-                    <span>导入</span>
-                </button>
-                <button
-                    type="button"
-                    className="editor-toolbar-button"
-                    onClick={() => setIsShortcutModalOpen(true)}
-                >
-                    <span>快捷键</span>
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                    <PlaySelected
+                        key={"play selected"}
+                        refCurrentTime={prop.refCurrentTime}
+                        refIsPlaying={prop.isPlaying}
+                        setCurrentTime={prop.setCurrentTime}
+                        setIsPlaying={prop.setIsPlaying}
+                        refSoundLaneStates={prop.refSoundLaneStates}
+                    />
+                    <ResetEditor
+                        key={"reset editor"}
+                        resetEditor={prop.resetEditor}
+                    />
+                    <button
+                        type="button"
+                        className="editor-toolbar-button"
+                        onClick={prop.onExport}
+                        title="导出项目文件 (.7z)"
+                    >
+                        <span>导出</span>
+                    </button>
+                    <button
+                        type="button"
+                        className="editor-toolbar-button"
+                        onClick={prop.onImport}
+                        title="导入项目文件 (.7z)"
+                    >
+                        <span>导入</span>
+                    </button>
+                    <button
+                        type="button"
+                        className="editor-toolbar-button"
+                        onClick={() => setIsShortcutModalOpen(true)}
+                    >
+                        <span>快捷键</span>
+                    </button>
+                </div>
             </div>
             {isShortcutModalOpen && (
                 <ShortcutSettingsModal

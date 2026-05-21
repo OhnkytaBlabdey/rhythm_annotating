@@ -342,7 +342,7 @@ export default function WorkArea() {
         const a = document.createElement("a");
         a.href = url;
         const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-        a.download = `explicitize-${ts}.explz`;
+        a.download = `explicitize-${ts}.7z`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -352,7 +352,7 @@ export default function WorkArea() {
     const handleImport = useCallback(() => {
         const input = document.createElement("input");
         input.type = "file";
-        input.accept = ".explz";
+        input.accept = ".7z";
         input.onchange = () => {
             const file = input.files?.[0];
             if (!file) return;
