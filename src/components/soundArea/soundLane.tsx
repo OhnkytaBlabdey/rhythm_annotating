@@ -45,6 +45,7 @@ interface _prop {
     index: number;
     audioId: string;
     timeRange: [number, number];
+    playheadTime?: number | null;
     refSoundLaneState: SoundLaneState;
     setSoundLaneState: (i: number, state: SoundLaneState) => void;
     onActivate?: (audioId: string) => void;
@@ -1008,6 +1009,7 @@ export default function SoundLane(prop: _prop) {
                                     });
                                 }}
                                 cursorTime={cursorTime}
+                                playheadTime={prop.playheadTime}
                             />
                         )}
                     </div>
@@ -1062,6 +1064,7 @@ export default function SoundLane(prop: _prop) {
                                     });
                                 }}
                                 cursorTime={cursorTime}
+                                playheadTime={prop.playheadTime}
                             />
                         </div>
                     </div>
@@ -1198,6 +1201,7 @@ export default function SoundLane(prop: _prop) {
                                     setChartData={setChartData}
                                     timeRange={prop.timeRange}
                                     graphicalOffset={prop.refSoundLaneState.noteLaneOffset ?? 0}
+                                    playheadTime={prop.playheadTime}
                                     beatSubdivision={lane.division}
                                     setBeatSubdivision={(division) =>
                                         updateLaneData(

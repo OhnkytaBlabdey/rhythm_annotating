@@ -263,6 +263,9 @@ export default function WorkArea() {
 
     function setTimeMultiplier(newm: number) {
         setProject((prev) => {
+            if (prev.isPlaying) {
+                return { ...prev, timeMultiplier: newm };
+            }
             const nextSpan = getVisibleSpan(duration, newm);
             const nextMaxStart = Math.max(0, duration - nextSpan);
             return {
@@ -275,9 +278,14 @@ export default function WorkArea() {
 
     function setCurrentTime(newt: number) {
         setProject((prev) => {
-            const currentSpan = getVisibleSpan(duration, prev.timeMultiplier);
-            const currentMaxStart = Math.max(0, duration - currentSpan);
-            const nextCurrentTime = clamp(newt, 0, currentMaxStart);
+            let nextCurrentTime: number;
+            if (prev.isPlaying) {
+                nextCurrentTime = Math.max(0, newt);
+            } else {
+                const currentSpan = getVisibleSpan(duration, prev.timeMultiplier);
+                const currentMaxStart = Math.max(0, duration - currentSpan);
+                nextCurrentTime = clamp(newt, 0, currentMaxStart);
+            }
 
             if (prev.currentTime === nextCurrentTime) {
                 return prev;
@@ -294,6 +302,13 @@ export default function WorkArea() {
         setProject((prev) => ({
             ...prev,
             isPlaying: p,
+        }));
+    }
+
+    function setPlayheadOffset(offset: number) {
+        setProject((prev) => ({
+            ...prev,
+            playheadOffset: Math.max(0, offset),
         }));
     }
 
@@ -403,6 +418,19 @@ export default function WorkArea() {
     const timeRange = useMemo(
         (): [number, number] => [clampedCurrentTime, clampedCurrentTime + visibleSpan],
         [clampedCurrentTime, visibleSpan],
+    );
+
+    const laneTimeRange = useMemo((): [number, number] => {
+        if (objProject.isPlaying) {
+            const laneStart = objProject.currentTime - objProject.playheadOffset;
+            return [laneStart, laneStart + visibleSpan];
+        }
+        return [clampedCurrentTime, clampedCurrentTime + visibleSpan];
+    }, [objProject.currentTime, objProject.isPlaying, objProject.playheadOffset, visibleSpan, clampedCurrentTime]);
+
+    const playheadTime = useMemo(
+        () => (objProject.isPlaying ? objProject.currentTime : null),
+        [objProject.isPlaying, objProject.currentTime],
     );
 
     const sortedLaneEntries = useMemo(() => {
@@ -547,7 +575,9 @@ export default function WorkArea() {
                 );
                 const nextSpan = getVisibleSpan(duration, nextMultiplier);
                 const maxStart = Math.max(0, duration - nextSpan);
-                const nextCurrentTime = clamp(current.currentTime, 0, maxStart);
+                const nextCurrentTime = current.isPlaying
+                    ? current.currentTime
+                    : clamp(current.currentTime, 0, maxStart);
 
                 if (
                     current.timeMultiplier === nextMultiplier &&
@@ -641,6 +671,8 @@ export default function WorkArea() {
                                 resetEditor={resetEditor}
                                 onExport={handleExport}
                                 onImport={handleImport}
+                                playheadOffset={objProject.playheadOffset}
+                                setPlayheadOffset={setPlayheadOffset}
                             />
                         </div>
                     </div>
@@ -661,7 +693,8 @@ export default function WorkArea() {
                                         setSoundLaneState={
                                             setIndexSoundLaneState
                                         }
-                                        timeRange={timeRange}
+                                        timeRange={laneTimeRange}
+                                        playheadTime={entry.state?.isActive ? playheadTime : null}
                                         onActivate={setActiveSoundLaneId}
                                         onDeleteSoundLane={removeAudioData}
                                     />

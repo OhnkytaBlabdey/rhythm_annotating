@@ -5,6 +5,7 @@ export interface project {
     timeMultiplier: number;
     isPlaying: boolean;
     playSpeed: number;
+    playheadOffset: number;
     soundLaneStates: SoundLaneState[];
 }
 
@@ -14,6 +15,7 @@ export function defaultProject() {
         timeMultiplier: 1,
         isPlaying: false,
         playSpeed: 1,
+        playheadOffset: 0,
         soundLaneStates: [],
     } as project;
 }

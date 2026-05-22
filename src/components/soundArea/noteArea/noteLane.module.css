@@ -45,7 +45,7 @@
 .annotationOverlay {
     position: absolute;
     z-index: 10;
-    width: 60px;
+    min-width: 60px;
     height: 18px;
     background: transparent;
     border: none;

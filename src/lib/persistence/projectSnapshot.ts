@@ -67,6 +67,12 @@ function normalizeProject(input: unknown): project {
             candidate.playSpeed > 0
                 ? candidate.playSpeed
                 : base.playSpeed,
+        playheadOffset:
+            typeof candidate.playheadOffset === "number" &&
+            Number.isFinite(candidate.playheadOffset) &&
+            candidate.playheadOffset >= 0
+                ? candidate.playheadOffset
+                : base.playheadOffset,
         soundLaneStates: Array.isArray(candidate.soundLaneStates)
             ? candidate.soundLaneStates.map((lane) =>
                   normalizeSoundLaneState(lane),

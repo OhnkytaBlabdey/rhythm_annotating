@@ -13,6 +13,7 @@ interface _p {
     spectrumState: SpectrumLaneState;
     setSpectrumState: (state: SpectrumLaneState) => void;
     cursorTime?: number | null;
+    playheadTime?: number | null;
 }
 
 interface SpectrumFrameCache {
@@ -518,20 +519,34 @@ function SpectrumLane(p: _p) {
         const ctx = cursorCanvas.getContext("2d");
         if (!ctx) return;
         ctx.clearRect(0, 0, w, h);
-        if (cursorTime == null) return;
         const [tL, tR] = p.timeRange;
         const span = tR - tL;
         if (span <= 0) return;
-        const x = ((cursorTime - tL) / span) * w;
-        if (x < 0 || x > w) return;
-        ctx.setLineDash([4, 4]);
-        ctx.strokeStyle = "#facc15";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, h);
-        ctx.stroke();
-    }, [p.cursorTime, p.timeRange, canvasWidth, layerVersion]);
+        if (cursorTime != null) {
+            const x = ((cursorTime - tL) / span) * w;
+            if (x >= 0 && x <= w) {
+                ctx.setLineDash([4, 4]);
+                ctx.strokeStyle = "#facc15";
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, h);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+        if (p.playheadTime != null) {
+            const x = ((p.playheadTime - tL) / span) * w;
+            if (x >= 0 && x <= w) {
+                ctx.strokeStyle = "#22c55e";
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, h);
+                ctx.stroke();
+            }
+        }
+    }, [p.cursorTime, p.playheadTime, p.timeRange, canvasWidth, layerVersion]);
 
     return (
         <div style={{ position: "relative", lineHeight: 0 }}>

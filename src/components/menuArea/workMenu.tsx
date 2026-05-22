@@ -24,6 +24,8 @@ interface _prop {
     resetEditor: () => void;
     onExport: () => void;
     onImport: () => void;
+    playheadOffset: number;
+    setPlayheadOffset: (v: number) => void;
 }
 
 function WorkMenu(prop: _prop) {
@@ -79,6 +81,39 @@ function WorkMenu(prop: _prop) {
                         key={"reset editor"}
                         resetEditor={prop.resetEditor}
                     />
+                    <span
+                        className="editor-meta-text"
+                        style={{ display: "inline-flex", alignItems: "center", gap: "3px", marginLeft: "4px" }}
+                    >
+                        <span style={{ fontSize: "12px" }}>图形偏移</span>
+                        <input
+                            type="number"
+                            step={0.1}
+                            min={0}
+                            value={prop.playheadOffset}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
+                            onWheel={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                                const v = Number(e.target.value);
+                                if (Number.isFinite(v) && v >= 0) {
+                                    prop.setPlayheadOffset(v);
+                                }
+                            }}
+                            style={{
+                                width: "56px",
+                                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                                fontSize: "12px",
+                                textAlign: "right",
+                                border: "1px solid #d4d4d8",
+                                borderRadius: "4px",
+                                padding: "1px 4px",
+                            }}
+                            title="播放参考线图形偏移(秒)"
+                        />
+                        <span style={{ fontSize: "12px" }}>s</span>
+                    </span>
                     <button
                         type="button"
                         className="editor-toolbar-button"

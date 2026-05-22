@@ -42,6 +42,7 @@ interface NoteLaneProps {
     onActivate?: () => void;
     laneId: string;
     graphicalOffset?: number;
+    playheadTime?: number | null;
     onInsertMeasure?: (time?: number) => void;
     onDeleteMeasure?: (time?: number) => void;
 }
@@ -253,6 +254,7 @@ export default function NoteLane({
     const [annotationInputValue, setAnnotationInputValue] = useState("");
     const [annotationBoxX, setAnnotationBoxX] = useState(0);
     const [annotationBoxY, setAnnotationBoxY] = useState(0);
+    const [annotationBoxWidth, setAnnotationBoxWidth] = useState(60);
     const editingRef = useRef<{
         noteId: string | null;
         text: string;
@@ -805,6 +807,18 @@ export default function NoteLane({
             ctx.setLineDash([]);
         }
 
+        if (p.playheadTime != null) {
+            const phX = mapTimeToX(p.playheadTime);
+            if (phX >= 0 && phX <= width) {
+                ctx.strokeStyle = "#22c55e";
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(phX, 0);
+                ctx.lineTo(phX, height);
+                ctx.stroke();
+            }
+        }
+
         if (
             (editState.mode === "insert-strong" ||
                 editState.mode === "insert-weak" ||
@@ -1029,12 +1043,15 @@ export default function NoteLane({
                                     boxCenterTime > (endTime ?? Infinity))
                             )
                         ) {
-                            const aboxY = centerY + 20;
-                            const aboxW = 60;
-                            const aboxH = 18;
-                            const aboxX = boxCenterX - aboxW / 2;
                             if (note.id === annotationEditing) continue;
                             if (editState.mode !== "annotate" && !note.annotation) continue;
+                            const displayText = note.annotation || "";
+                            ctx.font = "10px sans-serif";
+                            const measuredW = displayText ? ctx.measureText(displayText).width : 0;
+                            const aboxW = Math.min(300, Math.max(60, measuredW + 12));
+                            const aboxH = 18;
+                            const aboxY = centerY + 20;
+                            const aboxX = Math.max(0, Math.min(width - aboxW, boxCenterX - aboxW / 2));
                             if (editState.mode === "annotate") {
                                 ctx.fillStyle = "#ffffffdd";
                                 ctx.strokeStyle = "#64748b";
@@ -1061,16 +1078,13 @@ export default function NoteLane({
                                 );
                                 ctx.fill();
                             }
-                            const displayText = note.annotation || "";
                             if (displayText) {
                                 ctx.fillStyle = "#1e293b";
                                 ctx.font = "10px sans-serif";
                                 ctx.textAlign = "center";
                                 ctx.fillText(
-                                    displayText.length > 8
-                                        ? displayText.slice(0, 7) + "…"
-                                        : displayText,
-                                    boxCenterX,
+                                    displayText,
+                                    aboxX + aboxW / 2,
                                     aboxY + 13,
                                 );
                             }
@@ -1098,6 +1112,7 @@ export default function NoteLane({
         segments,
         renderValidationError,
         snapTime,
+        p.playheadTime,
         startTime,
         endTime,
         width,
@@ -1468,7 +1483,7 @@ export default function NoteLane({
                 const clickY = e.clientY - rect.top;
                 const boxY = height / 2 + 20;
                 const boxH = 18;
-                const boxHW = 30;
+                const measureCtx = canvasRef.current?.getContext("2d");
 
                 let hitNoteId: string | null = null;
                 for (const segment of segments) {
@@ -1505,9 +1520,17 @@ export default function NoteLane({
                             if (boxTime < rangeStart || boxTime > rangeEnd)
                                 continue;
                             const bx = mapTimeToX(boxTime);
+                            let noteBoxW = 60;
+                            if (measureCtx) {
+                                measureCtx.font = "10px sans-serif";
+                                const textW = n.annotation ? measureCtx.measureText(n.annotation).width : 0;
+                                noteBoxW = Math.min(300, Math.max(60, textW + 12));
+                            }
+                            const boxHW = noteBoxW / 2;
+                            const aboxX = Math.max(0, Math.min(width - noteBoxW, bx - boxHW));
                             if (
-                                clickX >= bx - boxHW &&
-                                clickX <= bx + boxHW &&
+                                clickX >= aboxX &&
+                                clickX <= aboxX + noteBoxW &&
                                 clickY >= boxY &&
                                 clickY <= boxY + boxH
                             ) {
@@ -1550,8 +1573,17 @@ export default function NoteLane({
                             fullNote?.type === NOTE_LN && hitAnchors.length > 1
                                 ? (hitAnchors[0].time + hitAnchors[hitAnchors.length - 1].time) / 2
                                 : hitAnchors[0].time;
-                        setAnnotationBoxX(mapTimeToX(boxTime));
+                        const bx = mapTimeToX(boxTime);
+                        const annotText = fullNote?.annotation ?? "";
+                        let boxW = 60;
+                        if (measureCtx) {
+                            measureCtx.font = "10px sans-serif";
+                            const tw = annotText ? measureCtx.measureText(annotText).width : 0;
+                            boxW = Math.min(300, Math.max(60, tw + 12));
+                        }
+                        setAnnotationBoxX(Math.max(0, Math.min(width - boxW, bx - boxW / 2)));
                         setAnnotationBoxY(height / 2 + 20);
+                        setAnnotationBoxWidth(boxW);
                     }
                     setAnnotationEditing(hitNoteId);
                     setAnnotationInputValue(fullNote?.annotation ?? "");
@@ -2005,17 +2037,25 @@ export default function NoteLane({
                     <div
                         className={style.annotationOverlay}
                         style={{
-                            left: annotationBoxX - 30,
+                            left: annotationBoxX,
                             top: annotationBoxY,
+                            width: annotationBoxWidth,
                         }}
                         onMouseDown={(e) => e.stopPropagation()}
                     >
                         <input
                             className={style.annotationInput}
                             value={annotationInputValue}
-                            onChange={(e) =>
-                                setAnnotationInputValue(e.target.value)
-                            }
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                setAnnotationInputValue(val);
+                                const measureCtx = canvasRef.current?.getContext("2d");
+                                if (measureCtx) {
+                                    measureCtx.font = "10px sans-serif";
+                                    const tw = val ? measureCtx.measureText(val).width : 0;
+                                    setAnnotationBoxWidth(Math.min(300, Math.max(60, tw + 12)));
+                                }
+                            }}
                             onKeyDown={(e) => {
                                 if (e.key === "Enter") {
                                     e.preventDefault();
