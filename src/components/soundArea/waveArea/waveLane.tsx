@@ -41,11 +41,7 @@ function renderWaveToCanvas(
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, width, height);
 
-    const startSample = Math.max(0, Math.floor((t_left - offset) * sampleRate));
-    const endSample = Math.min(length, Math.ceil((t_right - offset) * sampleRate));
-    const rangeLength = endSample - startSample;
-    if (rangeLength <= 1) return;
-    const step = Math.max(1, Math.floor(rangeLength / width));
+    const dt = (t_right - t_left) / Math.max(1, width);
 
     for (let c = 0; c < channelCount; c++) {
         const channel = channelData[c];
@@ -58,19 +54,30 @@ function renderWaveToCanvas(
         ctx.beginPath();
         // 降采样优化：每像素只取极值（包络线）
         for (let x = 0; x < width; x++) {
-            const sampleStart = startSample + x * step;
-            const sampleEnd = Math.min(startSample + (x + 1) * step, endSample);
+            const t = t_left + (x / Math.max(1, width - 1)) * (t_right - t_left);
+            const sampleTime = t - offset;
+            const sStart = Math.floor(sampleTime * sampleRate);
+            const sEnd = Math.floor((sampleTime + dt) * sampleRate);
+
+            if (sEnd < 0 || sStart >= length) {
+                // Outside audio bounds — draw silence
+                const zeroY = centerY - 0 * scale;
+                const xPos = x + 0.5;
+                ctx.moveTo(xPos, zeroY);
+                ctx.lineTo(xPos, zeroY);
+                continue;
+            }
+
+            const s0 = Math.max(0, sStart);
+            const s1 = Math.min(length, sEnd);
             let min = 1;
             let max = -1;
-            const startIdx = Math.floor(sampleStart);
-            const endIdx = Math.floor(sampleEnd);
-            for (let idx = startIdx; idx < endIdx; idx++) {
-                if (idx < 0 || idx >= channel.length) continue;
+            for (let idx = s0; idx < s1; idx++) {
                 const v = channel[idx];
                 if (v < min) min = v;
                 if (v > max) max = v;
             }
-            if (startIdx >= endIdx) {
+            if (s0 >= s1) {
                 min = 0;
                 max = 0;
             }
@@ -225,7 +232,8 @@ function WaveLane(p: _p) {
                     const tR = p.timeRange[1];
                     const span = tR - tL;
                     if (span > 0) {
-                        const x = ((p.playheadTime - tL) / span) * canvas.width;
+                        const displayTime = p.playheadTime - offset;
+                        const x = ((displayTime - tL) / span) * canvas.width;
                         if (x >= 0 && x <= canvas.width) {
                             ctx.strokeStyle = "#22c55e";
                             ctx.lineWidth = 1.5;
