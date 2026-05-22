@@ -536,8 +536,7 @@ function SpectrumLane(p: _p) {
             }
         }
         if (p.playheadTime != null) {
-            const displayTime = p.playheadTime - (p.spectrumState.offset ?? 0);
-            const x = ((displayTime - tL) / span) * w;
+            const x = ((p.playheadTime - tL) / span) * w;
             if (x >= 0 && x <= w) {
                 ctx.strokeStyle = "#22c55e";
                 ctx.lineWidth = 1.5;

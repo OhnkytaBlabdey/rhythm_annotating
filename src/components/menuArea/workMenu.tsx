@@ -60,15 +60,21 @@ function WorkMenu(prop: _prop) {
                 <span style={{ margin: "0 -2px" }}>
                     <TimeRangeController
                         key={"time scale"}
-                    refTimeMultiplier={prop.refTimeMultiplier}
-                    setTimeMultiplier={prop.setTimeMultiplier}
-                    refCurrentTime={prop.refCurrentTime}
-                    setCurrentTime={prop.setCurrentTime}
-                    Duration={prop.Duration}
-                    isPlaying={prop.isPlaying}
-                />
+                        refTimeMultiplier={prop.refTimeMultiplier}
+                        setTimeMultiplier={prop.setTimeMultiplier}
+                        refCurrentTime={prop.refCurrentTime}
+                        setCurrentTime={prop.setCurrentTime}
+                        Duration={prop.Duration}
+                        isPlaying={prop.isPlaying}
+                    />
                 </span>
-                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <div
+                    style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                    }}
+                >
                     <PlaySelected
                         key={"play selected"}
                         refCurrentTime={prop.refCurrentTime}
@@ -83,36 +89,43 @@ function WorkMenu(prop: _prop) {
                     />
                     <span
                         className="editor-meta-text"
-                        style={{ display: "inline-flex", alignItems: "center", gap: "3px", marginLeft: "4px" }}
+                        style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "3px",
+                            marginLeft: "4px",
+                        }}
                     >
-                        <span style={{ fontSize: "12px" }}>图形偏移</span>
+                        <span style={{ fontSize: "12px" }}> </span>
                         <input
                             type="number"
-                            step={0.1}
+                            step={1}
                             min={0}
-                            value={prop.playheadOffset}
+                            value={prop.playheadOffset * 1000}
                             onMouseDown={(e) => e.stopPropagation()}
                             onClick={(e) => e.stopPropagation()}
                             onKeyDown={(e) => e.stopPropagation()}
                             onWheel={(e) => e.stopPropagation()}
                             onChange={(e) => {
-                                const v = Number(e.target.value);
+                                const v = Number(e.target.value) / 1000;
                                 if (Number.isFinite(v) && v >= 0) {
                                     prop.setPlayheadOffset(v);
                                 }
                             }}
                             style={{
-                                width: "56px",
-                                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                                minWidth: "44px",
+                                maxWidth: "60px",
+                                fontFamily:
+                                    "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
                                 fontSize: "12px",
                                 textAlign: "right",
                                 border: "1px solid #d4d4d8",
                                 borderRadius: "4px",
                                 padding: "1px 4px",
                             }}
-                            title="播放参考线图形偏移(秒)"
+                            title="播放时刻辅助确认"
                         />
-                        <span style={{ fontSize: "12px" }}>s</span>
+                        <span style={{ fontSize: "12px" }}>ms</span>
                     </span>
                     <button
                         type="button"
@@ -120,7 +133,7 @@ function WorkMenu(prop: _prop) {
                         onClick={prop.onExport}
                         title="导出项目文件 (.7z)"
                     >
-                        <span>导出</span>
+                        <span>导出工程</span>
                     </button>
                     <button
                         type="button"
@@ -128,7 +141,7 @@ function WorkMenu(prop: _prop) {
                         onClick={prop.onImport}
                         title="导入项目文件 (.7z)"
                     >
-                        <span>导入</span>
+                        <span>导入工程</span>
                     </button>
                     <button
                         type="button"

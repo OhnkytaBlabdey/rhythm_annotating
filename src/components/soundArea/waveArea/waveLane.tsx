@@ -232,8 +232,7 @@ function WaveLane(p: _p) {
                     const tR = p.timeRange[1];
                     const span = tR - tL;
                     if (span > 0) {
-                        const displayTime = p.playheadTime - offset;
-                        const x = ((displayTime - tL) / span) * canvas.width;
+                        const x = ((p.playheadTime - tL) / span) * canvas.width;
                         if (x >= 0 && x <= canvas.width) {
                             ctx.strokeStyle = "#22c55e";
                             ctx.lineWidth = 1.5;

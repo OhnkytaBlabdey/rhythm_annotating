@@ -809,7 +809,7 @@ export default function NoteLane({
         }
 
         if (playheadTime != null) {
-            const phX = mapTimeToX(playheadTime);
+            const phX = ((playheadTime - rangeStart) / span) * width;
             if (phX >= 0 && phX <= width) {
                 ctx.strokeStyle = "#22c55e";
                 ctx.lineWidth = 1.5;
