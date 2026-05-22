@@ -237,6 +237,7 @@ export default function NoteLane({
     graphicalOffset = 0,
     onInsertMeasure,
     onDeleteMeasure,
+    playheadTime,
 }: NoteLaneProps) {
     const { matchesKeyShortcut } = useAppSettings();
     const wrapperRef = useRef<HTMLDivElement>(null);
@@ -807,8 +808,8 @@ export default function NoteLane({
             ctx.setLineDash([]);
         }
 
-        if (p.playheadTime != null) {
-            const phX = mapTimeToX(p.playheadTime);
+        if (playheadTime != null) {
+            const phX = mapTimeToX(playheadTime);
             if (phX >= 0 && phX <= width) {
                 ctx.strokeStyle = "#22c55e";
                 ctx.lineWidth = 1.5;
@@ -1112,7 +1113,7 @@ export default function NoteLane({
         segments,
         renderValidationError,
         snapTime,
-        p.playheadTime,
+        playheadTime,
         startTime,
         endTime,
         width,
