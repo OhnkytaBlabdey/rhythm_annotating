@@ -18,6 +18,7 @@ import {
     ChartSegment,
     ChartMeasure,
     ChartNote,
+    ChartMeasureRef,
     NoteLaneData,
 } from "./noteArea/chartTypes";
 import {
@@ -33,8 +34,9 @@ import {
     removeTrailingEmptyMeasures,
     collectMeasureTimesAndBpms,
     buildSegmentsFromMeasureList,
-    insertMeasureAtTime,
-    deleteMeasureAtTime,
+    insertMeasureAtRef,
+    deleteMeasureAtRef,
+    locateMeasureByRef,
     stripChartDataTimes,
 } from "./noteArea/chartAdapter";
 import { convertToMalody } from "@/lib/malodyExport";
@@ -76,8 +78,8 @@ export default function SoundLane(prop: _prop) {
         {},
     );
 
-    const [laneSelectedMeasureTimeMap, setLaneSelectedMeasureTimeMap] =
-        useState<Record<string, number | null>>({});
+    const [laneSelectedMeasureRefMap, setLaneSelectedMeasureRefMap] =
+        useState<Record<string, ChartMeasureRef | null>>({});
     const [laneErrorMap, setLaneErrorMap] = useState<Record<string, string>>(
         {},
     );
@@ -134,18 +136,22 @@ export default function SoundLane(prop: _prop) {
     }, [noteLanes]);
 
     const laneMeasureSelectHandlers = useMemo(() => {
-        const handlers: Record<string, (time: number | null) => void> = {};
+        const handlers: Record<string, (ref: ChartMeasureRef | null) => void> = {};
         for (const lane of noteLanes) {
             const laneId = lane.id;
-            handlers[laneId] = (time: number | null) => {
-                setLaneSelectedMeasureTimeMap((prev) => {
-                    const prevTime = prev[laneId] ?? null;
-                    if (prevTime === time) {
+            handlers[laneId] = (ref: ChartMeasureRef | null) => {
+                setLaneSelectedMeasureRefMap((prev) => {
+                    const prevRef = prev[laneId] ?? null;
+                    if (
+                        prevRef?.globalIndex === ref?.globalIndex &&
+                        prevRef?.segmentIndex === ref?.segmentIndex &&
+                        prevRef?.measureIndex === ref?.measureIndex
+                    ) {
                         return prev;
                     }
                     return {
                         ...prev,
-                        [laneId]: time,
+                        [laneId]: ref,
                     };
                 });
             };
@@ -234,8 +240,8 @@ export default function SoundLane(prop: _prop) {
                 }
                 return next;
             });
-            setLaneSelectedMeasureTimeMap((prev) => {
-                const next: Record<string, number | null> = {};
+            setLaneSelectedMeasureRefMap((prev) => {
+                const next: Record<string, ChartMeasureRef | null> = {};
                 for (const id of Object.keys(prev)) {
                     if (activeIds.has(id)) {
                         next[id] = prev[id];
@@ -281,56 +287,22 @@ export default function SoundLane(prop: _prop) {
         [],
     );
 
-    const locateMeasureAtTime = useCallback(
-        (data: ChartSegment[], time: number | null) => {
-            if (time === null || !Number.isFinite(time)) {
-                return null;
-            }
-
-            const sorted = cloneChart(data).sort((a, b) => a.time - b.time);
-            for (let s = 0; s < sorted.length; s++) {
-                const seg = sorted[s];
-                const segTempo =
-                    Number.isFinite(seg.tempo) && seg.tempo > 0
-                        ? seg.tempo
-                        : 120;
-                const beatDuration = 60 / segTempo;
-                for (let m = 0; m < seg.measures.length; m++) {
-                    const start = seg.time + m * beatDuration;
-                    const end = start + beatDuration;
-                    const isLastMeasure =
-                        s === sorted.length - 1 &&
-                        m === seg.measures.length - 1;
-                    if (
-                        time >= start - 1e-6 &&
-                        (time < end - 1e-6 ||
-                            (isLastMeasure && time <= end + 1e-6))
-                    ) {
-                        return {
-                            sorted,
-                            segmentIndex: s,
-                            measureIndex: m,
-                            tempo: segTempo,
-                            measureStart: start,
-                        };
-                    }
-                }
-            }
-
-            return null;
-        },
-        [cloneChart],
+    const locateMeasure = useCallback(
+        (data: ChartSegment[], ref: ChartMeasureRef | null) =>
+            locateMeasureByRef(data, ref),
+        [],
     );
 
     const retimeSingleMeasureByBpm = useCallback(
-        (data: ChartSegment[], time: number | null, bpm: number) => {
-            const located = locateMeasureAtTime(data, time);
+        (data: ChartSegment[], ref: ChartMeasureRef | null, bpm: number) => {
+            const located = locateMeasure(data, ref);
             if (!located) {
                 return null;
             }
 
             const safeBpm = Math.max(1, Math.floor(bpm));
-            const { sorted, segmentIndex, measureIndex } = located;
+            const sorted = cloneChart(data);
+            const { segmentIndex, measureIndex } = located;
             const tailVirtualTempo = (() => {
                 const last = sorted[sorted.length - 1];
                 if (!last || last.measures.length > 0) {
@@ -404,7 +376,7 @@ export default function SoundLane(prop: _prop) {
 
             return rebuilt;
         },
-        [locateMeasureAtTime],
+        [cloneChart, locateMeasure],
     );
 
     const retimeChartByBpm = useCallback(
@@ -557,11 +529,11 @@ export default function SoundLane(prop: _prop) {
         const editState =
             laneEditStateMap[activeLane.id] ??
             defaultNoteEditState(activeLane.defaultBpm);
-        const selectedMeasureTime =
-            laneSelectedMeasureTimeMap[activeLane.id] ?? null;
-        const selectedMeasure = locateMeasureAtTime(
+        const selectedMeasureRef =
+            laneSelectedMeasureRefMap[activeLane.id] ?? null;
+        const selectedMeasure = locateMeasure(
             activeLane.chartData,
-            selectedMeasureTime,
+            selectedMeasureRef,
         );
         const currentLaneError =
             laneErrorMap[activeLane.id] ??
@@ -795,7 +767,7 @@ export default function SoundLane(prop: _prop) {
                 // apply to active lane first to validate
                 const activeNext = retimeSingleMeasureByBpm(
                     activeLane.chartData,
-                    selectedMeasureTime,
+                    selectedMeasureRef,
                     safeBpm,
                 );
                 if (!activeNext) return;
@@ -815,7 +787,7 @@ export default function SoundLane(prop: _prop) {
                     } else {
                         const laneNext = retimeSingleMeasureByBpm(
                             lane.chartData,
-                            selectedMeasureTime,
+                            selectedMeasureRef,
                             safeBpm,
                         );
                         if (laneNext) {
@@ -879,23 +851,22 @@ export default function SoundLane(prop: _prop) {
                     noteLaneOffset: offset,
                 });
             },
-            onInsertMeasure: (time?: number) => {
-                const insertTime = time ?? selectedMeasureTime;
-                if (insertTime == null || !Number.isFinite(insertTime)) return;
-                const next = insertMeasureAtTime(
+            onInsertMeasure: (ref?: ChartMeasureRef) => {
+                const insertRef = ref ?? selectedMeasureRef;
+                if (!insertRef) return;
+                const next = insertMeasureAtRef(
                     activeLane.chartData,
-                    insertTime,
-                    activeLane.defaultBpm,
+                    insertRef,
                 );
                 if (!next) return;
                 setChartData(next);
             },
-            onDeleteMeasure: (time?: number) => {
-                const deleteTime = time ?? selectedMeasureTime;
-                if (deleteTime == null || !Number.isFinite(deleteTime)) return;
-                const next = deleteMeasureAtTime(
+            onDeleteMeasure: (ref?: ChartMeasureRef) => {
+                const deleteRef = ref ?? selectedMeasureRef;
+                if (!deleteRef) return;
+                const next = deleteMeasureAtRef(
                     activeLane.chartData,
-                    deleteTime,
+                    deleteRef,
                 );
                 if (!next) return;
                 setChartData(next);
@@ -925,9 +896,9 @@ export default function SoundLane(prop: _prop) {
         resolvedActiveLaneId,
         noteLanes,
         laneEditStateMap,
-        laneSelectedMeasureTimeMap,
+        laneSelectedMeasureRefMap,
         laneErrorMap,
-        locateMeasureAtTime,
+        locateMeasure,
         cloneChart,
         retimeSingleMeasureByBpm,
         setLaneEditState,
@@ -935,6 +906,7 @@ export default function SoundLane(prop: _prop) {
         setLaneError,
         clearLaneError,
         audioData,
+        prop,
     ]);
 
     if (!audioData) {
@@ -1135,8 +1107,8 @@ export default function SoundLane(prop: _prop) {
                             const editState =
                                 laneEditStateMap[lane.id] ??
                                 defaultNoteEditState(lane.defaultBpm);
-                            const selectedMeasureTime =
-                                laneSelectedMeasureTimeMap[lane.id] ?? null;
+                            const selectedMeasureRef =
+                                laneSelectedMeasureRefMap[lane.id] ?? null;
                             const handleSnapTimeChange =
                                 laneSnapHandlers[lane.id];
                             const handleSelectMeasure =
@@ -1248,39 +1220,30 @@ export default function SoundLane(prop: _prop) {
                                     onUndo={handleUndo}
                                     onRedo={handleRedo}
                                     onSnapTimeChange={handleSnapTimeChange}
-                                    selectedMeasureTime={selectedMeasureTime}
+                                    selectedMeasureRef={selectedMeasureRef}
                                     onSelectMeasure={handleSelectMeasure}
                                     onActivate={() =>
                                         setActiveNoteLaneId(lane.id)
                                     }
                                     laneId={lane.id}
-                                    onInsertMeasure={(time?: number) => {
-                                        const insertTime =
-                                            time ?? selectedMeasureTime;
-                                        if (
-                                            insertTime == null ||
-                                            !Number.isFinite(insertTime)
-                                        )
-                                            return;
-                                        const next = insertMeasureAtTime(
+                                    onInsertMeasure={(ref?: ChartMeasureRef) => {
+                                        const insertRef =
+                                            ref ?? selectedMeasureRef;
+                                        if (!insertRef) return;
+                                        const next = insertMeasureAtRef(
                                             lane.chartData,
-                                            insertTime,
-                                            lane.defaultBpm,
+                                            insertRef,
                                         );
                                         if (!next) return;
                                         setChartData(next);
                                     }}
-                                    onDeleteMeasure={(time?: number) => {
-                                        const deleteTime =
-                                            time ?? selectedMeasureTime;
-                                        if (
-                                            deleteTime == null ||
-                                            !Number.isFinite(deleteTime)
-                                        )
-                                            return;
-                                        const next = deleteMeasureAtTime(
+                                    onDeleteMeasure={(ref?: ChartMeasureRef) => {
+                                        const deleteRef =
+                                            ref ?? selectedMeasureRef;
+                                        if (!deleteRef) return;
+                                        const next = deleteMeasureAtRef(
                                             lane.chartData,
-                                            deleteTime,
+                                            deleteRef,
                                         );
                                         if (!next) return;
                                         setChartData(next);

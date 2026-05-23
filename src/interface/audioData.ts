@@ -89,7 +89,7 @@ export function defaultNoteLaneData(
         division: lane.division,
         chartData: [],
         isFolded: false,
-        dataVersion: 2,
+        dataVersion: 3,
     };
 }
 

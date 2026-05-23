@@ -12,7 +12,7 @@ import {
     type SetStateAction,
 } from "react";
 import style from "./noteLane.module.css";
-import { ChartNote, ChartSegment, Fraction, isNoteBoundary, NOTE_BOUNDARY_START, NOTE_BOUNDARY_END, NOTE_LN } from "./chartTypes";
+import { ChartMeasureRef, ChartNote, ChartSegment, Fraction, isNoteBoundary, NOTE_BOUNDARY_START, NOTE_BOUNDARY_END, NOTE_LN } from "./chartTypes";
 import {
     generateNoteId,
     normalizeFraction,
@@ -37,15 +37,15 @@ interface NoteLaneProps {
     onUndo: () => void;
     onRedo: () => void;
     onSnapTimeChange?: (time: number | null) => void;
-    selectedMeasureTime?: number | null;
-    onSelectMeasure?: (time: number | null) => void;
+    selectedMeasureRef?: ChartMeasureRef | null;
+    onSelectMeasure?: (ref: ChartMeasureRef | null) => void;
     onActivate?: () => void;
     laneId: string;
     graphicalOffset?: number;
     playheadTime?: number | null;
     isPlaybackFrozen?: boolean;
-    onInsertMeasure?: (time?: number) => void;
-    onDeleteMeasure?: (time?: number) => void;
+    onInsertMeasure?: (ref?: ChartMeasureRef) => void;
+    onDeleteMeasure?: (ref?: ChartMeasureRef) => void;
 }
 
 interface NoteAnchor {
@@ -56,6 +56,11 @@ interface NoteAnchor {
 interface GridTick {
     time: number;
     major: boolean;
+    globalMeasureIndex: number;
+    segmentIndex: number | null;
+    measureIndex: number | null;
+    beat: number;
+    tempo: number;
 }
 
 interface NoteHit {
@@ -186,39 +191,6 @@ function fractionKey(input: Fraction | undefined): string | null {
     return `${f.a}/${f.b}`;
 }
 
-function getAbsoluteMeasureIndex(
-    time: number,
-    segments: ChartSegment[],
-    fallbackBpm: number,
-): number {
-    let cumulative = 0;
-    for (const segment of segments) {
-        if (!Number.isFinite(segment.tempo) || segment.tempo <= 0) continue;
-        if (segment.measures.length === 0) {
-            if (time >= segment.time - 1e-6) return cumulative;
-            continue;
-        }
-        const beatDuration = 60 / segment.tempo;
-        const segEnd = segment.time + segment.measures.length * beatDuration;
-        if (time >= segment.time - 1e-6 && time < segEnd - 1e-6) {
-            const relIndex = Math.floor((time - segment.time) / beatDuration);
-            return cumulative + Math.max(0, relIndex);
-        }
-        cumulative += segment.measures.length;
-    }
-    const last = segments.at(-1);
-    const virtualTempo =
-        last && Number.isFinite(last.tempo) && last.tempo > 0
-            ? last.tempo
-            : fallbackBpm;
-    const vb = 60 / virtualTempo;
-    const virtualStart = last
-        ? last.time + last.measures.length * vb
-        : 0;
-    const relIndex = Math.floor((time - virtualStart) / vb);
-    return cumulative + Math.max(0, relIndex);
-}
-
 export default function NoteLane({
     chartData,
     setChartData,
@@ -232,10 +204,9 @@ export default function NoteLane({
     onUndo,
     onRedo,
     onSnapTimeChange,
-    selectedMeasureTime,
+    selectedMeasureRef,
     onSelectMeasure,
     onActivate,
-    laneId,
     graphicalOffset = 0,
     onInsertMeasure,
     onDeleteMeasure,
@@ -246,7 +217,7 @@ export default function NoteLane({
     const wrapperRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [width, setWidth] = useState(1200);
-    const [snapTime, setSnapTime] = useState<number | null>(null);
+    const [snapTick, setSnapTick] = useState<GridTick | null>(null);
     const [hoverNoteId, setHoverNoteId] = useState<string | null>(null);
     const [anchorSelectionId, setAnchorSelectionId] = useState<string | null>(
         null,
@@ -255,6 +226,7 @@ export default function NoteLane({
     const [annotationEditing, setAnnotationEditing] = useState<string | null>(
         null,
     );
+    const [lnHeadTick, setLnHeadTick] = useState<GridTick | null>(null);
     const [annotationInputValue, setAnnotationInputValue] = useState("");
     const [annotationBoxX, setAnnotationBoxX] = useState(0);
     const [annotationBoxY, setAnnotationBoxY] = useState(0);
@@ -264,16 +236,14 @@ export default function NoteLane({
         text: string;
         saved: boolean;
     }>({ noteId: null, text: "", saved: false });
-    editingRef.current.noteId = annotationEditing;
-    editingRef.current.text = annotationInputValue;
 
     const annotationInputRef = useRef<HTMLInputElement | null>(null);
-    const snapTimeRef = useRef<number | null>(null);
+    const snapTickRef = useRef<GridTick | null>(null);
     const bpmImageRef = useRef<HTMLImageElement | null>(null);
     const [bpmImageLoaded, setBpmImageLoaded] = useState(false);
 
     useEffect(() => {
-        snapTimeRef.current = snapTime;
+        snapTickRef.current = snapTick;
     });
 
     useEffect(() => {
@@ -298,8 +268,13 @@ export default function NoteLane({
         }
     }, [annotationEditing]);
 
+    useEffect(() => {
+        editingRef.current.noteId = annotationEditing;
+        editingRef.current.text = annotationInputValue;
+    }, [annotationEditing, annotationInputValue]);
+
     const segments = useMemo(
-        () => [...chartData].sort((a, b) => a.time - b.time),
+        () => chartData,
         [chartData],
     );
 
@@ -320,6 +295,7 @@ export default function NoteLane({
 
     const [rangeStart, rangeEnd] = timeRange;
     const span = Math.max(1e-6, rangeEnd - rangeStart);
+    const snapTime = snapTick?.time ?? null;
 
     const mapTimeToX = useCallback(
         (time: number) => ((time + graphicalOffset - rangeStart) / span) * width,
@@ -333,17 +309,27 @@ export default function NoteLane({
     const buildGridTicks = useCallback((): GridTick[] => {
         const ticks: GridTick[] = [];
         const maxTime = Math.max(songDuration, rangeEnd);
+        let globalMeasureIndex = 0;
 
-        for (const segment of segments) {
+        for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+            const segment = segments[segmentIndex];
             if (!Number.isFinite(segment.tempo) || segment.tempo <= 0) continue;
             const beatDuration = 60 / segment.tempo;
-            for (let i = 0; i < segment.measures.length; i++) {
-                const measureStart = segment.time + i * beatDuration;
+            for (let measureIndex = 0; measureIndex < segment.measures.length; measureIndex++) {
+                const measureStart = segment.time + measureIndex * beatDuration;
                 if (
                     measureStart >= rangeStart - graphicalOffset - beatDuration &&
                     measureStart <= rangeEnd + beatDuration
                 ) {
-                    ticks.push({ time: measureStart, major: true });
+                    ticks.push({
+                        time: measureStart,
+                        major: true,
+                        globalMeasureIndex,
+                        segmentIndex,
+                        measureIndex,
+                        beat: 0,
+                        tempo: segment.tempo,
+                    });
                 }
                 for (let step = 1; step < safeSubdivision; step++) {
                     const t =
@@ -352,9 +338,18 @@ export default function NoteLane({
                         t >= rangeStart - graphicalOffset - beatDuration &&
                         t <= rangeEnd + beatDuration
                     ) {
-                        ticks.push({ time: t, major: false });
+                        ticks.push({
+                            time: t,
+                            major: false,
+                            globalMeasureIndex,
+                            segmentIndex,
+                            measureIndex,
+                            beat: step / safeSubdivision,
+                            tempo: segment.tempo,
+                        });
                     }
                 }
+                globalMeasureIndex++;
             }
         }
 
@@ -366,16 +361,25 @@ export default function NoteLane({
                 ? last.time + last.measures.length * (60 / last.tempo)
                 : 0;
 
+        let virtualMeasureIndex = globalMeasureIndex;
         for (
             let measureStart = virtualStart;
             measureStart <= maxTime + beatDuration;
-            measureStart += beatDuration
+            measureStart += beatDuration, virtualMeasureIndex++
         ) {
             if (
                 measureStart >= rangeStart - graphicalOffset - beatDuration &&
                 measureStart <= rangeEnd + beatDuration
             ) {
-                ticks.push({ time: measureStart, major: true });
+                ticks.push({
+                    time: measureStart,
+                    major: true,
+                    globalMeasureIndex: virtualMeasureIndex,
+                    segmentIndex: null,
+                    measureIndex: null,
+                    beat: 0,
+                    tempo: virtualTempo,
+                });
             }
             for (let step = 1; step < safeSubdivision; step++) {
                 const t =
@@ -384,7 +388,15 @@ export default function NoteLane({
                     t >= rangeStart - graphicalOffset - beatDuration &&
                     t <= rangeEnd + beatDuration
                 ) {
-                    ticks.push({ time: t, major: false });
+                    ticks.push({
+                        time: t,
+                        major: false,
+                        globalMeasureIndex: virtualMeasureIndex,
+                        segmentIndex: null,
+                        measureIndex: null,
+                        beat: step / safeSubdivision,
+                        tempo: virtualTempo,
+                    });
                 }
             }
         }
@@ -407,23 +419,24 @@ export default function NoteLane({
     );
 
     const majorTicks = useMemo(() => {
-        const unique: number[] = [];
+        const unique: GridTick[] = [];
         for (const tick of gridTicks) {
             if (!tick.major) continue;
             const isDuplicate = unique.some(
-                (t) => Math.abs(t - tick.time) <= 1e-6,
+                (t) => Math.abs(t.time - tick.time) <= 1e-6,
             );
             if (!isDuplicate) {
-                unique.push(tick.time);
+                unique.push(tick);
             }
         }
         return unique;
     }, [gridTicks]);
 
     const selectedMeasureRange = (() => {
-        if (selectedMeasureTime === null || selectedMeasureTime === undefined) {
+        if (selectedMeasureRef === null || selectedMeasureRef === undefined) {
             return null;
         }
+        let globalIndex = 0;
         for (const segment of segments) {
             if (!Number.isFinite(segment.tempo) || segment.tempo <= 0) {
                 continue;
@@ -434,53 +447,20 @@ export default function NoteLane({
                 measureIndex < segment.measures.length;
                 measureIndex++
             ) {
+                if (globalIndex !== selectedMeasureRef.globalIndex) {
+                    globalIndex++;
+                    continue;
+                }
                 const measureStart = segment.time + measureIndex * beatDuration;
                 const measureEnd = measureStart + beatDuration;
-                const isLastMeasure =
-                    segment === segments[segments.length - 1] &&
-                    measureIndex === segment.measures.length - 1;
-                if (
-                    selectedMeasureTime >= measureStart - 1e-6 &&
-                    (selectedMeasureTime < measureEnd - 1e-6 ||
-                        (isLastMeasure &&
-                            selectedMeasureTime <= measureEnd + 1e-6))
-                ) {
-                    return {
-                        start: measureStart,
-                        end: measureEnd,
-                    };
-                }
+                return {
+                    start: measureStart,
+                    end: measureEnd,
+                };
             }
         }
         return null;
     })();
-
-    const getTempoAtTime = useCallback(
-        (time: number): number => {
-            const sorted = [...segments].sort((a, b) => a.time - b.time);
-            for (let i = 0; i < sorted.length; i++) {
-                const seg = sorted[i];
-                if (!Number.isFinite(seg.tempo) || seg.tempo <= 0) continue;
-                if (seg.measures.length === 0) {
-                    const nextSeg = sorted[i + 1];
-                    if (
-                        time >= seg.time - 1e-6 &&
-                        (!nextSeg || time < nextSeg.time - 1e-6)
-                    ) {
-                        return seg.tempo;
-                    }
-                    continue;
-                }
-                const beatDuration = 60 / seg.tempo;
-                const end = seg.time + seg.measures.length * beatDuration;
-                if (time >= seg.time - 1e-6 && time < end - 1e-6) {
-                    return seg.tempo;
-                }
-            }
-            return Math.max(1, editState.currentBpm);
-        },
-        [editState.currentBpm, segments],
-    );
 
     const commitChart = useCallback(
         (next: ChartSegment[], saveUndo = true): boolean => {
@@ -524,17 +504,17 @@ export default function NoteLane({
         return out;
     }, [segments]);
 
-    const findNearestSnapTime = useCallback(
-        (time: number): number | null => {
+    const findNearestSnapTick = useCallback(
+        (time: number): GridTick | null => {
             if (gridTicks.length === 0) return null;
-            let best = gridTicks[0].time;
-            let bestDist = Math.abs(best - time);
+            let best = gridTicks[0];
+            let bestDist = Math.abs(best.time - time);
             for (let i = 1; i < gridTicks.length; i++) {
-                const t = gridTicks[i].time;
-                const dist = Math.abs(t - time);
+                const tick = gridTicks[i];
+                const dist = Math.abs(tick.time - time);
                 if (dist < bestDist) {
                     bestDist = dist;
-                    best = t;
+                    best = tick;
                 }
             }
             return best;
@@ -575,13 +555,13 @@ export default function NoteLane({
     );
 
     const resolveInsertTarget = useCallback(
-        (baseData: ChartSegment[], absoluteTime: number) => {
+        (baseData: ChartSegment[], tick: GridTick) => {
             const next = cloneChart(baseData);
             if (next.length === 0) {
                 next.push({
                     time: 0,
                     tempo: Math.max(1, editState.currentBpm),
-                    measures: [{ notes: [] }],
+                    measures: [],
                 });
             }
 
@@ -589,48 +569,82 @@ export default function NoteLane({
                 next[0].time = 0;
             }
 
-            const tailSegment = next[next.length - 1];
-            const tailBeatDuration = 60 / Math.max(1, tailSegment.tempo);
-            const tailEndTime =
-                tailSegment.time +
-                tailSegment.measures.length * tailBeatDuration;
-            const desiredTempo = Math.max(1, editState.currentBpm);
-            if (
-                absoluteTime >= tailEndTime &&
-                Math.abs(tailSegment.tempo - desiredTempo) > 1e-6
-            ) {
-                next.push({
-                    time: tailEndTime,
-                    tempo: desiredTempo,
-                    measures: [{ notes: [] }],
-                });
-            }
+            if (tick.segmentIndex !== null && tick.measureIndex !== null) {
+                let segmentIndex = tick.segmentIndex;
+                let measureIndex = tick.measureIndex;
+                let segment = next[segmentIndex];
 
-            let segmentIndex = 0;
-            for (let i = next.length - 1; i >= 0; i--) {
-                if (absoluteTime >= next[i].time - 1e-6) {
-                    segmentIndex = i;
-                    break;
+                if (!segment || !segment.measures[measureIndex]) {
+                    let remaining = tick.globalMeasureIndex;
+                    for (let s = 0; s < next.length; s++) {
+                        if (remaining < next[s].measures.length) {
+                            segmentIndex = s;
+                            measureIndex = remaining;
+                            segment = next[s];
+                            break;
+                        }
+                        remaining -= next[s].measures.length;
+                    }
+                }
+
+                if (segment && segment.measures[measureIndex]) {
+                    const tempo =
+                        Number.isFinite(segment.tempo) && segment.tempo > 0
+                            ? segment.tempo
+                            : Math.max(1, editState.currentBpm);
+                    const beatDuration = 60 / tempo;
+                    const measureStart = segment.time + measureIndex * beatDuration;
+                    return {
+                        chart: next,
+                        segmentIndex,
+                        measureIndex,
+                        beat: tick.beat,
+                        beatDuration,
+                        measureStart,
+                    };
                 }
             }
-            const segment = next[segmentIndex];
-            const tempo =
+
+            const desiredTempo = Math.max(1, editState.currentBpm);
+            let existingMeasures = 0;
+            for (const segment of next) {
+                existingMeasures += segment.measures.length;
+            }
+
+            let segmentIndex = next.length - 1;
+            let segment = next[segmentIndex];
+            const tailTempo =
                 Number.isFinite(segment.tempo) && segment.tempo > 0
                     ? segment.tempo
-                    : Math.max(1, editState.currentBpm);
-            const beatDuration = 60 / tempo;
-            const relative = Math.max(0, absoluteTime - segment.time);
-            const measureIndex = Math.floor(relative / beatDuration);
+                    : desiredTempo;
+            if (Math.abs(tailTempo - desiredTempo) > 1e-6) {
+                const tailEndTime =
+                    segment.time + segment.measures.length * (60 / tailTempo);
+                segment = {
+                    time: tailEndTime,
+                    tempo: desiredTempo,
+                    measures: [],
+                };
+                next.push(segment);
+                segmentIndex = next.length - 1;
+            }
+
+            const targetGlobalIndex = Math.max(
+                existingMeasures,
+                tick.globalMeasureIndex,
+            );
+            const measureIndex = targetGlobalIndex - existingMeasures;
             while (segment.measures.length <= measureIndex) {
                 segment.measures.push({ notes: [] });
             }
+
+            const beatDuration = 60 / Math.max(1, segment.tempo);
             const measureStart = segment.time + measureIndex * beatDuration;
-            const beat = (absoluteTime - measureStart) / beatDuration;
             return {
                 chart: next,
                 segmentIndex,
                 measureIndex,
-                beat,
+                beat: tick.beat,
                 beatDuration,
                 measureStart,
             };
@@ -916,7 +930,8 @@ export default function NoteLane({
         const centerY = height / 2;
 
         for (let i = 0; i < majorTicks.length; i++) {
-            const beatStart = majorTicks[i];
+            const tick = majorTicks[i];
+            const beatStart = tick.time;
             const x = mapTimeToX(beatStart);
             if (x < -20 || x > width + 20) continue;
             if (!isStartEndMode && hasStartOrEnd) {
@@ -924,15 +939,11 @@ export default function NoteLane({
                 const e = endTime ?? Infinity;
                 if (beatStart < s || beatStart > e) continue;
             }
-            const bpm = Math.round(getTempoAtTime(beatStart));
+            const bpm = Math.round(tick.tempo);
             ctx.fillStyle = "#cbd5e1";
             ctx.font = "10px sans-serif";
             ctx.textAlign = "left";
-            ctx.fillText(
-                `#${getAbsoluteMeasureIndex(beatStart, segments, editState.currentBpm)}`,
-                x + 2,
-                11,
-            );
+            ctx.fillText(`#${tick.globalMeasureIndex}`, x + 2, 11);
             ctx.fillStyle = "#94a3b8";
             if (bpmImageRef.current) {
                 ctx.drawImage(bpmImageRef.current, x + 2, height - 16, 12, 12);
@@ -1126,6 +1137,7 @@ export default function NoteLane({
         segments,
         renderValidationError,
         snapTime,
+        span,
         playheadTime,
         startTime,
         endTime,
@@ -1139,20 +1151,21 @@ export default function NoteLane({
             if (!rect)
                 return {
                     time: null as number | null,
+                    tick: null as GridTick | null,
                     note: null as NoteHit | null,
                 };
             const x = clientX - rect.left;
             const time = mapXToTime(Math.max(0, Math.min(rect.width, x)));
-            const snapped = findNearestSnapTime(time);
+            const snapped = findNearestSnapTick(time);
             const nearest = findNearestNote(time);
-            setSnapTime((prev) => (prev === snapped ? prev : snapped));
+            setSnapTick((prev) => (prev === snapped ? prev : snapped));
             const nextHoverId = nearest?.id ?? null;
             setHoverNoteId((prev) =>
                 prev === nextHoverId ? prev : nextHoverId,
             );
-            return { time: snapped, note: nearest };
+            return { time: snapped?.time ?? null, tick: snapped, note: nearest };
         },
-        [findNearestNote, findNearestSnapTime, mapXToTime],
+        [findNearestNote, findNearestSnapTick, mapXToTime],
     );
 
     const moveSelectedNotes = useCallback(
@@ -1231,7 +1244,8 @@ export default function NoteLane({
     );
 
     const handleLeftClickAtSnap = useCallback(
-        (time: number) => {
+        (tick: GridTick) => {
+            const time = tick.time;
             if (editState.mode === "browse") return;
             if (time < 0) return;
 
@@ -1250,11 +1264,11 @@ export default function NoteLane({
                 editState.mode === "insert-strong" ||
                 editState.mode === "insert-weak"
             ) {
-                const target = resolveInsertTarget(segments, time);
+                const target = resolveInsertTarget(segments, tick);
                 const note: ChartNote = {
                     id: generateNoteId(),
                     type: editState.mode === "insert-strong" ? 0 : 1,
-                    head: { a: Math.round(target.beat * 10000), b: 10000 },
+                    head: { a: Math.round(tick.beat * 10000), b: 10000 },
                 };
                 const insertKey = fractionKey(note.head);
                 const occupied = new Set(
@@ -1283,12 +1297,14 @@ export default function NoteLane({
             if (editState.mode === "insert-ln") {
                 if (isInsideExistingLn(time)) return;
                 if (editState.lnHeadTime === null) {
+                    setLnHeadTick(tick);
                     setEditState((prev) => ({ ...prev, lnHeadTime: time }));
                     return;
                 }
-                const start = Math.min(editState.lnHeadTime, time);
                 const end = Math.max(editState.lnHeadTime, time);
-                const target = resolveInsertTarget(segments, start);
+                const startTick =
+                    lnHeadTick && lnHeadTick.time <= tick.time ? lnHeadTick : tick;
+                const target = resolveInsertTarget(segments, startTick);
                 const startBeat = target.beat;
                 const endBeat =
                     (end - target.measureStart) / target.beatDuration;
@@ -1310,6 +1326,7 @@ export default function NoteLane({
                         .filter((k): k is string => k !== null),
                 );
                 if (insertKey && occupied.has(insertKey)) {
+                    setLnHeadTick(null);
                     setEditState((prev) => ({ ...prev, lnHeadTime: null }));
                     return;
                 }
@@ -1323,6 +1340,7 @@ export default function NoteLane({
                     editState.currentBpm,
                 );
                 if (commitChart(filled, true)) {
+                    setLnHeadTick(null);
                     setEditState((prev) => ({ ...prev, lnHeadTime: null }));
                 }
                 return;
@@ -1330,7 +1348,7 @@ export default function NoteLane({
 
             if (editState.mode === "paste") {
                 if (editState.clipboard.length === 0) return;
-                const target = resolveInsertTarget(segments, time);
+                const target = resolveInsertTarget(segments, tick);
                 const refHeadBeat = editState.clipboard.reduce(
                     (min, note) => {
                         const b = toBeatValue(note.head);
@@ -1380,7 +1398,7 @@ export default function NoteLane({
             }
 
             if (editState.mode === "insert-start") {
-                const target = resolveInsertTarget(segments, time);
+                const target = resolveInsertTarget(segments, tick);
                 for (const s of target.chart) {
                     for (const m of s.measures) {
                         m.notes = m.notes.filter(
@@ -1403,7 +1421,7 @@ export default function NoteLane({
             }
 
             if (editState.mode === "insert-end") {
-                const target = resolveInsertTarget(segments, time);
+                const target = resolveInsertTarget(segments, tick);
                 for (const s of target.chart) {
                     for (const m of s.measures) {
                         m.notes = m.notes.filter(
@@ -1428,13 +1446,16 @@ export default function NoteLane({
         [
             commitChart,
             editState.clipboard,
+            editState.currentBpm,
             editState.lnHeadTime,
             editState.mode,
+            endTime,
             isInsideExistingLn,
+            lnHeadTick,
             resolveInsertTarget,
-            safeSubdivision,
             segments,
             setEditState,
+            startTime,
         ],
     );
 
@@ -1493,8 +1514,8 @@ export default function NoteLane({
             if (e.button !== 0) return;
             onActivate?.();
             canvasRef.current?.focus();
-            const { time, note } = updatePointer(e.clientX);
-            if (time === null) return;
+            const { time, tick, note } = updatePointer(e.clientX);
+            if (time === null || tick === null) return;
 
             if (editState.mode === "annotate") {
                 // Hit-test annotation boxes (below each note)
@@ -1606,8 +1627,14 @@ export default function NoteLane({
                         setAnnotationBoxY(height / 2 + 20);
                         setAnnotationBoxWidth(boxW);
                     }
+                    const nextAnnotationValue = fullNote?.annotation ?? "";
+                    editingRef.current = {
+                        noteId: hitNoteId,
+                        text: nextAnnotationValue,
+                        saved: false,
+                    };
                     setAnnotationEditing(hitNoteId);
-                    setAnnotationInputValue(fullNote?.annotation ?? "");
+                    setAnnotationInputValue(nextAnnotationValue);
                 } else if (annotationEditing !== null) {
                     // Clicked outside — save and close
                     editingRef.current.saved = true;
@@ -1643,7 +1670,15 @@ export default function NoteLane({
                         time > (endTime ?? Infinity))
                 )
             ) {
-                onSelectMeasure?.(time);
+                onSelectMeasure?.(
+                    tick.segmentIndex !== null && tick.measureIndex !== null
+                        ? {
+                              globalIndex: tick.globalMeasureIndex,
+                              segmentIndex: tick.segmentIndex,
+                              measureIndex: tick.measureIndex,
+                          }
+                        : null,
+                );
             }
 
             if (editState.mode === "select") {
@@ -1718,7 +1753,7 @@ export default function NoteLane({
                 return;
             }
 
-            handleLeftClickAtSnap(time);
+            handleLeftClickAtSnap(tick);
         },
         [
             anchorSelectionId,
@@ -1743,6 +1778,7 @@ export default function NoteLane({
             updatePointer,
             onSelectMeasure,
             renderValidationError,
+            width,
         ],
     );
 
@@ -1857,12 +1893,30 @@ export default function NoteLane({
 
             if (matchesKeyShortcut("note.measure.insert", e.nativeEvent)) {
                 e.preventDefault();
-                onInsertMeasure?.(snapTimeRef.current ?? undefined);
+                const tick = snapTickRef.current;
+                onInsertMeasure?.(
+                    tick && tick.segmentIndex !== null && tick.measureIndex !== null
+                        ? {
+                              globalIndex: tick.globalMeasureIndex,
+                              segmentIndex: tick.segmentIndex,
+                              measureIndex: tick.measureIndex,
+                          }
+                        : undefined,
+                );
                 return;
             }
             if (matchesKeyShortcut("note.measure.delete", e.nativeEvent)) {
                 e.preventDefault();
-                onDeleteMeasure?.(snapTimeRef.current ?? undefined);
+                const tick = snapTickRef.current;
+                onDeleteMeasure?.(
+                    tick && tick.segmentIndex !== null && tick.measureIndex !== null
+                        ? {
+                              globalIndex: tick.globalMeasureIndex,
+                              segmentIndex: tick.segmentIndex,
+                              measureIndex: tick.measureIndex,
+                          }
+                        : undefined,
+                );
                 return;
             }
 
@@ -1955,10 +2009,11 @@ export default function NoteLane({
                 e.preventDefault();
                 const clipboard = editState.clipboard;
                 if (clipboard.length === 0) return;
-                const pasteTime =
-                    snapTimeRef.current ??
-                    (timeRange[0] + timeRange[1]) / 2;
-                const target = resolveInsertTarget(segments, pasteTime);
+                const pasteTick =
+                    snapTickRef.current ??
+                    findNearestSnapTick((timeRange[0] + timeRange[1]) / 2);
+                if (!pasteTick) return;
+                const target = resolveInsertTarget(segments, pasteTick);
                 const refHeadBeat = clipboard.reduce(
                     (min, note) => {
                         const b = toBeatValue(note.head);
@@ -2018,6 +2073,7 @@ export default function NoteLane({
             deleteById,
             editState.clipboard,
             editState.selectedIds,
+            findNearestSnapTick,
             hoverNoteId,
             isPlaybackFrozen,
             matchesKeyShortcut,
@@ -2084,6 +2140,7 @@ export default function NoteLane({
                             value={annotationInputValue}
                             onChange={(e) => {
                                 const val = e.target.value;
+                                editingRef.current.text = val;
                                 setAnnotationInputValue(val);
                                 const measureCtx = canvasRef.current?.getContext("2d");
                                 if (measureCtx) {

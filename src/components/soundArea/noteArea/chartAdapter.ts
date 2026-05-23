@@ -3,6 +3,7 @@ import {
     ChartNote,
     NoteLaneData,
     ChartSegment,
+    ChartMeasureRef,
     RawChartSegment,
     Fraction,
     isNoteBoundary,
@@ -380,6 +381,10 @@ function pickImportCandidate(raw: unknown): {
     chartData: unknown;
     defaultBpm?: unknown;
     division?: unknown;
+    startTime?: unknown;
+    endTime?: unknown;
+    dataVersion?: unknown;
+    isFolded?: unknown;
 } | null {
     if (Array.isArray(raw)) {
         return {
@@ -396,6 +401,10 @@ function pickImportCandidate(raw: unknown): {
             chartData: raw.lane.chartData,
             defaultBpm: raw.lane.defaultBpm,
             division: raw.lane.division,
+            startTime: raw.lane.startTime,
+            endTime: raw.lane.endTime,
+            dataVersion: raw.lane.dataVersion,
+            isFolded: raw.lane.isFolded,
         };
     }
 
@@ -404,6 +413,10 @@ function pickImportCandidate(raw: unknown): {
         defaultBpm:
             raw.defaultBpm !== undefined ? raw.defaultBpm : raw.currentBpm,
         division: raw.division,
+        startTime: raw.startTime,
+        endTime: raw.endTime,
+        dataVersion: raw.dataVersion,
+        isFolded: raw.isFolded,
     };
 }
 
@@ -477,7 +490,13 @@ export function parseImportedNoteLaneText(
         };
     }
 
-    const nextLane: NoteLaneData = {
+    const importedDataVersion =
+        candidate.dataVersion == null ? NaN : Number(candidate.dataVersion);
+    const importedStartTime =
+        candidate.startTime == null ? NaN : Number(candidate.startTime);
+    const importedEndTime =
+        candidate.endTime == null ? NaN : Number(candidate.endTime);
+    const nextLane = migrateNoteLaneData({
         id: currentLane.id,
         defaultBpm:
             Number.isFinite(Number(candidate.defaultBpm)) &&
@@ -490,7 +509,18 @@ export function parseImportedNoteLaneText(
                 ? Math.max(1, Math.floor(Number(candidate.division)))
                 : currentLane.division,
         chartData,
-    };
+        startTime: Number.isFinite(importedStartTime)
+            ? importedStartTime
+            : undefined,
+        endTime: Number.isFinite(importedEndTime) ? importedEndTime : undefined,
+        isFolded:
+            typeof candidate.isFolded === "boolean"
+                ? candidate.isFolded
+                : currentLane.isFolded,
+        dataVersion: Number.isFinite(importedDataVersion)
+            ? Math.floor(importedDataVersion)
+            : undefined,
+    });
 
     const validationError = validateNoteLaneData(nextLane);
     if (validationError) {
@@ -697,31 +727,47 @@ interface MeasureChunk {
     measures: ChartMeasure[];
 }
 
-function locateSegmentMeasureAtTime(
+export interface LocatedChartMeasure extends ChartMeasureRef {
+    tempo: number;
+    measureStart: number;
+    measure: ChartMeasure;
+}
+
+export function locateMeasureByGlobalIndex(
     chartData: ChartSegment[],
-    time: number,
-): { segmentIndex: number; measureIndex: number; measureStart: number } | null {
-    if (!Number.isFinite(time)) return null;
-    const sorted = [...chartData].sort((a, b) => a.time - b.time);
-    for (let s = 0; s < sorted.length; s++) {
-        const seg = sorted[s];
-        const tempo = Number.isFinite(seg.tempo) && seg.tempo > 0 ? seg.tempo : 120;
-        const beatDuration = 60 / tempo;
-        for (let m = 0; m < seg.measures.length; m++) {
-            const measureStart = seg.time + m * beatDuration;
-            const measureEnd = measureStart + beatDuration;
-            const isLastMeasure =
-                s === sorted.length - 1 && m === seg.measures.length - 1;
-            if (
-                time >= measureStart - 1e-6 &&
-                (time < measureEnd - 1e-6 ||
-                    (isLastMeasure && time <= measureEnd + 1e-6))
-            ) {
-                return { segmentIndex: s, measureIndex: m, measureStart };
-            }
+    globalIndex: number,
+): LocatedChartMeasure | null {
+    if (!Number.isInteger(globalIndex) || globalIndex < 0) return null;
+
+    let cumulative = 0;
+    for (let s = 0; s < chartData.length; s++) {
+        const seg = chartData[s];
+        const tempo =
+            Number.isFinite(seg.tempo) && seg.tempo > 0 ? seg.tempo : 120;
+        const measureCount = seg.measures.length;
+        if (globalIndex < cumulative + measureCount) {
+            const measureIndex = globalIndex - cumulative;
+            return {
+                globalIndex,
+                segmentIndex: s,
+                measureIndex,
+                tempo,
+                measureStart: seg.time + measureIndex * (60 / tempo),
+                measure: seg.measures[measureIndex],
+            };
         }
+        cumulative += measureCount;
     }
+
     return null;
+}
+
+export function locateMeasureByRef(
+    chartData: ChartSegment[],
+    ref: ChartMeasureRef | null | undefined,
+): LocatedChartMeasure | null {
+    if (!ref) return null;
+    return locateMeasureByGlobalIndex(chartData, ref.globalIndex);
 }
 
 function rebuildChartSegments(chunks: MeasureChunk[], initialTime: number): ChartSegment[] {
@@ -741,83 +787,58 @@ function rebuildChartSegments(chunks: MeasureChunk[], initialTime: number): Char
     return rebuilt;
 }
 
-export function insertMeasureAtTime(
+export function insertMeasureAtRef(
     chartData: ChartSegment[],
-    time: number,
-    defaultBpm: number,
+    ref: ChartMeasureRef | null | undefined,
 ): ChartSegment[] | null {
-    const safeBpm = Math.max(1, Math.floor(defaultBpm));
-    if (chartData.length === 0) {
-        return [{ time: 0, tempo: safeBpm, measures: [{ notes: [] }] }];
-    }
-
-    const sorted = [...chartData].sort((a, b) => a.time - b.time);
-    const located = locateSegmentMeasureAtTime(sorted, time);
-    const chunks: MeasureChunk[] = [];
-    const initialTime = sorted[0]?.time ?? 0;
-
-    if (!located) {
-        let inserted = false;
-        for (const seg of sorted) {
-            const segTempo = Math.max(1, Math.floor(seg.tempo));
-            if (seg.measures.length === 0) continue;
-            if (!inserted && time < seg.time - 1e-6) {
-                const lastChunk = chunks[chunks.length - 1];
-                if (lastChunk && Math.abs(lastChunk.tempo - safeBpm) < 1e-6) {
-                    lastChunk.measures.push({ notes: [] });
-                } else {
-                    chunks.push({ tempo: safeBpm, measures: [{ notes: [] }] });
-                }
-                inserted = true;
-            }
-            chunks.push({ tempo: segTempo, measures: seg.measures });
-        }
-        if (!inserted) {
-            chunks.push({ tempo: safeBpm, measures: [{ notes: [] }] });
-        }
-    } else {
-        for (let s = 0; s < sorted.length; s++) {
-            const seg = sorted[s];
-            const segTempo = Math.max(1, Math.floor(seg.tempo));
-            if (seg.measures.length === 0) continue;
-            if (s !== located.segmentIndex) {
-                chunks.push({ tempo: segTempo, measures: seg.measures });
-                continue;
-            }
-            const before = seg.measures.slice(0, located.measureIndex + 1);
-            const after = seg.measures.slice(located.measureIndex + 1);
-            if (before.length > 0) {
-                chunks.push({ tempo: segTempo, measures: before });
-            }
-            chunks.push({ tempo: segTempo, measures: [{ notes: [] }] });
-            if (after.length > 0) {
-                chunks.push({ tempo: segTempo, measures: after });
-            }
-        }
-    }
-
-    return removeTrailingEmptyMeasures(rebuildChartSegments(chunks, initialTime));
-}
-
-export function deleteMeasureAtTime(
-    chartData: ChartSegment[],
-    time: number,
-): ChartSegment[] | null {
-    const sorted = [...chartData].sort((a, b) => a.time - b.time);
-    const located = locateSegmentMeasureAtTime(sorted, time);
+    const located = locateMeasureByRef(chartData, ref);
     if (!located) return null;
 
     const chunks: MeasureChunk[] = [];
-    const initialTime = sorted[0]?.time ?? 0;
+    const initialTime = chartData[0]?.time ?? 0;
 
-    for (let s = 0; s < sorted.length; s++) {
-        const seg = sorted[s];
+    for (let s = 0; s < chartData.length; s++) {
+        const seg = chartData[s];
         const segTempo = Math.max(1, Math.floor(seg.tempo));
         if (seg.measures.length === 0) continue;
         if (s !== located.segmentIndex) {
             chunks.push({ tempo: segTempo, measures: seg.measures });
             continue;
         }
+
+        const before = seg.measures.slice(0, located.measureIndex + 1);
+        const after = seg.measures.slice(located.measureIndex + 1);
+        if (before.length > 0) {
+            chunks.push({ tempo: segTempo, measures: before });
+        }
+        chunks.push({ tempo: segTempo, measures: [{ notes: [] }] });
+        if (after.length > 0) {
+            chunks.push({ tempo: segTempo, measures: after });
+        }
+    }
+
+    return removeTrailingEmptyMeasures(rebuildChartSegments(chunks, initialTime));
+}
+
+export function deleteMeasureAtRef(
+    chartData: ChartSegment[],
+    ref: ChartMeasureRef | null | undefined,
+): ChartSegment[] | null {
+    const located = locateMeasureByRef(chartData, ref);
+    if (!located) return null;
+
+    const chunks: MeasureChunk[] = [];
+    const initialTime = chartData[0]?.time ?? 0;
+
+    for (let s = 0; s < chartData.length; s++) {
+        const seg = chartData[s];
+        const segTempo = Math.max(1, Math.floor(seg.tempo));
+        if (seg.measures.length === 0) continue;
+        if (s !== located.segmentIndex) {
+            chunks.push({ tempo: segTempo, measures: seg.measures });
+            continue;
+        }
+
         const before = seg.measures.slice(0, located.measureIndex);
         const after = seg.measures.slice(located.measureIndex + 1);
         if (before.length > 0) {
@@ -830,7 +851,7 @@ export function deleteMeasureAtTime(
 
     let rebuilt = rebuildChartSegments(chunks, initialTime);
     if (rebuilt.length === 0) {
-        const fallbackBpm = Math.max(1, Math.floor(sorted[0]?.tempo ?? 120));
+        const fallbackBpm = Math.max(1, Math.floor(chartData[0]?.tempo ?? 120));
         rebuilt = [{ time: 0, tempo: fallbackBpm, measures: [{ notes: [] }] }];
     }
     return removeTrailingEmptyMeasures(rebuilt);
@@ -872,7 +893,15 @@ function addBoundaryNoteToChartData(
         Number.isFinite(seg.tempo) && seg.tempo > 0 ? seg.tempo : Math.max(1, defaultBpm);
     const bd = 60 / tempo;
     const rel = Math.max(0, time - seg.time);
-    const measureIdx = Math.floor(rel / bd);
+    // Legacy startTime/endTime migration is the only time-based measure lookup.
+    const rawMeasureIdx = rel / bd;
+    const roundedMeasureIdx = Math.round(rawMeasureIdx);
+    const measureIdx = Math.max(
+        0,
+        Math.abs(rawMeasureIdx - roundedMeasureIdx) <= 1e-6
+            ? roundedMeasureIdx
+            : Math.floor(rawMeasureIdx),
+    );
 
     while (seg.measures.length <= measureIdx) {
         seg.measures.push({ notes: [] });
@@ -896,28 +925,31 @@ function addBoundaryNoteToChartData(
 }
 
 export function migrateNoteLaneData(lane: NoteLaneData): NoteLaneData {
-    // Normalize empty segments — always run regardless of dataVersion.
-    // Segments with measures:[] should have at least one empty measure so
-    // that rendering / index / BPM lookup functions see them.
-    let chartData = lane.chartData;
-    let hasEmpty = false;
-    for (const seg of chartData) {
-        if (seg.measures.length === 0) {
-            hasEmpty = true;
-            break;
-        }
-    }
-    if (hasEmpty) {
-        chartData = chartData.map((seg) =>
-            seg.measures.length === 0
-                ? { ...seg, measures: [{ notes: [] }] }
-                : seg,
-        );
-    }
+    // Normalize old or hand-edited lanes before interpreting derived times.
+    // Segment.time is never source data; rebuild it from BPM and list order.
+    const chartData = recomputeSegmentTimes(
+        (Array.isArray(lane.chartData) ? lane.chartData : []).map((seg) => ({
+            tempo: seg.tempo,
+            measures:
+                Array.isArray(seg.measures) && seg.measures.length > 0
+                    ? seg.measures.map((m) => ({
+                          notes: Array.isArray(m.notes) ? [...m.notes] : [],
+                      }))
+                    : [{ notes: [] }],
+        })),
+    );
 
     const normalized: NoteLaneData = { ...lane, chartData };
 
-    if (normalized.dataVersion && normalized.dataVersion >= 2) {
+    const hasLegacyBoundaryTimes =
+        (normalized.startTime !== null && normalized.startTime !== undefined) ||
+        (normalized.endTime !== null && normalized.endTime !== undefined);
+
+    if (
+        !hasLegacyBoundaryTimes &&
+        normalized.dataVersion &&
+        normalized.dataVersion >= 2
+    ) {
         return normalized;
     }
 

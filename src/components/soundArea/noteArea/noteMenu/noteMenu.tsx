@@ -61,8 +61,8 @@ interface _p {
     lastError: string | null;
     noteLaneOffset: number;
     setNoteLaneOffset: (v: number) => void;
-    onInsertMeasure: (time?: number) => void;
-    onDeleteMeasure: (time?: number) => void;
+    onInsertMeasure: () => void;
+    onDeleteMeasure: () => void;
     onEditSave: (text: string) => string | null;
     getEditText: () => string;
 }

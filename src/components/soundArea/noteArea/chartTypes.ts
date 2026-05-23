@@ -30,6 +30,15 @@ export interface ChartMeasure {
     notes: ChartNote[];
 }
 
+export interface ChartMeasureRef {
+    /** 0-based measure index across the note lane's chartData list. */
+    globalIndex: number;
+    /** Segment index in the current chartData list, used as a fast path only. */
+    segmentIndex: number;
+    /** Measure index inside segmentIndex, used as a fast path only. */
+    measureIndex: number;
+}
+
 export interface ChartSegment {
     time: number;
     tempo: number;
