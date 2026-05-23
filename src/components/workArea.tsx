@@ -39,6 +39,12 @@ const LIMITED_PLAYBACK_FPS = 15;
 const LIMITED_PLAYBACK_INTERVAL_MS = 1000 / LIMITED_PLAYBACK_FPS;
 const FROZEN_TIME_RANGE: [number, number] = [0, 0];
 
+function formatLocalExportTimestamp(date: Date): string {
+    const pad = (value: number) => String(value).padStart(2, "0");
+
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
+}
+
 type LaneWheelEvent = Pick<
     WheelEvent,
     "deltaY" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey" | "target"
@@ -362,7 +368,7 @@ export default function WorkArea() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+        const ts = formatLocalExportTimestamp(new Date());
         a.download = `explicitize-${ts}.7z`;
         document.body.appendChild(a);
         a.click();
