@@ -14,6 +14,7 @@ interface _p {
     setSpectrumState: (state: SpectrumLaneState) => void;
     cursorTime?: number | null;
     playheadTime?: number | null;
+    isPlaybackFrozen?: boolean;
 }
 
 interface SpectrumFrameCache {
@@ -44,6 +45,22 @@ function clamp01(v: number): number {
 
 function clampNumber(v: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, v));
+}
+
+const FROZEN_BACKGROUND = "#e2e8f0";
+
+function renderFrozenBackground(
+    canvas: HTMLCanvasElement,
+    width: number,
+    height: number,
+) {
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
+    canvas.style.height = `${height}px`;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = FROZEN_BACKGROUND;
+    ctx.fillRect(0, 0, width, height);
 }
 
 function getResolutionTargets(scale: number): ResolutionTargets {
@@ -330,8 +347,17 @@ function SpectrumLane(p: _p) {
     // ======== 绘制 ========
 
     useEffect(() => {
-        if (!ready) return;
         if (!canvasRef.current) return;
+        if (p.isPlaybackFrozen) {
+            renderFrozenBackground(
+                canvasRef.current,
+                canvasWidth,
+                renderHeightRef.current,
+            );
+            prevDrawRef.current = null;
+            return;
+        }
+        if (!ready) return;
         const layers = Object.values(cacheRef.current);
         if (!layers.length) return;
 
@@ -498,6 +524,7 @@ function SpectrumLane(p: _p) {
     }, [
         p.timeRange,
         ready,
+        p.isPlaybackFrozen,
         contrast,
         brightnessOffset,
         resolutionScale,
@@ -511,6 +538,17 @@ function SpectrumLane(p: _p) {
         if (!cursorCanvas) return;
         const mainCanvas = canvasRef.current;
         if (!mainCanvas) return;
+        if (p.isPlaybackFrozen) {
+            if (cursorCanvas.width !== mainCanvas.width) {
+                cursorCanvas.width = mainCanvas.width;
+            }
+            if (cursorCanvas.height !== mainCanvas.height) {
+                cursorCanvas.height = mainCanvas.height;
+            }
+            const ctx = cursorCanvas.getContext("2d");
+            ctx?.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+            return;
+        }
         const cursorTime = p.cursorTime;
         const w = mainCanvas.width;
         const h = renderHeightRef.current;
@@ -546,7 +584,7 @@ function SpectrumLane(p: _p) {
                 ctx.stroke();
             }
         }
-    }, [p.cursorTime, p.playheadTime, p.timeRange, canvasWidth, layerVersion]);
+    }, [p.cursorTime, p.playheadTime, p.timeRange, canvasWidth, layerVersion, p.isPlaybackFrozen]);
 
     return (
         <div style={{ position: "relative", lineHeight: 0 }}>

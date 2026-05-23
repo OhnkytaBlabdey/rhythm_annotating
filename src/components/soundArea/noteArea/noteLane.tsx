@@ -43,6 +43,7 @@ interface NoteLaneProps {
     laneId: string;
     graphicalOffset?: number;
     playheadTime?: number | null;
+    isPlaybackFrozen?: boolean;
     onInsertMeasure?: (time?: number) => void;
     onDeleteMeasure?: (time?: number) => void;
 }
@@ -102,6 +103,7 @@ const TYPE_COLORS = [
     "#0ea5e9",
     "#a855f7",
 ];
+const FROZEN_BACKGROUND = "#e2e8f0";
 
 function toBeatValue(input: Fraction | undefined): number | null {
     if (
@@ -238,6 +240,7 @@ export default function NoteLane({
     onInsertMeasure,
     onDeleteMeasure,
     playheadTime,
+    isPlaybackFrozen = false,
 }: NoteLaneProps) {
     const { matchesKeyShortcut } = useAppSettings();
     const wrapperRef = useRef<HTMLDivElement>(null);
@@ -398,7 +401,10 @@ export default function NoteLane({
         songDuration,
     ]);
 
-    const gridTicks = useMemo(() => buildGridTicks(), [buildGridTicks]);
+    const gridTicks = useMemo(
+        () => (isPlaybackFrozen ? [] : buildGridTicks()),
+        [buildGridTicks, isPlaybackFrozen],
+    );
 
     const majorTicks = useMemo(() => {
         const unique: number[] = [];
@@ -692,6 +698,12 @@ export default function NoteLane({
 
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
         ctx.clearRect(0, 0, width, height);
+
+        if (isPlaybackFrozen) {
+            ctx.fillStyle = FROZEN_BACKGROUND;
+            ctx.fillRect(0, 0, width, height);
+            return;
+        }
 
         if (renderValidationError) {
             ctx.fillStyle = "#1f1720";
@@ -1103,6 +1115,7 @@ export default function NoteLane({
         gridTicks,
         height,
         hoverNoteId,
+        isPlaybackFrozen,
         mapTimeToX,
         rangeEnd,
         rangeStart,
@@ -1427,6 +1440,9 @@ export default function NoteLane({
 
     const handleMouseMove = useCallback(
         (e: MouseEvent<HTMLCanvasElement>) => {
+            if (isPlaybackFrozen) {
+                return;
+            }
             if (renderValidationError) {
                 return;
             }
@@ -1457,6 +1473,7 @@ export default function NoteLane({
             commitChart,
             dragState,
             endTime,
+            isPlaybackFrozen,
             moveSelectedNotes,
             renderValidationError,
             songDuration,
@@ -1467,6 +1484,9 @@ export default function NoteLane({
 
     const handleMouseDown = useCallback(
         (e: MouseEvent<HTMLCanvasElement>) => {
+            if (isPlaybackFrozen) {
+                return;
+            }
             if (renderValidationError) {
                 return;
             }
@@ -1709,6 +1729,7 @@ export default function NoteLane({
             editState.selectedIds,
             handleLeftClickAtSnap,
             height,
+            isPlaybackFrozen,
             mapTimeToX,
             noteHits,
             onActivate,
@@ -1726,6 +1747,9 @@ export default function NoteLane({
     );
 
     const handleMouseUp = useCallback(() => {
+        if (isPlaybackFrozen) {
+            return;
+        }
         if (dragState) {
             const lowerBound = Math.max(
                 0,
@@ -1750,10 +1774,13 @@ export default function NoteLane({
             commitChart(moved, true);
             setDragState(null);
         }
-    }, [commitChart, dragState, endTime, moveSelectedNotes, snapTime, songDuration, startTime]);
+    }, [commitChart, dragState, endTime, isPlaybackFrozen, moveSelectedNotes, snapTime, songDuration, startTime]);
 
     const handleContextMenu = useCallback(
         (e: MouseEvent<HTMLCanvasElement>) => {
+            if (isPlaybackFrozen) {
+                return;
+            }
             if (renderValidationError) {
                 return;
             }
@@ -1764,11 +1791,14 @@ export default function NoteLane({
                 deleteById(new Set<string>([note.id]));
             }
         },
-        [deleteById, editState.mode, renderValidationError, updatePointer],
+        [deleteById, editState.mode, isPlaybackFrozen, renderValidationError, updatePointer],
     );
 
     const handleKeyDown = useCallback(
         (e: KeyboardEvent<HTMLCanvasElement>) => {
+            if (isPlaybackFrozen) {
+                return;
+            }
             if (annotationEditing !== null) return;
 
             const modeActions: Array<{
@@ -1989,6 +2019,7 @@ export default function NoteLane({
             editState.clipboard,
             editState.selectedIds,
             hoverNoteId,
+            isPlaybackFrozen,
             matchesKeyShortcut,
             onInsertMeasure,
             onDeleteMeasure,
@@ -2004,8 +2035,12 @@ export default function NoteLane({
     );
 
     useEffect(() => {
-        onSnapTimeChange?.(snapTime !== null ? snapTime + graphicalOffset : null);
-    }, [onSnapTimeChange, snapTime, graphicalOffset]);
+        onSnapTimeChange?.(
+            !isPlaybackFrozen && snapTime !== null
+                ? snapTime + graphicalOffset
+                : null,
+        );
+    }, [onSnapTimeChange, snapTime, graphicalOffset, isPlaybackFrozen]);
 
     return (
         <div
@@ -2024,7 +2059,7 @@ export default function NoteLane({
                     onKeyDown={handleKeyDown}
                     tabIndex={0}
                 />
-                {renderValidationError && (
+                {!isPlaybackFrozen && renderValidationError && (
                     <div className={style.noteLaneOverlay}>
                         <div className={style.noteLaneOverlayTitle}>
                             渲染已暂停
@@ -2034,7 +2069,7 @@ export default function NoteLane({
                         </div>
                     </div>
                 )}
-                {annotationEditing !== null && (
+                {!isPlaybackFrozen && annotationEditing !== null && (
                     <div
                         className={style.annotationOverlay}
                         style={{

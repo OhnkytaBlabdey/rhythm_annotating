@@ -9,6 +9,7 @@ interface _p {
     setWaveState: (state: WaveLaneState) => void;
     cursorTime?: number | null;
     playheadTime?: number | null;
+    isPlaybackFrozen?: boolean;
 }
 
 interface WaveformCache {
@@ -99,6 +100,13 @@ function renderWaveToCanvas(
 }
 
 const WAVELANE_TOTAL_HEIGHT = 110;
+const FROZEN_BACKGROUND = "#e2e8f0";
+
+function renderFrozenBackground(ctx: CanvasRenderingContext2D) {
+    const canvas = ctx.canvas;
+    ctx.fillStyle = FROZEN_BACKGROUND;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
 
 function WaveLane(p: _p) {
     const CANVAS_PHYSICAL_WIDTH = 1200;
@@ -189,6 +197,14 @@ function WaveLane(p: _p) {
      * 幅度倍数变化时，触发缓存更新
      */
     useEffect(() => {
+        if (p.isPlaybackFrozen) {
+            const ctx = canvasRef.current?.getContext("2d");
+            if (ctx) {
+                renderFrozenBackground(ctx);
+            }
+            return;
+        }
+
         if (!isCacheReady) return;
         // 只要依赖变化就强制重绘
         if (canvasRef.current && waveformCacheRef.current) {
@@ -245,7 +261,7 @@ function WaveLane(p: _p) {
                 }
             }
         }
-    }, [isCacheReady, p.waveState.amplitudeMultiplier, p.waveState.offset, p.timeRange, p.cursorTime, p.playheadTime]);
+    }, [isCacheReady, p.waveState.amplitudeMultiplier, p.waveState.offset, p.timeRange, p.cursorTime, p.playheadTime, p.isPlaybackFrozen]);
 
     /**
      * 时间范围/缓存就绪时实时重绘（仅使用缓存，不涉及计算）

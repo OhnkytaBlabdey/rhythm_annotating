@@ -35,6 +35,9 @@ import {
 
 
 const WHEEL_PAN_RATIO = 0.05;
+const LIMITED_PLAYBACK_FPS = 15;
+const LIMITED_PLAYBACK_INTERVAL_MS = 1000 / LIMITED_PLAYBACK_FPS;
+const FROZEN_TIME_RANGE: [number, number] = [0, 0];
 
 type LaneWheelEvent = Pick<
     WheelEvent,
@@ -62,6 +65,9 @@ export default function WorkArea() {
     const [audioDataList, setAudioDataList] = useState<AudioData[]>([]);
     const [activeSoundLaneId, setActiveSoundLaneId] = useState<string | null>(null);
     const [hasHydratedProject, setHasHydratedProject] = useState(false);
+    const [limitedPlaybackTime, setLimitedPlaybackTime] = useState(
+        () => objProject.currentTime,
+    );
     const workAreaRef = useRef<HTMLDivElement | null>(null);
     const editorLaneCardRef = useRef<HTMLDivElement | null>(null);
     const wheelUpdateGuardRef = useRef(false);
@@ -433,6 +439,25 @@ export default function WorkArea() {
         [objProject.isPlaying, objProject.currentTime],
     );
 
+    const limitedLaneTimeRange = useMemo((): [number, number] => {
+        if (objProject.isPlaying) {
+            const laneStart = limitedPlaybackTime - objProject.playheadOffset;
+            return [laneStart, laneStart + visibleSpan];
+        }
+        return [clampedCurrentTime, clampedCurrentTime + visibleSpan];
+    }, [
+        objProject.isPlaying,
+        limitedPlaybackTime,
+        objProject.playheadOffset,
+        visibleSpan,
+        clampedCurrentTime,
+    ]);
+
+    const limitedPlayheadTime = useMemo(
+        () => (objProject.isPlaying ? limitedPlaybackTime : null),
+        [objProject.isPlaying, limitedPlaybackTime],
+    );
+
     const sortedLaneEntries = useMemo(() => {
         const entries = audioDataList.map((audio, i) => ({
             audio,
@@ -446,6 +471,55 @@ export default function WorkArea() {
         });
         return sorted;
     }, [audioDataList, objProject.soundLaneStates]);
+
+    const audibleAudioIds = useMemo(() => {
+        const activeIds = objProject.soundLaneStates
+            .filter((state) => state?.isActive)
+            .map((state) => state.audioId);
+        if (activeIds.length > 0) {
+            return new Set(activeIds);
+        }
+        return new Set(audioDataList.map((audio) => audio.id));
+    }, [audioDataList, objProject.soundLaneStates]);
+
+    const fullRateAudioId = useMemo(() => {
+        if (!objProject.isPlaying) return null;
+        const topAudible = sortedLaneEntries.find((entry) =>
+            audibleAudioIds.has(entry.audio.id),
+        );
+        return topAudible?.audio.id ?? null;
+    }, [audibleAudioIds, objProject.isPlaying, sortedLaneEntries]);
+
+    useEffect(() => {
+        if (objProject.isPlaying) return;
+        setLimitedPlaybackTime(objProject.currentTime);
+    }, [objProject.currentTime, objProject.isPlaying]);
+
+    useEffect(() => {
+        if (!objProject.isPlaying) return;
+
+        let rafId: number | null = null;
+        let lastCommit = 0;
+
+        const tick = (timestamp: number) => {
+            if (
+                lastCommit === 0 ||
+                timestamp - lastCommit >= LIMITED_PLAYBACK_INTERVAL_MS
+            ) {
+                lastCommit = timestamp;
+                setLimitedPlaybackTime(latestProjectRef.current.currentTime);
+            }
+            rafId = requestAnimationFrame(tick);
+        };
+
+        rafId = requestAnimationFrame(tick);
+
+        return () => {
+            if (rafId !== null) {
+                cancelAnimationFrame(rafId);
+            }
+        };
+    }, [objProject.isPlaying]);
 
     useEffect(() => {
         if (!hasHydratedSettings) return;
@@ -682,23 +756,55 @@ export default function WorkArea() {
                     >
                         <div className="editor-lane-card" ref={editorLaneCardRef}>
                             <div className="flex flex-col gap-4">
-                                {sortedLaneEntries.map((entry) => (
-                                    <SoundLane
-                                        key={`audio-${entry.audio.id}`}
-                                        index={entry.index}
-                                        audioId={entry.audio.id}
-                                        refSoundLaneState={
-                                            objProject.soundLaneStates[entry.index]
-                                        }
-                                        setSoundLaneState={
-                                            setIndexSoundLaneState
-                                        }
-                                        timeRange={laneTimeRange}
-                                        playheadTime={entry.state?.isActive ? playheadTime : null}
-                                        onActivate={setActiveSoundLaneId}
-                                        onDeleteSoundLane={removeAudioData}
-                                    />
-                                ))}
+                                {sortedLaneEntries.map((entry) => {
+                                    const isAudible = audibleAudioIds.has(
+                                        entry.audio.id,
+                                    );
+                                    const playbackRenderMode = !objProject.isPlaying
+                                        ? "idle"
+                                        : !isAudible
+                                          ? "frozen"
+                                          : entry.audio.id === fullRateAudioId
+                                            ? "full"
+                                            : "limited";
+                                    const renderTimeRange =
+                                        playbackRenderMode === "frozen"
+                                            ? FROZEN_TIME_RANGE
+                                            : playbackRenderMode === "limited"
+                                              ? limitedLaneTimeRange
+                                              : laneTimeRange;
+                                    const renderPlayheadTime =
+                                        playbackRenderMode === "frozen"
+                                            ? null
+                                            : playbackRenderMode === "limited"
+                                              ? limitedPlayheadTime
+                                              : isAudible
+                                                ? playheadTime
+                                                : null;
+
+                                    return (
+                                        <SoundLane
+                                            key={`audio-${entry.audio.id}`}
+                                            index={entry.index}
+                                            audioId={entry.audio.id}
+                                            refSoundLaneState={
+                                                objProject.soundLaneStates[
+                                                    entry.index
+                                                ]
+                                            }
+                                            setSoundLaneState={
+                                                setIndexSoundLaneState
+                                            }
+                                            timeRange={renderTimeRange}
+                                            playheadTime={renderPlayheadTime}
+                                            playbackRenderMode={
+                                                playbackRenderMode
+                                            }
+                                            onActivate={setActiveSoundLaneId}
+                                            onDeleteSoundLane={removeAudioData}
+                                        />
+                                    );
+                                })}
                             </div>
                         </div>
                     </div>

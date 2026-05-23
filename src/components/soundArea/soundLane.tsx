@@ -41,12 +41,14 @@ import { convertToMalody } from "@/lib/malodyExport";
 import { convertToSus } from "@/lib/susExport";
 
 const MAX_UNDO = 50;
+type PlaybackRenderMode = "idle" | "full" | "limited" | "frozen";
 
 interface _prop {
     index: number;
     audioId: string;
     timeRange: [number, number];
     playheadTime?: number | null;
+    playbackRenderMode: PlaybackRenderMode;
     refSoundLaneState: SoundLaneState;
     setSoundLaneState: (i: number, state: SoundLaneState) => void;
     onActivate?: (audioId: string) => void;
@@ -56,6 +58,7 @@ interface _prop {
 export default function SoundLane(prop: _prop) {
     const audioDataList = useContext(AudioDataCtx);
     const audioData = audioDataList.find((a) => a.id === prop.audioId);
+    const isPlaybackFrozen = prop.playbackRenderMode === "frozen";
 
     const noteLanes = useMemo(
         () =>
@@ -106,6 +109,9 @@ export default function SoundLane(prop: _prop) {
         const others = noteLanes.filter((l) => l.id !== resolvedActiveLaneId);
         return active ? [active, ...others] : [...noteLanes];
     }, [noteLanes, resolvedActiveLaneId]);
+
+    const renderCursorTime = isPlaybackFrozen ? null : cursorTime;
+    const renderPlayheadTime = isPlaybackFrozen ? null : prop.playheadTime;
 
     const laneSnapHandlers = useMemo(() => {
         const handlers: Record<string, (time: number | null) => void> = {};
@@ -948,6 +954,14 @@ export default function SoundLane(prop: _prop) {
         <div
             className="SoundLane flex flex-col gap-2 rounded-[26px] border border-[var(--editor-border)] bg-[var(--editor-surface)] px-4 pt-2 pb-2 shadow-[0_12px_34px_rgba(53,36,19,0.06)] cursor-pointer"
             onClick={handleClickToActivate}
+            style={
+                isPlaybackFrozen
+                    ? {
+                          background:
+                              "linear-gradient(180deg, rgba(226, 232, 240, 0.92), rgba(203, 213, 225, 0.72))",
+                      }
+                    : undefined
+            }
         >
             <div className="w-auto">
                 <SoundFileTitleBar
@@ -1011,8 +1025,9 @@ export default function SoundLane(prop: _prop) {
                                         waveLane,
                                     });
                                 }}
-                                cursorTime={cursorTime}
-                                playheadTime={prop.playheadTime}
+                                cursorTime={renderCursorTime}
+                                playheadTime={renderPlayheadTime}
+                                isPlaybackFrozen={isPlaybackFrozen}
                             />
                         )}
                     </div>
@@ -1066,8 +1081,9 @@ export default function SoundLane(prop: _prop) {
                                         spectrumLane,
                                     });
                                 }}
-                                cursorTime={cursorTime}
-                                playheadTime={prop.playheadTime}
+                                cursorTime={renderCursorTime}
+                                playheadTime={renderPlayheadTime}
+                                isPlaybackFrozen={isPlaybackFrozen}
                             />
                         </div>
                     </div>
@@ -1204,7 +1220,8 @@ export default function SoundLane(prop: _prop) {
                                     setChartData={setChartData}
                                     timeRange={prop.timeRange}
                                     graphicalOffset={prop.refSoundLaneState.noteLaneOffset ?? 0}
-                                    playheadTime={prop.playheadTime}
+                                    playheadTime={renderPlayheadTime}
+                                    isPlaybackFrozen={isPlaybackFrozen}
                                     beatSubdivision={lane.division}
                                     setBeatSubdivision={(division) =>
                                         updateLaneData(
