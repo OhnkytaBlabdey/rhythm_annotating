@@ -38,6 +38,7 @@ import {
     stripChartDataTimes,
 } from "./noteArea/chartAdapter";
 import { convertToMalody } from "@/lib/malodyExport";
+import { convertToSus } from "@/lib/susExport";
 
 const MAX_UNDO = 50;
 
@@ -755,9 +756,6 @@ export default function SoundLane(prop: _prop) {
             exportPayload === activeLane
                 ? strippedLane
                 : { error: (exportPayload as { error: string }).error, lane: strippedLane };
-            exportPayload === activeLane
-                ? laneWithoutId
-                : { error: (exportPayload as { error: string }).error, lane: laneWithoutId };
 
         return {
             mode: editState.mode,
@@ -862,6 +860,11 @@ export default function SoundLane(prop: _prop) {
                 activeLane,
                 audioData?.file ?? "unknown",
             ),
+            susExportText: convertToSus(
+                activeLane,
+                audioData?.file ?? "unknown",
+            ),
+            exportFileBaseName: audioData?.file ?? "notelane",
             lastError: currentLaneError,
             noteLaneOffset: prop.refSoundLaneState.noteLaneOffset ?? 0,
             setNoteLaneOffset: (offset: number) => {

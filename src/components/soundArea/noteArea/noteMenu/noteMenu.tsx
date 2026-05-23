@@ -8,6 +8,29 @@ import Image from "@/components/Image";
 
 const cls = classNames.bind(style);
 
+type ExportFormat = "internal" | "malody" | "sus";
+
+function getExportFileStem(fileName: string): string {
+    const cleaned = (fileName || "notelane")
+        .replace(/[\\/]/g, "_")
+        .replace(/\.[^./\\]+$/, "")
+        .replace(/[<>:"|?*\x00-\x1f]/g, "_")
+        .trim();
+    return cleaned || "notelane";
+}
+
+function downloadTextFile(text: string, fileName: string, type: string) {
+    const blob = new Blob([text], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
 interface _p {
     mode: EditMode;
     setMode: (m: EditMode) => void;
@@ -33,6 +56,8 @@ interface _p {
     onImportText: (text: string) => string | null;
     exportText: string;
     malodyExportText: string;
+    susExportText: string;
+    exportFileBaseName: string;
     lastError: string | null;
     noteLaneOffset: number;
     setNoteLaneOffset: (v: number) => void;
@@ -90,7 +115,7 @@ export default function NoteMenu(p: _p) {
     const { getKeyboardShortcutLabel } = useAppSettings();
     const [isImportOpen, setIsImportOpen] = React.useState(false);
     const [isExportOpen, setIsExportOpen] = React.useState(false);
-    const [exportFormat, setExportFormat] = React.useState<"internal" | "malody">("internal");
+    const [exportFormat, setExportFormat] = React.useState<ExportFormat>("internal");
     const [importText, setImportText] = React.useState("");
     const [importError, setImportError] = React.useState<string | null>(null);
     const [measureBpmInput, setMeasureBpmInput] = React.useState<string>("");
@@ -134,6 +159,17 @@ export default function NoteMenu(p: _p) {
         "insert-end": getKeyboardShortcutLabel("note.mode.insertEnd"),
         annotate: getKeyboardShortcutLabel("note.mode.annotate"),
     };
+
+    const currentExportText =
+        exportFormat === "malody"
+            ? p.malodyExportText
+            : exportFormat === "sus"
+              ? p.susExportText
+              : p.exportText;
+    const exportFileStem = React.useMemo(
+        () => getExportFileStem(p.exportFileBaseName),
+        [p.exportFileBaseName],
+    );
 
     return (
         <div className={cls("menu")}>
@@ -560,31 +596,71 @@ export default function NoteMenu(p: _p) {
                             >
                                 malody
                             </button>
+                            <button
+                                type="button"
+                                title="SUS/BMS 风格文本"
+                                className={cls(
+                                    "button",
+                                    exportFormat === "sus"
+                                        ? "button-active"
+                                        : "",
+                                )}
+                                onMouseDown={stopInteraction}
+                                onClick={() =>
+                                    setExportFormat("sus")
+                                }
+                            >
+                                sus
+                            </button>
                         </div>
                         <textarea
                             readOnly
                             className={cls("modal-text")}
-                            value={
-                                exportFormat === "malody"
-                                    ? p.malodyExportText
-                                    : p.exportText
-                            }
+                            value={currentExportText}
                             onMouseDown={stopInteraction}
                             onClick={stopInteraction}
                             onKeyDown={stopInteraction}
                             onWheel={(e) => e.stopPropagation()}
                         />
                         <div className={cls("modal-actions")}>
+                            {exportFormat === "malody" && (
+                                <button
+                                    type="button"
+                                    className={cls("button")}
+                                    onMouseDown={stopInteraction}
+                                    onClick={() => {
+                                        downloadTextFile(
+                                            currentExportText,
+                                            `${exportFileStem}.mc`,
+                                            "application/json;charset=utf-8",
+                                        );
+                                    }}
+                                >
+                                    导出 .mc
+                                </button>
+                            )}
+                            {exportFormat === "sus" && (
+                                <button
+                                    type="button"
+                                    className={cls("button")}
+                                    onMouseDown={stopInteraction}
+                                    onClick={() => {
+                                        downloadTextFile(
+                                            currentExportText,
+                                            `${exportFileStem}.sus`,
+                                            "text/plain;charset=utf-8",
+                                        );
+                                    }}
+                                >
+                                    导出 .sus
+                                </button>
+                            )}
                             <button
                                 type="button"
                                 className={cls("button")}
                                 onMouseDown={stopInteraction}
                                 onClick={() => {
-                                    void navigator.clipboard.writeText(
-                                        exportFormat === "malody"
-                                            ? p.malodyExportText
-                                            : p.exportText,
-                                    );
+                                    void navigator.clipboard.writeText(currentExportText);
                                 }}
                             >
                                 复制
