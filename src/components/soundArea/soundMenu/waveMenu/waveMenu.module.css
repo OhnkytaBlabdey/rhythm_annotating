@@ -3,7 +3,7 @@
     min-height: 42px;
     padding: 0 14px;
     border: 1px solid rgba(141, 111, 74, 0.24);
-    border-radius: 14px;
+    border-radius: 8px;
     background: rgba(255, 255, 255, 0.92);
     color: #241f19;
     justify-content: flex-start;
@@ -27,7 +27,7 @@
     height: 28px;
     padding: 2px;
     border: 1px solid rgba(141, 111, 74, 0.24);
-    border-radius: 7px;
+    border-radius: 8px;
     background: rgba(255, 255, 255, 0.92);
     cursor: pointer;
     transition:
@@ -50,7 +50,7 @@
     height: 22px;
     padding: 1px;
     border: none;
-    border-radius: 6px;
+    border-radius: 7px;
     background: transparent;
     cursor: pointer;
     transition: background-color 0.16s ease;

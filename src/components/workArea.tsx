@@ -724,7 +724,7 @@ export default function WorkArea() {
                 <div className="editor-shell flex flex-col">
                     {/* Menu */}
                     <div className="sticky top-0 z-50 flex">
-                        <div className="editor-toolbar-card mb-2">
+                        <div className="editor-toolbar-card mb-1">
                             <WorkMenu
                                 key={"menu"}
                                 setSoundLaneStates={setSoundLaneStates}
@@ -752,10 +752,10 @@ export default function WorkArea() {
                     </div>
                     {/* Sound Lanes */}
                     <div
-                        className="flex flex-col gap-4 pt-5 pb-2"
+                        className="flex flex-col gap-2 pt-2 pb-2"
                     >
                         <div className="editor-lane-card" ref={editorLaneCardRef}>
-                            <div className="flex flex-col gap-4">
+                            <div className="flex flex-col gap-2">
                                 {sortedLaneEntries.map((entry) => {
                                     const isAudible = audibleAudioIds.has(
                                         entry.audio.id,

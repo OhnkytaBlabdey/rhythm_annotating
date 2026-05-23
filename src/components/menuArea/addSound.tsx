@@ -119,7 +119,7 @@ function AddSound(prop: _prop) {
                 <Image src="/assets/icons/newSoundLane.png" alt="添加音频" width={20} height={20} />
             </button>
             {warning && (
-                <div className="absolute left-1/2 top-full z-50 mt-2 -translate-x-1/2 whitespace-nowrap rounded bg-yellow-500 px-3 py-1.5 text-sm text-white shadow">
+                <div className="absolute left-1/2 top-full z-50 mt-2 -translate-x-1/2 whitespace-nowrap rounded-none bg-yellow-500 px-3 py-1.5 text-sm text-white shadow">
                     {warning}
                 </div>
             )}

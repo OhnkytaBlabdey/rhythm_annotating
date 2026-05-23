@@ -19,8 +19,8 @@ function SpectrumMenu(p: _p) {
     const resolutionScale = p.spectrumState.resolutionScale ?? 1;
 
     return (
-        <div className="px-2 pb-1">
-            <div className="flex gap-2">
+        <div className="px-2 pb-0.5">
+            <div className="flex gap-1.5">
                 <BrightnessUp
                     audioId={p.audioId}
                     brightnessOffset={brightnessOffset}
@@ -82,7 +82,7 @@ function SpectrumMenu(p: _p) {
                             p.setSpectrumState({ ...p.spectrumState, offset: v / 1000 });
                         }
                     }}
-                    className="w-[60px] min-h-[24px] rounded-lg border border-solid border-[rgba(141,111,74,0.24)] bg-[rgba(255,255,255,0.94)] px-2 text-[11px] text-right text-[#241f19]"
+                    className="w-[60px] min-h-[24px] rounded-none border border-solid border-[rgba(141,111,74,0.24)] bg-[rgba(255,255,255,0.94)] px-2 text-[11px] text-right text-[#241f19]"
                     title="频谱图形偏移(毫秒)，仅canvas像素位移"
                 />
                 <span className="text-[10px] opacity-55">ms</span>

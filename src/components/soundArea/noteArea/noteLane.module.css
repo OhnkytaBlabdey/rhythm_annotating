@@ -1,6 +1,6 @@
 .noteLaneRoot {
     width: 100%;
-    padding: 6px 0;
+    padding: 2px 0;
 }
 
 .noteLaneCanvasWrap {
@@ -8,7 +8,7 @@
     width: 100%;
     height: 120px;
     overflow: hidden;
-    border-radius: 16px;
+    border-radius: 0;
 }
 
 .noteLaneCanvas {
@@ -63,7 +63,7 @@
     height: 100%;
     text-align: center;
     padding: 0 2px;
-    border-radius: 6px;
+    border-radius: 0;
 }
 
 .annotationInput:focus {

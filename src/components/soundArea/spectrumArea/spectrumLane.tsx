@@ -599,7 +599,7 @@ function SpectrumLane(p: _p) {
                         : "Computing multi-resolution spectrum"
                 }
                 style={{
-                    border: "1px solid #ccc",
+                    border: "1px solid var(--editor-border-strong)",
                     width: "100%",
                     height: "auto",
                 }}
@@ -607,7 +607,7 @@ function SpectrumLane(p: _p) {
             <canvas
                 ref={cursorCanvasRef}
                 width={canvasWidth}
-                height={renderHeightRef.current}
+                height={CANVAS_HEIGHT}
                 style={{
                     position: "absolute",
                     top: 0,

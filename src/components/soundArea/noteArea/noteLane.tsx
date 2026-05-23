@@ -164,27 +164,6 @@ function colorByType(type: number): string {
     return TYPE_COLORS[idx];
 }
 
-function roundRect(
-    ctx: CanvasRenderingContext2D,
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    r: number,
-) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.arcTo(x + w, y, x + w, y + r, r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-    ctx.lineTo(x + r, y + h);
-    ctx.arcTo(x, y + h, x, y + h - r, r);
-    ctx.lineTo(x, y + r);
-    ctx.arcTo(x, y, x + r, y, r);
-    ctx.closePath();
-}
-
 function fractionKey(input: Fraction | undefined): string | null {
     const f = normalizeFraction(input);
     if (!f) return null;
@@ -776,24 +755,20 @@ export default function NoteLane({
                 endTime !== null && endTime !== undefined
                     ? mapTimeToX(endTime)
                     : width;
-            if (rightX > leftX) {
+            if (rightX - leftX > 1) {
                 ctx.strokeStyle = "#334155";
                 ctx.lineWidth = 1;
-                roundRect(
-                    ctx,
+                ctx.strokeRect(
                     leftX + 0.5,
                     0.5,
                     rightX - leftX - 1,
                     height - 1,
-                    16,
                 );
-                ctx.stroke();
             }
         } else {
             ctx.strokeStyle = "#334155";
             ctx.lineWidth = 1;
-            roundRect(ctx, 0.5, 0.5, width - 1, height - 1, 16);
-            ctx.stroke();
+            ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
         }
 
         for (const tick of gridTicks) {
@@ -1080,27 +1055,16 @@ export default function NoteLane({
                                 ctx.fillStyle = "#ffffffdd";
                                 ctx.strokeStyle = "#64748b";
                                 ctx.lineWidth = 1;
-                                roundRect(
-                                    ctx,
+                                ctx.fillRect(
                                     aboxX,
                                     aboxY,
                                     aboxW,
                                     aboxH,
-                                    6,
                                 );
-                                ctx.fill();
-                                ctx.stroke();
+                                ctx.strokeRect(aboxX, aboxY, aboxW, aboxH);
                             } else {
                                 ctx.fillStyle = "#ffffff88";
-                                roundRect(
-                                    ctx,
-                                    aboxX,
-                                    aboxY,
-                                    aboxW,
-                                    aboxH,
-                                    6,
-                                );
-                                ctx.fill();
+                                ctx.fillRect(aboxX, aboxY, aboxW, aboxH);
                             }
                             if (displayText) {
                                 ctx.fillStyle = "#1e293b";

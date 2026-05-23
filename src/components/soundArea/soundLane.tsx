@@ -924,13 +924,12 @@ export default function SoundLane(prop: _prop) {
 
     return (
         <div
-            className="SoundLane flex flex-col gap-2 rounded-[26px] border border-[var(--editor-border)] bg-[var(--editor-surface)] px-4 pt-2 pb-2 shadow-[0_12px_34px_rgba(53,36,19,0.06)] cursor-pointer"
+            className="SoundLane flex flex-col gap-1 border border-[var(--editor-border)] bg-[var(--editor-surface-strong)] px-3 pt-1.5 pb-1.5 shadow-[0_10px_24px_rgba(53,36,19,0.05)] cursor-pointer"
             onClick={handleClickToActivate}
             style={
                 isPlaybackFrozen
                     ? {
-                          background:
-                              "linear-gradient(180deg, rgba(226, 232, 240, 0.92), rgba(203, 213, 225, 0.72))",
+                          background: "rgba(226, 232, 240, 0.9)",
                       }
                     : undefined
             }
@@ -950,13 +949,13 @@ export default function SoundLane(prop: _prop) {
                 />
             </div>
 
-            <div className="flex flex-col flex-1 gap-2">
+            <div className="flex flex-col flex-1 gap-1">
                 <div className="flex items-start gap-3">
                     <div
                         className="editor-inspector-panel w-[176px] shrink-0"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                             <div className="editor-pane-caption">Wave</div>
                             <FoldWave
                                 audioId={prop.audioId}
@@ -1010,7 +1009,7 @@ export default function SoundLane(prop: _prop) {
                         className="editor-inspector-panel w-[176px] shrink-0"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                             <div className="editor-pane-caption">Spectrum</div>
                             <FoldSpectrum
                                 audioId={prop.audioId}
@@ -1067,7 +1066,7 @@ export default function SoundLane(prop: _prop) {
                     onClick={(e) => e.stopPropagation()}
                 >
                     <div className="editor-inspector-panel w-[176px] shrink-0 self-stretch">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                             <div className="editor-pane-caption">Note Lane</div>
                             <button
                                 type="button"
@@ -1101,7 +1100,7 @@ export default function SoundLane(prop: _prop) {
                             <NoteMenu {...activeNoteMenuProps} />
                         )}
                     </div>
-                    <div className="flex-1 min-w-0 flex flex-col gap-2">
+                    <div className="flex-1 min-w-0 flex flex-col gap-1">
                         {sortedNoteLanes.map((lane: NoteLaneData) => {
                             if (lane.isFolded) return null;
                             const editState =

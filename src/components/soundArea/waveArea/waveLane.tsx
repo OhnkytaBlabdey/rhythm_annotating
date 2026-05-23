@@ -278,7 +278,7 @@ function WaveLane(p: _p) {
                         height={WAVELANE_TOTAL_HEIGHT}
                         data-lane="true"
                         style={{
-                            border: "1px solid #ccc",
+                            border: "1px solid var(--editor-border-strong)",
                             width: "100%",
                             height: `${WAVELANE_TOTAL_HEIGHT}px`,
                         }}

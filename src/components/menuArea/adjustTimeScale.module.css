@@ -1,3 +1,10 @@
+.button {
+    border: 1px solid var(--editor-border-strong);
+    border-radius: 8px;
+    background: var(--editor-surface-strong);
+    cursor: pointer;
+}
+
 .button:hover {
-    background-color: aliceblue;
+    background-color: rgba(240, 253, 250, 0.96);
 }

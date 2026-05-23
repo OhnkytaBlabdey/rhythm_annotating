@@ -120,7 +120,7 @@ function WorkMenu(prop: _prop) {
                                 fontSize: "12px",
                                 textAlign: "right",
                                 border: "1px solid #d4d4d8",
-                                borderRadius: "4px",
+                                borderRadius: 0,
                                 padding: "1px 4px",
                             }}
                             title="播放时刻辅助确认"
