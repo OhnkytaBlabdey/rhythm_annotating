@@ -125,7 +125,16 @@ export function spectrumWorkerMain() {
         const re = new Float32Array(N);
         const im = new Float32Array(N);
 
-        for (let i = 0; i < N; i++) re[i] = input[i];
+        const levels = Math.log2(N) | 0;
+        for (let i = 0; i < N; i++) {
+            let reversed = 0;
+            let value = i;
+            for (let bit = 0; bit < levels; bit++) {
+                reversed = (reversed << 1) | (value & 1);
+                value >>= 1;
+            }
+            re[reversed] = input[i];
+        }
 
         for (let len = 2; len <= N; len <<= 1) {
             const half = len >> 1;
