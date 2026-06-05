@@ -18,5 +18,7 @@ export default function Image(props: ImageProps) {
     ) {
         src = `${basePath}${src}`;
     }
-    return <img {...props} src={src} />;
+    // next/image is avoided here because the app uses static export and a shared basePath wrapper.
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img {...props} alt={props.alt} src={src} />;
 }

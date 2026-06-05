@@ -1,4 +1,4 @@
-import { SoundLaneState, defaultSoundLaneState } from "./audioData";
+import { SoundLaneState } from "./audioData";
 
 export interface project {
     currentTime: number;

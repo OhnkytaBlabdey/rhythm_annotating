@@ -33,7 +33,7 @@ export function recomputeProjectChartTimes(p: project): project {
             ...lane,
             noteLanes: (lane.noteLanes ?? []).map((nl) => ({
                 ...nl,
-                chartData: recomputeSegmentTimes(nl.chartData as any),
+                chartData: recomputeSegmentTimes(nl.chartData),
             })),
         })),
     };

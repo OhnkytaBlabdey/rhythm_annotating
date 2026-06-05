@@ -47,13 +47,6 @@ function PlaySelected(prop: _p) {
         () => getSelectionKey(prop.refSoundLaneStates),
         [prop.refSoundLaneStates],
     );
-    const minAudioOffset = useMemo(() => {
-        const lanes = getActiveLanes(prop.refSoundLaneStates);
-        if (lanes.length === 0) return 0;
-        return Math.min(...lanes.map(s => s.offset ?? 0));
-    }, [prop.refSoundLaneStates]);
-    const globalFreeze = Math.max(0, -minAudioOffset);
-
     // 保持 propRef 同步
     useEffect(() => {
         propRef.current = prop;

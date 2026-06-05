@@ -16,7 +16,7 @@ function AdjustBPM(p: _p) {
         <div>
             <div className="flex gap-2">
                 <button
-                    onClick={(e) => {
+                    onClick={() => {
                         let newb = 60;
                         if (inputRef.current != null) {
                             newb = Number(inputRef.current.value);

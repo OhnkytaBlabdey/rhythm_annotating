@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import style from "./measure.module.css";
 import classNames from "classnames/bind";
 import { measure } from "@/interface/soundLane/noteLane/measure/measure";

@@ -69,7 +69,7 @@ export default function WorkArea() {
         timeMultiplier: timeView.timeMultiplier,
     }));
     const [audioDataList, setAudioDataList] = useState<AudioData[]>([]);
-    const [activeSoundLaneId, setActiveSoundLaneId] = useState<string | null>(null);
+    const [, setActiveSoundLaneId] = useState<string | null>(null);
     const [hasHydratedProject, setHasHydratedProject] = useState(false);
     const [limitedPlaybackTime, setLimitedPlaybackTime] = useState(
         () => objProject.currentTime,

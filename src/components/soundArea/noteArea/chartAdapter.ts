@@ -717,7 +717,10 @@ export function recomputeSegmentTimes(
 export function stripChartDataTimes(
     chartData: ChartSegment[],
 ): Omit<ChartSegment, 'time'>[] {
-    return chartData.map(({ time: _, ...rest }) => rest);
+    return chartData.map(({ time, ...rest }) => {
+        void time;
+        return rest;
+    });
 }
 
 // ---- measure insertion / deletion ----

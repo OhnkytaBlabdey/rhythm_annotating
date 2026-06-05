@@ -205,7 +205,16 @@ export function AppSettingsProvider({
     const [hasHydratedSettings, setHasHydratedSettings] = useState(false);
 
     useEffect(() => {
-        setHasHydratedSettings(true);
+        let isCancelled = false;
+        queueMicrotask(() => {
+            if (!isCancelled) {
+                setHasHydratedSettings(true);
+            }
+        });
+
+        return () => {
+            isCancelled = true;
+        };
     }, []);
 
     useEffect(() => {

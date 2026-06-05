@@ -17,7 +17,6 @@ import NoteLane from "./noteArea/noteLane";
 import {
     ChartSegment,
     ChartMeasure,
-    ChartNote,
     ChartMeasureRef,
     NoteLaneData,
 } from "./noteArea/chartTypes";
@@ -30,7 +29,6 @@ import {
     parseImportedNoteLaneText,
     validateChartData,
     validateNoteLaneData,
-    normalizeFraction,
     removeTrailingEmptyMeasures,
     collectMeasureTimesAndBpms,
     buildSegmentsFromMeasureList,
@@ -55,6 +53,12 @@ interface _prop {
     setSoundLaneState: (i: number, state: SoundLaneState) => void;
     onActivate?: (audioId: string) => void;
     onDeleteSoundLane?: (audioId: string) => void;
+}
+
+function omitNoteLaneId(lane: NoteLaneData): Omit<NoteLaneData, "id"> {
+    const { id, ...laneWithoutId } = lane;
+    void id;
+    return laneWithoutId;
 }
 
 export default function SoundLane(prop: _prop) {
@@ -379,146 +383,6 @@ export default function SoundLane(prop: _prop) {
         [cloneChart, locateMeasure],
     );
 
-    const retimeChartByBpm = useCallback(
-        (data: ChartSegment[], bpm: number) => {
-            const safeBpm = Math.max(1, Math.floor(bpm));
-            const sorted = data
-                .map((seg) => ({
-                    ...seg,
-                    measures: seg.measures.map((m) => ({
-                        notes: [...m.notes],
-                    })),
-                }))
-                .sort((a, b) => a.time - b.time);
-
-            if (sorted.length === 0) {
-                return [
-                    {
-                        time: 0,
-                        tempo: safeBpm,
-                        measures: [{ notes: [] }],
-                    },
-                ];
-            }
-
-            const isEditableMeasure = (measure: { notes: ChartNote[] }) => {
-                if (measure.notes.length === 0) {
-                    return true;
-                }
-                return measure.notes.every((note) => {
-                    const head = normalizeFraction(note.head);
-                    if (!head) return false;
-                    const isZeroHead = head.a === 0;
-                    const hasTail = note.tail !== undefined;
-                    const hasBody =
-                        Array.isArray(note.body) && note.body.length > 0;
-                    return isZeroHead && !hasTail && !hasBody;
-                });
-            };
-
-            let boundarySeg = 0;
-            let boundaryMeasure = 0;
-            let foundBoundary = false;
-
-            for (let s = sorted.length - 1; s >= 0; s--) {
-                const seg = sorted[s];
-                for (let m = seg.measures.length - 1; m >= 0; m--) {
-                    if (isEditableMeasure(seg.measures[m])) {
-                        continue;
-                    }
-                    boundarySeg = s;
-                    boundaryMeasure = m + 1;
-                    foundBoundary = true;
-                    break;
-                }
-                if (foundBoundary) {
-                    break;
-                }
-            }
-
-            if (!foundBoundary) {
-                boundarySeg = 0;
-                boundaryMeasure = 0;
-            }
-
-            const prefix: ChartSegment[] = [];
-            const suffixMeasures: Array<{ notes: ChartNote[] }> = [];
-
-            for (let s = 0; s < sorted.length; s++) {
-                const seg = sorted[s];
-                if (s < boundarySeg) {
-                    prefix.push(seg);
-                    continue;
-                }
-
-                if (s === boundarySeg) {
-                    const keep = seg.measures.slice(0, boundaryMeasure);
-                    const rest = seg.measures.slice(boundaryMeasure);
-                    if (keep.length > 0) {
-                        prefix.push({
-                            ...seg,
-                            measures: keep,
-                        });
-                    }
-                    suffixMeasures.push(...rest);
-                    continue;
-                }
-
-                suffixMeasures.push(...seg.measures);
-            }
-
-            let suffixStart = 0;
-            if (prefix.length > 0) {
-                const tail = prefix[prefix.length - 1];
-                const tailBeatDuration = 60 / Math.max(1, tail.tempo);
-                suffixStart =
-                    tail.time + tail.measures.length * tailBeatDuration;
-            }
-
-            if (suffixMeasures.length === 0) {
-                if (
-                    prefix.length > 0 &&
-                    Math.abs(prefix[prefix.length - 1].tempo - safeBpm) < 1e-6
-                ) {
-                    return prefix;
-                }
-                return [
-                    ...prefix,
-                    {
-                        time: suffixStart,
-                        tempo: safeBpm,
-                        measures: [],
-                    },
-                ];
-            }
-
-            if (
-                prefix.length > 0 &&
-                Math.abs(prefix[prefix.length - 1].tempo - safeBpm) < 1e-6
-            ) {
-                const merged = [...prefix];
-                merged[merged.length - 1] = {
-                    ...merged[merged.length - 1],
-                    measures: [
-                        ...merged[merged.length - 1].measures,
-                        ...suffixMeasures,
-                    ],
-                };
-                return merged;
-            }
-
-            return [
-                ...prefix,
-                {
-                    time: suffixStart,
-                    tempo: safeBpm,
-                    measures: suffixMeasures,
-                },
-            ];
-        },
-        [],
-    );
-
     const activeNoteMenuProps = useMemo(() => {
         if (!resolvedActiveLaneId) return null;
         const activeLane = noteLanes.find(
@@ -725,7 +589,7 @@ export default function SoundLane(prop: _prop) {
             ? { error: validateNoteLaneData(activeLane)!, lane: activeLane }
             : activeLane;
 
-        const { id: _stripId, ...laneWithoutId } = activeLane;
+        const laneWithoutId = omitNoteLaneId(activeLane);
         const strippedLane = {
             ...laneWithoutId,
             chartData: stripChartDataTimes(activeLane.chartData),
@@ -872,7 +736,7 @@ export default function SoundLane(prop: _prop) {
                 setChartData(next);
             },
             getEditText: () => {
-                const { id: _id, ...laneData } = activeLane;
+                const laneData = omitNoteLaneId(activeLane);
                 return JSON.stringify(laneData, null, 2);
             },
             onEditSave: (text: string) => {
