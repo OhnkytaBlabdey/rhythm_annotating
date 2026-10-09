@@ -6,6 +6,7 @@ import WorkMenu from "./menuArea/workMenu";
 import styles from "./workArea.module.css";
 import {
     SoundLaneState,
+    SoundLaneStateUpdate,
     defaultSoundLaneState,
     AudioData,
 } from "@/interface/audioData";
@@ -33,12 +34,18 @@ import {
     collectPersistSliceStates,
     registerPersistSlice,
 } from "@/lib/persistence/sliceRegistry";
+import {
+    collectSiriusNotes,
+    siriusBeatToTime,
+    siriusTimeToBeat,
+} from "./soundArea/noteArea/chartAdapter";
 
 
 const WHEEL_PAN_RATIO = 0.05;
 const LIMITED_PLAYBACK_FPS = 15;
 const LIMITED_PLAYBACK_INTERVAL_MS = 1000 / LIMITED_PLAYBACK_FPS;
 const FROZEN_TIME_RANGE: [number, number] = [0, 0];
+const CHART_TRAILING_BEATS = 16;
 
 function formatLocalExportTimestamp(date: Date): string {
     const pad = (value: number) => String(value).padStart(2, "0");
@@ -74,6 +81,11 @@ export default function WorkArea() {
     const [audioDataList, setAudioDataList] = useState<AudioData[]>([]);
     const [, setActiveSoundLaneId] = useState<string | null>(null);
     const [hasHydratedProject, setHasHydratedProject] = useState(false);
+    const [hydrationError, setHydrationError] = useState<string | null>(null);
+    const [isRecoveringProject, setIsRecoveringProject] = useState(false);
+    const [projectImportError, setProjectImportError] = useState<string | null>(null);
+    const projectLoadRequestRef = useRef(0);
+    const autosaveBlockedRef = useRef(true);
     const [limitedPlaybackTime, setLimitedPlaybackTime] = useState(
         () => objProject.currentTime,
     );
@@ -207,44 +219,56 @@ export default function WorkArea() {
         };
     }, [setSpectrumView, setTimeView]);
 
-    useEffect(() => {
-        let isCancelled = false;
+    const beginProjectLoad = useCallback(() => {
+        autosaveBlockedRef.current = true;
+        return ++projectLoadRequestRef.current;
+    }, []);
 
-        const hydrate = async () => {
-            try {
-                const restored = await hydrateProjectSnapshot();
-                if (!restored || isCancelled) {
-                    return;
-                }
-
-                setProject(restored.projectState);
-                setAudioDataList(restored.audioDataList);
+    const recoverPersistedProject = useCallback(async () => {
+        const request = beginProjectLoad();
+        setHasHydratedProject(false);
+        setIsRecoveringProject(true);
+        try {
+            const restored = await hydrateProjectSnapshot();
+            if (request !== projectLoadRequestRef.current) return;
+            if (restored) {
                 applyPersistSliceStates({
                     timeView: { orientation: "horizontal" },
                     ...restored.slices,
                 });
-            } catch (error) {
-                console.error("Hydrating persisted project failed", error);
-            } finally {
-                if (!isCancelled) {
-                    setHasHydratedProject(true);
-                }
+                setProject(restored.projectState);
+                setAudioDataList(restored.audioDataList);
             }
-        };
-
-        void hydrate();
-
-        return () => {
-            isCancelled = true;
-        };
-    }, []);
+            setHydrationError(null);
+            setProjectImportError(null);
+            setHasHydratedProject(true);
+            autosaveBlockedRef.current = false;
+        } catch (error) {
+            if (request !== projectLoadRequestRef.current) return;
+            console.error("Hydrating persisted project failed", error);
+            setHydrationError(`恢复本地项目失败：${error instanceof Error ? error.message : "未知错误"}`);
+        } finally {
+            if (request === projectLoadRequestRef.current) {
+                setIsRecoveringProject(false);
+            }
+        }
+    }, [beginProjectLoad]);
 
     useEffect(() => {
-        if (!hasHydratedProject) {
+        void recoverPersistedProject();
+        return () => {
+            // Ignore hydration results after unmount, reset or explicit import.
+            beginProjectLoad();
+        };
+    }, [recoverPersistedProject, beginProjectLoad]);
+
+    useEffect(() => {
+        if (!hasHydratedProject || hydrationError) {
             return;
         }
 
         const timeoutId = window.setTimeout(() => {
+            if (autosaveBlockedRef.current) return;
             void saveProjectSnapshot({
                 projectState: {
                     ...latestProjectRef.current,
@@ -260,10 +284,14 @@ export default function WorkArea() {
         return () => {
             window.clearTimeout(timeoutId);
         };
-    }, [hasHydratedProject, objProject, audioDataList, timeView, spectrumView]);
+    }, [hasHydratedProject, hydrationError, objProject, audioDataList, timeView, spectrumView]);
 
-    function setIndexSoundLaneState(index: number, laneState: SoundLaneState) {
+    function setIndexSoundLaneState(index: number, update: SoundLaneStateUpdate) {
         setProject((prev) => {
+            const currentLane = prev.soundLaneStates[index];
+            if (!currentLane) return prev;
+            const laneState = typeof update === "function" ? update(currentLane) : update;
+            if (laneState === currentLane) return prev;
             const lanes = [...prev.soundLaneStates];
             lanes[index] = laneState;
             return {
@@ -308,8 +336,8 @@ export default function WorkArea() {
             if (prev.isPlaying) {
                 return { ...prev, timeMultiplier: newm };
             }
-            const nextSpan = getVisibleSpan(duration, newm);
-            const nextMaxStart = Math.max(0, duration - nextSpan);
+            const nextSpan = getVisibleSpan(navigationDuration, newm);
+            const nextMaxStart = Math.max(0, navigationDuration - nextSpan);
             return {
                 ...prev,
                 timeMultiplier: newm,
@@ -324,8 +352,8 @@ export default function WorkArea() {
             if (prev.isPlaying) {
                 nextCurrentTime = Math.max(0, newt);
             } else {
-                const currentSpan = getVisibleSpan(duration, prev.timeMultiplier);
-                const currentMaxStart = Math.max(0, duration - currentSpan);
+                const currentSpan = getVisibleSpan(navigationDuration, prev.timeMultiplier);
+                const currentMaxStart = Math.max(0, navigationDuration - currentSpan);
                 nextCurrentTime = clamp(newt, 0, currentMaxStart);
             }
 
@@ -338,13 +366,6 @@ export default function WorkArea() {
                 currentTime: nextCurrentTime,
             };
         });
-    }
-
-    function setIsPlaying(p: boolean) {
-        setProject((prev) => ({
-            ...prev,
-            isPlaying: p,
-        }));
     }
 
     function setPlayheadOffset(offset: number) {
@@ -373,12 +394,23 @@ export default function WorkArea() {
     }
 
     function resetEditor() {
+        const request = beginProjectLoad();
+        setHasHydratedProject(false);
+        setHydrationError(null);
+        setProjectImportError(null);
+        setIsRecoveringProject(false);
         setProject(defaultProject());
         setAudioDataList([]);
         resetProjectScopedSettings();
 
-        void clearPersistence().catch((error: unknown) => {
+        void clearPersistence().then(() => {
+            if (request !== projectLoadRequestRef.current) return;
+            autosaveBlockedRef.current = false;
+            setHasHydratedProject(true);
+        }).catch((error: unknown) => {
+            if (request !== projectLoadRequestRef.current) return;
             console.error("Clearing persisted project failed", error);
+            setHydrationError(`重置本地项目失败：${error instanceof Error ? error.message : "未知错误"}`);
         });
     }
 
@@ -416,44 +448,112 @@ export default function WorkArea() {
 
             const reader = new FileReader();
             reader.onload = () => {
-                const result = importProjectBlob(reader.result as ArrayBuffer);
-                if ("error" in result) {
-                    alert(result.error);
-                    return;
+                try {
+                    if (!(reader.result instanceof ArrayBuffer)) throw new Error("项目文件读取结果无效");
+                    const result = importProjectBlob(reader.result);
+                    if ("error" in result) throw new Error(result.error);
+                    const hydrated = hydrateImportedSnapshot({
+                        snapshot: result.snapshot,
+                        audioDataList: result.audioDataList,
+                    });
+                    applyPersistSliceStates({
+                        timeView: { orientation: "horizontal" },
+                        ...hydrated.slices,
+                    });
+                    beginProjectLoad();
+                    setProject(hydrated.projectState);
+                    setAudioDataList(hydrated.audioDataList);
+                    setHydrationError(null);
+                    setProjectImportError(null);
+                    setIsRecoveringProject(false);
+                    setHasHydratedProject(true);
+                    autosaveBlockedRef.current = false;
+                } catch (error) {
+                    // Failed imports leave the current project and recovery
+                    // lock intact, including malformed Sirius migrations.
+                    setProjectImportError(`导入项目失败：${error instanceof Error ? error.message : "未知错误"}`);
                 }
-
-                const hydrated = hydrateImportedSnapshot({
-                    snapshot: result.snapshot,
-                    audioDataList: result.audioDataList,
-                });
-                setProject(hydrated.projectState);
-                setAudioDataList(hydrated.audioDataList);
-                applyPersistSliceStates({
-                    timeView: { orientation: "horizontal" },
-                    ...hydrated.slices,
-                });
             };
             reader.onerror = () => {
-                alert("读取文件失败");
+                setProjectImportError("读取项目文件失败");
             };
-            reader.readAsArrayBuffer(file);
+            try {
+                reader.readAsArrayBuffer(file);
+            } catch (error) {
+                setProjectImportError(`读取项目文件失败：${error instanceof Error ? error.message : "未知错误"}`);
+            }
         };
         input.click();
-    }, []);
+    }, [beginProjectLoad]);
 
-    // 计算总时长
-    const duration = audioDataList.reduce(
+    // Audio playback still ends at the real audio extent. WorkMenu's Duration
+    // prop is used only by its view-range controller, not its audio player.
+    const audioDuration = audioDataList.reduce(
         (max, audio) => Math.max(max, audio.duration),
         0,
     );
 
+    const navigationDuration = useMemo(() => {
+        let end = audioDuration;
+        for (const soundLane of objProject.soundLaneStates) {
+            const graphicalOffset = soundLane.noteLaneOffset ?? 0;
+            for (const lane of soundLane.noteLanes) {
+                if (lane.chartKind !== "sirius") continue;
+                try {
+                    const notes = collectSiriusNotes(lane.chartData, lane.defaultBpm);
+                    const audioEndBeat = siriusTimeToBeat(
+                        lane.chartData, Math.max(0, audioDuration - graphicalOffset), lane.defaultBpm,
+                    );
+                    let lastBeat = Math.max(
+                        Math.ceil(audioEndBeat),
+                        lane.chartData.reduce((count, segment) => count + segment.measures.length, 0),
+                    );
+                    for (const note of notes) {
+                        lastBeat = Math.max(lastBeat, note.beat, note.tailBeat ?? note.beat);
+                    }
+                    const chartEnd = siriusBeatToTime(
+                        lane.chartData, Math.ceil(lastBeat) + CHART_TRAILING_BEATS, lane.defaultBpm,
+                    ) + graphicalOffset;
+                    if (Number.isFinite(chartEnd)) end = Math.max(end, chartEnd);
+                } catch {
+                    // Invalid charts report their own lane error; valid lanes
+                    // and the audio timeline must remain navigable.
+                }
+            }
+        }
+        // siriusOffset is export-only and intentionally does not enter the view.
+        return end;
+    }, [audioDuration, objProject.soundLaneStates]);
+
+    const setIsPlaying = useCallback((playing: boolean) => {
+        setProject((prev) => {
+            const start = playing && !prev.isPlaying
+                ? clamp(prev.currentTime, 0, Math.max(0,
+                    navigationDuration - getVisibleSpan(navigationDuration, prev.timeMultiplier),
+                ))
+                : prev.currentTime;
+            if (playing) {
+                const selectedIds = new Set(prev.soundLaneStates
+                    .filter((lane) => lane.isActive).map((lane) => lane.audioId));
+                const playableEnd = audioDataList.reduce((end, audio) => (
+                    selectedIds.size === 0 || selectedIds.has(audio.id)
+                        ? Math.max(end, audio.duration) : end
+                ), 0);
+                // Browsing beyond the audio is valid; starting the audio player
+                // there would give it no remaining audio and no completion time.
+                if (start >= playableEnd) return { ...prev, isPlaying: false };
+            }
+            return { ...prev, currentTime: start, isPlaying: playing };
+        });
+    }, [audioDataList, navigationDuration]);
+
     const visibleSpan = useMemo(
-        () => getVisibleSpan(duration, objProject.timeMultiplier),
-        [duration, objProject.timeMultiplier],
+        () => getVisibleSpan(navigationDuration, objProject.timeMultiplier),
+        [navigationDuration, objProject.timeMultiplier],
     );
     const maxStart = useMemo(
-        () => Math.max(0, duration - visibleSpan),
-        [duration, visibleSpan],
+        () => Math.max(0, navigationDuration - visibleSpan),
+        [navigationDuration, visibleSpan],
     );
     const clampedCurrentTime = useMemo(
         () => clamp(objProject.currentTime, 0, maxStart),
@@ -603,22 +703,19 @@ export default function WorkArea() {
                 return;
             }
 
-            if (duration <= 0) {
+            if (audioDuration <= 0) {
                 return;
             }
 
             event.preventDefault();
-            setProject((prev) => ({
-                ...prev,
-                isPlaying: !prev.isPlaying,
-            }));
+            setIsPlaying(!objProject.isPlaying);
         };
 
         window.addEventListener("keydown", onKeyDown);
         return () => {
             window.removeEventListener("keydown", onKeyDown);
         };
-    }, [duration]);
+    }, [audioDuration, objProject.isPlaying, setIsPlaying]);
 
     useEffect(() => {
         const onNativeWheel = (event: WheelEvent) => {
@@ -652,7 +749,7 @@ export default function WorkArea() {
 
     const handleLaneWheel = useCallback(
         (event: LaneWheelEvent) => {
-            if (duration <= 0) return;
+            if (navigationDuration <= 0) return;
             if (wheelUpdateGuardRef.current) return;
             if (!isTimelineWheel(event)) return;
 
@@ -675,12 +772,12 @@ export default function WorkArea() {
 
             if (isZoomIn || isZoomOut) {
                 const nextMultiplier = getNextTimeMultiplierByWheel(
-                    duration,
+                    navigationDuration,
                     current.timeMultiplier,
                     event.deltaY,
                 );
-                const nextSpan = getVisibleSpan(duration, nextMultiplier);
-                const maxStart = Math.max(0, duration - nextSpan);
+                const nextSpan = getVisibleSpan(navigationDuration, nextMultiplier);
+                const maxStart = Math.max(0, navigationDuration - nextSpan);
                 const nextCurrentTime = current.isPlaying
                     ? current.currentTime
                     : clamp(current.currentTime, 0, maxStart);
@@ -708,11 +805,11 @@ export default function WorkArea() {
             if (current.isPlaying) return;
 
             const panDirection = (isPanUp ? -1 : 1) * (isVertical ? -1 : 1);
-            const visibleSpan = getVisibleSpan(duration, current.timeMultiplier);
-            const maxStart = Math.max(0, duration - visibleSpan);
+            const visibleSpan = getVisibleSpan(navigationDuration, current.timeMultiplier);
+            const maxStart = Math.max(0, navigationDuration - visibleSpan);
             const panStep = visibleSpan * WHEEL_PAN_RATIO;
             const nextCurrentTime = clamp(
-                current.currentTime + panDirection * panStep,
+                clamp(current.currentTime, 0, maxStart) + panDirection * panStep,
                 0,
                 maxStart,
             );
@@ -730,7 +827,7 @@ export default function WorkArea() {
                 timeMultiplier: current.timeMultiplier,
             });
         },
-        [duration, isTimelineWheel, isVertical],
+        [navigationDuration, isTimelineWheel, isVertical],
     );
 
     useEffect(() => {
@@ -767,7 +864,7 @@ export default function WorkArea() {
                                 setCurrentTime={setCurrentTime}
                                 isPlaying={objProject.isPlaying}
                                 setIsPlaying={setIsPlaying}
-                                Duration={duration}
+                                Duration={navigationDuration}
                                 timeRange={timeRange}
                                 addAudioData={addAudioData}
                                 removeAudioData={removeAudioData}
@@ -784,6 +881,25 @@ export default function WorkArea() {
                             />
                         </div>
                     </div>
+                    {hydrationError && (
+                        <div role="alert" className="shrink-0 border border-red-300 bg-red-50 p-2 text-sm text-red-900">
+                            <p>{hydrationError}</p>
+                            <p>原有本地快照已保留，自动保存已暂停。可重试恢复，或使用工具栏导入项目、重置编辑器。</p>
+                            <button
+                                type="button"
+                                className="editor-toolbar-button mt-1"
+                                disabled={isRecoveringProject}
+                                onClick={() => void recoverPersistedProject()}
+                            >
+                                {isRecoveringProject ? "正在恢复…" : "重试恢复"}
+                            </button>
+                        </div>
+                    )}
+                    {projectImportError && (
+                        <div role="alert" className="shrink-0 border border-red-300 bg-red-50 p-2 text-sm text-red-900">
+                            {projectImportError}
+                        </div>
+                    )}
                     {/* Sound Lanes */}
                     <div className={styles.laneViewport}>
                         <div
@@ -835,6 +951,7 @@ export default function WorkArea() {
                                             }
                                             timeRange={renderTimeRange}
                                             orientation={orientation}
+                                            onRequestVertical={() => setTimeView({ orientation: "vertical" })}
                                             playheadTime={renderPlayheadTime}
                                             playbackRenderMode={
                                                 playbackRenderMode

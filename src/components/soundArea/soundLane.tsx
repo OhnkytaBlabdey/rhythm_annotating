@@ -12,13 +12,22 @@ import NoteMenu from "./noteArea/noteMenu/noteMenu";
 import Image from "@/components/Image";
 import { useContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AudioDataCtx } from "../audioContext";
-import { SoundLaneState, defaultNoteLaneData } from "@/interface/audioData";
-import NoteLane from "./noteArea/noteLane";
 import {
+    SoundLaneState,
+    SoundLaneStateUpdate,
+    defaultNoteLaneData,
+    resolveActiveNoteLaneId,
+    resolveNoteEditorKind,
+} from "@/interface/audioData";
+import NoteLane from "./noteArea/noteLane";
+import SiriusLane from "./noteArea/siriusLane";
+import {
+    ChartNote,
     ChartSegment,
     ChartMeasure,
     ChartMeasureRef,
     NoteLaneData,
+    SiriusNoteProperties,
 } from "./noteArea/chartTypes";
 import {
     defaultNoteEditState,
@@ -27,7 +36,6 @@ import {
 } from "./noteArea/noteState";
 import {
     parseImportedNoteLaneText,
-    validateChartData,
     validateNoteLaneData,
     removeTrailingEmptyMeasures,
     collectMeasureTimesAndBpms,
@@ -36,13 +44,22 @@ import {
     deleteMeasureAtRef,
     locateMeasureByRef,
     stripChartDataTimes,
+    copySiriusNotes,
+    removeSiriusNotes,
+    updateSiriusNotes,
 } from "./noteArea/chartAdapter";
+import {
+    defaultSiriusProperties,
+    SIRIUS_LANE_COUNT,
+} from "./noteArea/siriusTypes";
+import { convertToSirius } from "@/lib/siriusExport";
 import { convertToMalody } from "@/lib/malodyExport";
 import { convertToSus } from "@/lib/susExport";
-import type { CSSProperties } from "react";
+import type { CSSProperties, SetStateAction } from "react";
 import type { TimelineOrientation } from "../timelineGeometry";
 
 const MAX_UNDO = 50;
+const SIRIUS_READONLY_MESSAGE = "制谱器当前为浏览模式，请先切换到编辑模式";
 type PlaybackRenderMode = "idle" | "full" | "limited" | "frozen";
 
 interface _prop {
@@ -53,15 +70,73 @@ interface _prop {
     playheadTime?: number | null;
     playbackRenderMode: PlaybackRenderMode;
     refSoundLaneState: SoundLaneState;
-    setSoundLaneState: (i: number, state: SoundLaneState) => void;
+    setSoundLaneState: (i: number, state: SoundLaneStateUpdate) => void;
     onActivate?: (audioId: string) => void;
     onDeleteSoundLane?: (audioId: string) => void;
+    onRequestVertical?: () => void;
 }
 
 function omitNoteLaneId(lane: NoteLaneData): Omit<NoteLaneData, "id"> {
     const { id, ...laneWithoutId } = lane;
     void id;
     return laneWithoutId;
+}
+
+function activateNoteLane(state: SoundLaneState, laneId: string, unfold = false): SoundLaneState {
+    const lane = state.noteLanes.find((item) => item.id === laneId);
+    if (!lane) return state;
+    const shouldUnfold = unfold && lane.isFolded;
+    const noteEditorKind = lane.chartKind ?? "rhythm";
+    if (state.activeNoteLaneId === laneId && state.noteEditorKind === noteEditorKind && !shouldUnfold) return state;
+    return {
+        ...state,
+        activeNoteLaneId: laneId,
+        noteEditorKind,
+        noteLanes: shouldUnfold
+            ? state.noteLanes.map((item) => item.id === laneId ? { ...item, isFolded: false } : item)
+            : state.noteLanes,
+    };
+}
+
+function comparableJson(value: unknown): string {
+    return JSON.stringify(value, (_key, item: unknown) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+        return Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b)));
+    });
+}
+
+function laneMetadataJson(lane: NoteLaneData): string {
+    const { chartData, ...metadata } = omitNoteLaneId(lane);
+    void chartData;
+    return comparableJson({
+        ...metadata,
+        chartKind: lane.chartKind ?? "rhythm",
+        siriusOffset: lane.siriusOffset ?? 0,
+        isFolded: lane.isFolded ?? false,
+        dataVersion: lane.dataVersion ?? (lane.chartKind === "sirius" ? 4 : 3),
+        startTime: lane.startTime ?? null,
+        endTime: lane.endTime ?? null,
+    });
+}
+
+function normalizeLaneEditState(
+    lane: NoteLaneData,
+    state = defaultNoteEditState(lane.defaultBpm),
+): NoteEditState {
+    if (lane.chartKind === "sirius") {
+        const mode = ["browse", "select", "paste", "annotate", "insert-sirius"].includes(state.mode)
+            ? state.mode
+            : "insert-sirius";
+        return {
+            ...state,
+            mode,
+            currentBpm: lane.defaultBpm,
+            lnHeadTime: mode === state.mode ? state.lnHeadTime : null,
+        };
+    }
+    return state.mode === "insert-sirius"
+        ? { ...state, mode: "insert-strong", lnHeadTime: null }
+        : state;
 }
 
 export default function SoundLane(prop: _prop) {
@@ -87,10 +162,9 @@ export default function SoundLane(prop: _prop) {
 
     const noteLanes = useMemo(
         () =>
-            Array.isArray(prop.refSoundLaneState.noteLanes) &&
-            prop.refSoundLaneState.noteLanes.length > 0
+            Array.isArray(prop.refSoundLaneState.noteLanes)
                 ? prop.refSoundLaneState.noteLanes
-                : [defaultNoteLaneData()],
+                : [],
         [prop.refSoundLaneState.noteLanes],
     );
 
@@ -106,34 +180,40 @@ export default function SoundLane(prop: _prop) {
     const [laneErrorMap, setLaneErrorMap] = useState<Record<string, string>>(
         {},
     );
-    const [activeNoteLaneId, setActiveNoteLaneId] = useState<string | null>(
-        null,
-    );
+    const resolvedActiveLaneId = resolveActiveNoteLaneId(noteLanes, prop.refSoundLaneState.activeNoteLaneId);
+    const noteEditorKind = resolveNoteEditorKind(noteLanes, resolvedActiveLaneId, prop.refSoundLaneState.noteEditorKind);
+    const selectNoteLane = useCallback((laneId: string, unfold = false) => {
+        prop.setSoundLaneState(prop.index, (prev) => activateNoteLane(prev, laneId, unfold));
+    }, [prop]);
 
-    const resolvedActiveLaneId = useMemo(() => {
-        if (activeNoteLaneId && noteLanes.some((l) => l.id === activeNoteLaneId)) {
-            return activeNoteLaneId;
-        }
-        return noteLanes[0]?.id ?? null;
-    }, [activeNoteLaneId, noteLanes]);
+    const visibleNoteLanes = useMemo(
+        () => noteLanes.filter((lane) => (lane.chartKind ?? "rhythm") === noteEditorKind),
+        [noteLanes, noteEditorKind],
+    );
+    const allVisibleNoteLanesFolded = visibleNoteLanes.every((lane) => lane.isFolded);
 
     const cursorTime = useMemo(() => {
         if (resolvedActiveLaneId) {
             const t = laneCursorTimeMap[resolvedActiveLaneId];
             if (t !== null && t !== undefined) return t;
         }
-        for (const laneId of Object.keys(laneCursorTimeMap)) {
-            const t = laneCursorTimeMap[laneId];
+        for (const lane of visibleNoteLanes) {
+            const t = laneCursorTimeMap[lane.id];
             if (t !== null && t !== undefined) return t;
         }
         return null;
-    }, [laneCursorTimeMap, resolvedActiveLaneId]);
+    }, [laneCursorTimeMap, resolvedActiveLaneId, visibleNoteLanes]);
 
-    const sortedNoteLanes = useMemo(() => {
-        const active = noteLanes.find((l) => l.id === resolvedActiveLaneId);
-        const others = noteLanes.filter((l) => l.id !== resolvedActiveLaneId);
-        return active ? [active, ...others] : [...noteLanes];
-    }, [noteLanes, resolvedActiveLaneId]);
+    const chartOptions = useMemo(() => {
+        let rhythmCount = 0;
+        let siriusCount = 0;
+        return noteLanes.map((lane) => ({
+            id: lane.id,
+            label: lane.chartKind === "sirius"
+                ? `制谱器 ${++siriusCount} ·12轨`
+                : `节奏标记 ${++rhythmCount}`,
+        }));
+    }, [noteLanes]);
 
     const renderCursorTime = isPlaybackFrozen ? null : cursorTime;
     const renderPlayheadTime = isPlaybackFrozen ? null : prop.playheadTime;
@@ -204,16 +284,11 @@ export default function SoundLane(prop: _prop) {
                 const lane = noteLanes.find(
                     (l: NoteLaneData) => l.id === laneId,
                 );
-                const base =
-                    prev[laneId] ??
-                    defaultNoteEditState(
-                        lane?.defaultBpm !== undefined
-                            ? Math.max(1, Math.floor(lane.defaultBpm))
-                            : 120,
-                    );
+                if (!lane) return prev;
+                const base = normalizeLaneEditState(lane, prev[laneId]);
                 return {
                     ...prev,
-                    [laneId]: updater(base),
+                    [laneId]: normalizeLaneEditState(lane, updater(base)),
                 };
             });
         },
@@ -223,90 +298,131 @@ export default function SoundLane(prop: _prop) {
     const updateLaneData = useCallback(
         (
             laneId: string,
-            updater: (lane: NoteLaneData) => NoteLaneData | null,
+            updater: (lane: NoteLaneData) => NoteLaneData,
         ) => {
-            const nextLanes = noteLanes
-                .map((lane: NoteLaneData) => {
-                    if (lane.id !== laneId) return lane;
-                    return updater(lane);
-                })
-                .filter(
-                    (lane: NoteLaneData | null): lane is NoteLaneData =>
-                        lane !== null,
-                );
-            const finalLanes =
-                nextLanes.length > 0 ? nextLanes : [defaultNoteLaneData()];
-
-            prop.setSoundLaneState(prop.index, {
-                ...prop.refSoundLaneState,
-                noteLanes: finalLanes,
-            });
-
-            const activeIds = new Set(
-                finalLanes.map((lane: NoteLaneData) => lane.id),
-            );
-            setLaneEditStateMap((prev) => {
-                const next: Record<string, NoteEditState> = {};
-                for (const id of Object.keys(prev)) {
-                    if (activeIds.has(id)) {
-                        next[id] = prev[id];
-                    }
-                }
-                return next;
-            });
-            setLaneErrorMap((prev) => {
-                const next: Record<string, string> = {};
-                for (const id of Object.keys(prev)) {
-                    if (activeIds.has(id)) {
-                        next[id] = prev[id];
-                    }
-                }
-                return next;
-            });
-            setLaneSelectedMeasureRefMap((prev) => {
-                const next: Record<string, ChartMeasureRef | null> = {};
-                for (const id of Object.keys(prev)) {
-                    if (activeIds.has(id)) {
-                        next[id] = prev[id];
-                    }
-                }
-                return next;
+            prop.setSoundLaneState(prop.index, (prev) => {
+                if (!prev.noteLanes.some((lane) => lane.id === laneId)) return prev;
+                const nextLanes = prev.noteLanes.map((lane) => lane.id === laneId ? updater(lane) : lane);
+                const activeNoteLaneId = resolveActiveNoteLaneId(nextLanes, prev.activeNoteLaneId);
+                return {
+                    ...prev,
+                    noteLanes: nextLanes,
+                    activeNoteLaneId,
+                    noteEditorKind: resolveNoteEditorKind(nextLanes, activeNoteLaneId, prev.noteEditorKind),
+                };
             });
         },
-        [noteLanes, prop],
+        [prop],
     );
 
-    const handleAddNoteLane = useCallback(() => {
-        const nextLane = defaultNoteLaneData();
-        const measureTimes = collectMeasureTimesAndBpms(noteLanes);
-        if (measureTimes.length > 0) {
-            nextLane.chartData = buildSegmentsFromMeasureList(measureTimes);
-        }
-        prop.setSoundLaneState(prop.index, {
-            ...prop.refSoundLaneState,
-            noteLanes: [...noteLanes, nextLane],
+    const deleteNoteLane = useCallback((laneId: string) => {
+        if (!noteLanes.some((lane) => lane.id === laneId)) return;
+        prop.setSoundLaneState(prop.index, (prev) => {
+            const removed = prev.noteLanes.find((lane) => lane.id === laneId);
+            if (!removed) return prev;
+            const remaining = prev.noteLanes.filter((lane) => lane.id !== laneId);
+            const currentId = resolveActiveNoteLaneId(prev.noteLanes, prev.activeNoteLaneId);
+            const nextId = currentId === laneId
+                ? (remaining.find((lane) => (lane.chartKind ?? "rhythm") === (removed.chartKind ?? "rhythm")) ?? remaining[0])?.id ?? null
+                : resolveActiveNoteLaneId(remaining, currentId);
+            return {
+                ...prev,
+                noteLanes: remaining,
+                activeNoteLaneId: nextId,
+                noteEditorKind: resolveNoteEditorKind(remaining, nextId,
+                    resolveNoteEditorKind(prev.noteLanes, currentId, prev.noteEditorKind)),
+            };
         });
-        setLaneEditStateMap((prev) => ({
-            ...prev,
-            [nextLane.id]: defaultNoteEditState(nextLane.defaultBpm),
-        }));
+        // Local editor cleanup is separate from the project updater: React may
+        // replay updaters, but must never replay state/ref side effects in them.
+        setLaneEditStateMap((prev) => {
+            const next = { ...prev };
+            delete next[laneId];
+            return next;
+        });
+        setLaneErrorMap((prev) => {
+            const next = { ...prev };
+            delete next[laneId];
+            return next;
+        });
+        setLaneSelectedMeasureRefMap((prev) => {
+            const next = { ...prev };
+            delete next[laneId];
+            return next;
+        });
+        setLaneCursorTimeMap((prev) => {
+            const next = { ...prev };
+            delete next[laneId];
+            return next;
+        });
     }, [noteLanes, prop]);
 
+    const handleAddNoteLane = useCallback((kind: "rhythm" | "sirius", reuseExisting = false) => {
+        try {
+            const nextLane = defaultNoteLaneData(undefined, kind);
+            const activeLane = noteLanes.find((lane) => lane.id === resolvedActiveLaneId);
+            // New charts inherit only the selected source's empty beat grid.
+            const measureTimes = collectMeasureTimesAndBpms(activeLane ? [activeLane] : []);
+            nextLane.chartData = buildSegmentsFromMeasureList(measureTimes);
+            if (activeLane) {
+                nextLane.defaultBpm = activeLane.defaultBpm;
+                nextLane.division = activeLane.division;
+            }
+            const error = validateNoteLaneData(nextLane);
+            if (error) throw new Error(error);
+            const nextEditState: NoteEditState = {
+                ...defaultNoteEditState(nextLane.defaultBpm),
+                mode: kind === "sirius" ? "insert-sirius" : "browse",
+            };
+            prop.setSoundLaneState(prop.index, (prev) => {
+                if (reuseExisting) {
+                    const activeId = resolveActiveNoteLaneId(prev.noteLanes, prev.activeNoteLaneId);
+                    const existing = prev.noteLanes.find((lane) => lane.id === activeId && lane.chartKind === "sirius")
+                        ?? prev.noteLanes.find((lane) => lane.chartKind === "sirius");
+                    if (existing) return activateNoteLane(prev, existing.id, true);
+                }
+                if (prev.noteLanes.some((lane) => lane.id === nextLane.id)) return prev;
+                return { ...prev, noteLanes: [...prev.noteLanes, nextLane], activeNoteLaneId: nextLane.id, noteEditorKind: kind };
+            });
+            setLaneEditStateMap((prev) => ({
+                ...prev,
+                [nextLane.id]: nextEditState,
+            }));
+            if (kind === "sirius") prop.onRequestVertical?.();
+        } catch (error) {
+            if (resolvedActiveLaneId) {
+                setLaneError(resolvedActiveLaneId, error instanceof Error ? error.message : "创建谱面失败");
+            }
+        }
+    }, [noteLanes, prop, resolvedActiveLaneId, setLaneError]);
+
+    const handleOpenSirius = useCallback(() => {
+        const existing = noteLanes.find((lane) => lane.id === resolvedActiveLaneId && lane.chartKind === "sirius")
+            ?? noteLanes.find((lane) => lane.chartKind === "sirius");
+        if (existing) {
+            selectNoteLane(existing.id, true);
+            prop.onRequestVertical?.();
+        } else {
+            // Recheck inside the pure commit too, so queued/replayed opens
+            // from the same render can only create the first Sirius chart.
+            handleAddNoteLane("sirius", true);
+        }
+    }, [noteLanes, resolvedActiveLaneId, selectNoteLane, prop, handleAddNoteLane]);
+
     const handleToggleNoteFold = useCallback(() => {
-        const allFolded = noteLanes.every((l) => l.isFolded);
-        prop.setSoundLaneState(prop.index, {
-            ...prop.refSoundLaneState,
-            noteLanes: noteLanes.map((l) => ({ ...l, isFolded: !allFolded })),
-        });
-    }, [noteLanes, prop]);
+        const visibleIds = new Set(visibleNoteLanes.map((lane) => lane.id));
+        if (!visibleIds.size) return;
+        prop.setSoundLaneState(prop.index, (prev) => ({
+            ...prev,
+            noteLanes: prev.noteLanes.map((lane) => visibleIds.has(lane.id)
+                ? { ...lane, isFolded: !allVisibleNoteLanesFolded }
+                : lane),
+        }));
+    }, [visibleNoteLanes, allVisibleNoteLanesFolded, prop]);
 
     /** Deep-clone chartData for undo snapshot */
     const cloneChart = useCallback(
-        (data: ChartSegment[]): ChartSegment[] =>
-            data.map((seg) => ({
-                ...seg,
-                measures: seg.measures.map((m) => ({ notes: [...m.notes] })),
-            })),
+        (data: ChartSegment[]): ChartSegment[] => structuredClone(data),
         [],
     );
 
@@ -323,7 +439,7 @@ export default function SoundLane(prop: _prop) {
                 return null;
             }
 
-            const safeBpm = Math.max(1, Math.floor(bpm));
+            const safeBpm = bpm;
             const sorted = cloneChart(data);
             const { segmentIndex, measureIndex } = located;
             const tailVirtualTempo = (() => {
@@ -332,7 +448,7 @@ export default function SoundLane(prop: _prop) {
                     return null;
                 }
                 return Number.isFinite(last.tempo) && last.tempo > 0
-                    ? Math.max(1, Math.floor(last.tempo))
+                    ? last.tempo
                     : null;
             })();
             const chunks: Array<{ tempo: number; measures: ChartMeasure[] }> =
@@ -340,7 +456,7 @@ export default function SoundLane(prop: _prop) {
 
             for (let s = 0; s < sorted.length; s++) {
                 const seg = sorted[s];
-                const segTempo = Math.max(1, Math.floor(seg.tempo));
+                const segTempo = seg.tempo;
                 if (seg.measures.length === 0) {
                     continue;
                 }
@@ -372,7 +488,7 @@ export default function SoundLane(prop: _prop) {
                 if (chunk.measures.length === 0) {
                     continue;
                 }
-                const safeTempo = Math.max(1, Math.floor(chunk.tempo));
+                const safeTempo = chunk.tempo;
                 const tail = rebuilt[rebuilt.length - 1];
                 if (tail && Math.abs(tail.tempo - safeTempo) < 1e-6) {
                     tail.measures.push(...chunk.measures);
@@ -402,6 +518,112 @@ export default function SoundLane(prop: _prop) {
         [cloneChart, locateMeasure],
     );
 
+    // Menu actions and canvas shortcuts share the same validation, history and
+    // read-only boundary, including callbacks invoked without a visible button.
+    const createLaneActions = useCallback((lane: NoteLaneData) => {
+        const editState = normalizeLaneEditState(lane, laneEditStateMap[lane.id]);
+        const isReadOnly = lane.chartKind === "sirius" && editState.mode === "browse";
+        const reportError = (error: unknown): string => {
+            const message = error instanceof Error ? error.message : "谱面操作失败";
+            setLaneError(lane.id, message);
+            return message;
+        };
+        const ensureEditable = () => {
+            if (!isReadOnly) return true;
+            setLaneError(lane.id, SIRIUS_READONLY_MESSAGE);
+            return false;
+        };
+        const pushUndo = (before: ChartSegment[]) => {
+            const snapshot = cloneChart(before);
+            setLaneEditState(lane.id, (prev) => ({
+                ...prev,
+                undoStack: [snapshot, ...prev.undoStack].slice(0, MAX_UNDO),
+                redoStack: [],
+            }));
+        };
+        const setChartData = (
+            next: ChartSegment[],
+            saveUndo = true,
+            undoBase?: ChartSegment[],
+        ): boolean => {
+            if (!ensureEditable()) return false;
+            try {
+                const error = validateNoteLaneData({ ...lane, chartData: next });
+                if (error) throw new Error(error);
+                if (saveUndo) pushUndo(undoBase ?? lane.chartData);
+                updateLaneData(lane.id, (prev) => ({ ...prev, chartData: next }));
+                clearLaneError(lane.id);
+                return true;
+            } catch (error) {
+                reportError(error);
+                return false;
+            }
+        };
+        const setLaneMetadata = (
+            changes: Partial<Pick<NoteLaneData, "defaultBpm" | "division" | "siriusOffset">>,
+        ) => {
+            if (!ensureEditable()) return false;
+            try {
+                const error = validateNoteLaneData({ ...lane, ...changes });
+                if (error) throw new Error(error);
+                updateLaneData(lane.id, (prev) => ({ ...prev, ...changes }));
+                clearLaneError(lane.id);
+                return true;
+            } catch (error) {
+                reportError(error);
+                return false;
+            }
+        };
+        const changeHistory = (direction: "undo" | "redo") => {
+            if (!ensureEditable()) return;
+            const stack = direction === "undo" ? editState.undoStack : editState.redoStack;
+            if (!stack.length) return;
+            try {
+                const [top, ...rest] = stack;
+                const current = cloneChart(lane.chartData);
+                if (!setChartData(cloneChart(top), false)) return;
+                setLaneEditState(lane.id, (prev) => ({
+                    ...prev,
+                    undoStack: direction === "undo" ? rest : [current, ...prev.undoStack].slice(0, MAX_UNDO),
+                    redoStack: direction === "redo" ? rest : [current, ...prev.redoStack].slice(0, MAX_UNDO),
+                    selectedIds: new Set<string>(),
+                    lnHeadTime: null,
+                }));
+            } catch (error) {
+                reportError(error);
+            }
+        };
+        const editMeasure = (remove: boolean, ref?: ChartMeasureRef) => {
+            if (!ensureEditable()) return;
+            const target = ref ?? laneSelectedMeasureRefMap[lane.id];
+            if (!target) return;
+            try {
+                const next = (remove ? deleteMeasureAtRef : insertMeasureAtRef)(
+                    lane.chartData, target, lane.defaultBpm, lane.chartKind,
+                );
+                if (next) setChartData(next);
+            } catch (error) {
+                reportError(error);
+            }
+        };
+        return {
+            editState,
+            isReadOnly,
+            ensureEditable,
+            reportError,
+            pushUndo,
+            setChartData,
+            setLaneMetadata,
+            onUndo: () => changeHistory("undo"),
+            onRedo: () => changeHistory("redo"),
+            onInsertMeasure: (ref?: ChartMeasureRef) => editMeasure(false, ref),
+            onDeleteMeasure: (ref?: ChartMeasureRef) => editMeasure(true, ref),
+        };
+    }, [
+        laneEditStateMap, laneSelectedMeasureRefMap, cloneChart,
+        setLaneEditState, updateLaneData, setLaneError, clearLaneError,
+    ]);
+
     const activeNoteMenuProps = useMemo(() => {
         if (!resolvedActiveLaneId) return null;
         const activeLane = noteLanes.find(
@@ -409,9 +631,12 @@ export default function SoundLane(prop: _prop) {
         );
         if (!activeLane) return null;
 
-        const editState =
-            laneEditStateMap[activeLane.id] ??
-            defaultNoteEditState(activeLane.defaultBpm);
+        const isSirius = activeLane.chartKind === "sirius";
+        const {
+            editState, isReadOnly, ensureEditable, reportError, pushUndo,
+            setChartData, setLaneMetadata, onUndo, onRedo,
+            onInsertMeasure, onDeleteMeasure,
+        } = createLaneActions(activeLane);
         const selectedMeasureRef =
             laneSelectedMeasureRefMap[activeLane.id] ?? null;
         const selectedMeasure = locateMeasure(
@@ -423,185 +648,87 @@ export default function SoundLane(prop: _prop) {
             validateNoteLaneData(activeLane) ??
             null;
 
-        const pushUndo = (before: ChartSegment[]) => {
-            setLaneEditState(activeLane.id, (prev) => {
-                const stack = [cloneChart(before), ...prev.undoStack].slice(
-                    0,
-                    MAX_UNDO,
-                );
-                return { ...prev, undoStack: stack, redoStack: [] };
-            });
-        };
-
-        const setChartData = (
-            next: ChartSegment[],
-            saveUndo = true,
-        ): boolean => {
-            const error = validateChartData(next);
-            if (error) {
-                setLaneError(activeLane.id, error);
-                return false;
-            }
-            clearLaneError(activeLane.id);
-            if (saveUndo) {
-                pushUndo(activeLane.chartData);
-            }
-            updateLaneData(activeLane.id, (prevLane) => ({
-                ...prevLane,
-                chartData: next,
-            }));
-            return true;
-        };
-
-        const handleUndo = () => {
-            if (editState.undoStack.length === 0) return;
-            const [top, ...rest] = editState.undoStack;
-            const current = cloneChart(activeLane.chartData);
-            updateLaneData(activeLane.id, (prevLane) => ({
-                ...prevLane,
-                chartData: top,
-            }));
-            setLaneEditState(activeLane.id, (prev) => ({
-                ...prev,
-                undoStack: rest,
-                redoStack: [current, ...prev.redoStack].slice(0, MAX_UNDO),
-            }));
-        };
-
-        const handleRedo = () => {
-            if (editState.redoStack.length === 0) return;
-            const [top, ...rest] = editState.redoStack;
-            const current = cloneChart(activeLane.chartData);
-            updateLaneData(activeLane.id, (prevLane) => ({
-                ...prevLane,
-                chartData: top,
-            }));
-            setLaneEditState(activeLane.id, (prev) => ({
-                ...prev,
-                redoStack: rest,
-                undoStack: [current, ...prev.undoStack].slice(0, MAX_UNDO),
-            }));
-        };
-
+        const selectedNotes = activeLane.chartData
+            .flatMap((seg) => seg.measures)
+            .flatMap((measure) => measure.notes)
+            .filter((note) => editState.selectedIds.has(note.id));
+        const selectedNote = editState.selectedIds.size === 1 && selectedNotes.length === 1
+            ? selectedNotes[0]
+            : null;
+        const copySelection = () => isSirius
+            ? copySiriusNotes(activeLane.chartData, [...editState.selectedIds])
+            : structuredClone(selectedNotes);
         const handleCopy = () => {
-            setLaneEditState(activeLane.id, (prev) => {
-                if (prev.selectedIds.size === 0) return prev;
-                const copied = activeLane.chartData
-                    .flatMap((seg) => seg.measures)
-                    .flatMap((m) => m.notes)
-                    .filter((n) => prev.selectedIds.has(n.id))
-                    .map((n) => ({
-                        ...n,
-                        body: n.body ? [...n.body] : undefined,
-                    }));
-                return { ...prev, clipboard: copied };
-            });
+            if (!editState.selectedIds.size) return;
+            try {
+                const clipboard = copySelection();
+                setLaneEditState(activeLane.id, (prev) => ({ ...prev, clipboard }));
+            } catch (error) {
+                reportError(error);
+            }
         };
-
-        const handleCut = () => {
-            const currentEditState =
-                laneEditStateMap[activeLane.id] ??
-                defaultNoteEditState(activeLane.defaultBpm);
-            if (currentEditState.selectedIds.size === 0) return;
-
-            const ids = currentEditState.selectedIds;
-            const copied = activeLane.chartData
-                .flatMap((seg) => seg.measures)
-                .flatMap((m) => m.notes)
-                .filter((n) => ids.has(n.id))
-                .map((n) => ({
-                    ...n,
-                    body: n.body ? [...n.body] : undefined,
+        const deleteSelection = (cut: boolean) => {
+            if (!ensureEditable() || !editState.selectedIds.size) return;
+            try {
+                const clipboard = cut ? copySelection() : editState.clipboard;
+                const next = isSirius
+                    ? removeSiriusNotes(activeLane.chartData, [...editState.selectedIds])
+                    : removeTrailingEmptyMeasures(activeLane.chartData.map((seg) => ({
+                        ...seg,
+                        measures: seg.measures.map((measure) => ({
+                            notes: measure.notes.filter((note) => !editState.selectedIds.has(note.id)),
+                        })),
+                    })));
+                if (!setChartData(next)) return;
+                setLaneEditState(activeLane.id, (prev) => ({
+                    ...prev,
+                    clipboard,
+                    selectedIds: new Set<string>(),
+                    lnHeadTime: null,
                 }));
-
-            let next = activeLane.chartData.map((seg) => ({
-                ...seg,
-                measures: seg.measures.map((m) => ({
-                    notes: m.notes.filter((n) => !ids.has(n.id)),
-                })),
-            }));
-            next = removeTrailingEmptyMeasures(next);
-            const error = validateChartData(next);
-            if (error) {
-                setLaneError(activeLane.id, error);
-                return;
+            } catch (error) {
+                reportError(error);
             }
-            clearLaneError(activeLane.id);
-            updateLaneData(activeLane.id, (prevLane) => ({
-                ...prevLane,
-                chartData: next,
-            }));
-            setLaneEditState(activeLane.id, (prev) => {
-                const undoStack = [
-                    cloneChart(activeLane.chartData),
-                    ...prev.undoStack,
-                ].slice(0, MAX_UNDO);
-                return {
-                    ...prev,
-                    clipboard: copied,
-                    undoStack,
-                    redoStack: [],
-                    selectedIds: new Set<string>(),
-                };
-            });
-        };
-
-        const handleDelete = () => {
-            const currentEditState =
-                laneEditStateMap[activeLane.id] ??
-                defaultNoteEditState(activeLane.defaultBpm);
-            if (currentEditState.selectedIds.size === 0) return;
-
-            const ids = currentEditState.selectedIds;
-            let next = activeLane.chartData.map((seg) => ({
-                ...seg,
-                measures: seg.measures.map((m) => ({
-                    notes: m.notes.filter((n) => !ids.has(n.id)),
-                })),
-            }));
-            next = removeTrailingEmptyMeasures(next);
-            const error = validateChartData(next);
-            if (error) {
-                setLaneError(activeLane.id, error);
-                return;
-            }
-            clearLaneError(activeLane.id);
-            updateLaneData(activeLane.id, (prevLane) => ({
-                ...prevLane,
-                chartData: next,
-            }));
-            setLaneEditState(activeLane.id, (prev) => {
-                const undoStack = [
-                    cloneChart(activeLane.chartData),
-                    ...prev.undoStack,
-                ].slice(0, MAX_UNDO);
-                return {
-                    ...prev,
-                    undoStack,
-                    redoStack: [],
-                    selectedIds: new Set<string>(),
-                };
-            });
         };
 
         const handleImportText = (text: string): string | null => {
-            const result = parseImportedNoteLaneText(text, activeLane);
-            if ("error" in result) {
-                setLaneError(activeLane.id, result.error);
-                return result.error;
+            const currentJson = JSON.stringify({
+                ...omitNoteLaneId(activeLane),
+                chartData: stripChartDataTimes(activeLane.chartData),
+            }, null, 2);
+            if (text.trim() === currentJson) return null;
+            if (!ensureEditable()) return SIRIUS_READONLY_MESSAGE;
+            try {
+                const result = parseImportedNoteLaneText(text, activeLane);
+                if ("error" in result) throw new Error(result.error);
+                if (laneMetadataJson(activeLane) === laneMetadataJson(result.lane)) {
+                    if (comparableJson(stripChartDataTimes(activeLane.chartData)) ===
+                        comparableJson(stripChartDataTimes(result.lane.chartData))) return null;
+                    if (!setChartData(result.lane.chartData)) return "保存谱面失败，请查看谱面错误";
+                    setLaneEditState(activeLane.id, (prev) => ({
+                        ...prev,
+                        selectedIds: new Set<string>(),
+                        lnHeadTime: null,
+                    }));
+                } else {
+                    updateLaneData(activeLane.id, () => result.lane);
+                    // Chart-only history cannot restore changed kind/BPM/offset
+                    // metadata. Only those imports need a fresh history.
+                    setLaneEditStateMap((prev) => ({
+                        ...prev,
+                        [activeLane.id]: {
+                            ...defaultNoteEditState(result.lane.defaultBpm),
+                            mode: result.lane.chartKind === "sirius" ? "insert-sirius" : "browse",
+                        },
+                    }));
+                }
+                setLaneSelectedMeasureRefMap((prev) => ({ ...prev, [activeLane.id]: null }));
+                setLaneCursorTimeMap((prev) => ({ ...prev, [activeLane.id]: null }));
+                clearLaneError(activeLane.id);
+                return null;
+            } catch (error) {
+                return reportError(error);
             }
-            clearLaneError(activeLane.id);
-            pushUndo(activeLane.chartData);
-            updateLaneData(activeLane.id, () => result.lane);
-            setLaneEditState(activeLane.id, (prev) => ({
-                ...prev,
-                selectedIds: new Set<string>(),
-                lnHeadTime: null,
-                undoStack: prev.undoStack,
-                redoStack: [],
-                currentBpm: result.lane.defaultBpm,
-            }));
-            return null;
         };
 
         const exportPayload = validateNoteLaneData(activeLane)
@@ -626,88 +753,81 @@ export default function SoundLane(prop: _prop) {
                     mode: m,
                     lnHeadTime: null,
                 })),
-            canUndo: editState.undoStack.length > 0,
-            canRedo: editState.redoStack.length > 0,
+            canUndo: !isReadOnly && editState.undoStack.length > 0,
+            canRedo: !isReadOnly && editState.redoStack.length > 0,
             hasSelection: editState.selectedIds.size > 0,
             hasClipboard: editState.clipboard.length > 0,
             currentBpm: activeLane.defaultBpm,
-            bpmLocked: false,
+            bpmLocked: isReadOnly,
             setCurrentBpm: (bpm: number) => {
-                const safeBpm = Math.max(1, Math.floor(bpm));
+                const safeBpm = isSirius ? bpm : Math.max(1, Math.floor(bpm));
+                if (!setLaneMetadata({ defaultBpm: safeBpm })) return;
                 setLaneEditState(activeLane.id, (prev) => ({
                     ...prev,
                     currentBpm: safeBpm,
                 }));
-                updateLaneData(activeLane.id, (prevLane) => ({
-                    ...prevLane,
-                    defaultBpm: safeBpm,
-                }));
             },
             currentMeasureBpm: selectedMeasure?.tempo ?? null,
-            canEditCurrentMeasureBpm: selectedMeasure !== null,
+            canEditCurrentMeasureBpm: !isReadOnly && selectedMeasure !== null,
             setCurrentMeasureBpm: (bpm: number) => {
-                const safeBpm = Math.max(1, Math.floor(bpm));
-                // apply to active lane first to validate
-                const activeNext = retimeSingleMeasureByBpm(
-                    activeLane.chartData,
-                    selectedMeasureRef,
-                    safeBpm,
-                );
-                if (!activeNext) return;
-                const error = validateChartData(activeNext);
-                if (error) {
-                    setLaneError(activeLane.id, error);
-                    return;
-                }
-                clearLaneError(activeLane.id);
-                pushUndo(activeLane.chartData);
-
-                // sync BPM to all NoteLanes at the same time position
-                const updates: Array<{ laneId: string; chartData: ChartSegment[] }> = [];
-                for (const lane of noteLanes) {
-                    if (lane.id === activeLane.id) {
-                        updates.push({ laneId: lane.id, chartData: activeNext });
-                    } else {
-                        const laneNext = retimeSingleMeasureByBpm(
-                            lane.chartData,
-                            selectedMeasureRef,
-                            safeBpm,
-                        );
-                        if (laneNext) {
-                            updates.push({ laneId: lane.id, chartData: laneNext });
-                        }
+                if (!ensureEditable()) return;
+                try {
+                    if (!Number.isFinite(bpm) || bpm <= 0) throw new Error("BPM 必须是正有限数");
+                    const safeBpm = isSirius ? bpm : Math.max(1, Math.floor(bpm));
+                    const activeNext = retimeSingleMeasureByBpm(
+                        activeLane.chartData, selectedMeasureRef, safeBpm,
+                    );
+                    if (!activeNext) return;
+                    if (isSirius) {
+                        setChartData(activeNext);
+                        return;
                     }
+                    // Preserve rhythm-grid synchronization, without touching
+                    // any independent (potentially read-only) Sirius chart.
+                    const nextLanes = noteLanes.map((lane) => {
+                        if (lane.chartKind === "sirius") return lane;
+                        const next = lane.id === activeLane.id ? activeNext : retimeSingleMeasureByBpm(
+                            lane.chartData, selectedMeasureRef, safeBpm,
+                        );
+                        if (!next) return lane;
+                        const nextLane = { ...lane, chartData: next };
+                        const error = validateNoteLaneData(nextLane);
+                        if (error) throw new Error(error);
+                        return nextLane;
+                    });
+                    pushUndo(activeLane.chartData);
+                    const charts = new Map(nextLanes.filter((lane, index) => lane !== noteLanes[index])
+                        .map((lane) => [lane.id, lane.chartData]));
+                    prop.setSoundLaneState(prop.index, (prev) => ({
+                        ...prev,
+                        noteLanes: prev.noteLanes.map((lane) => charts.has(lane.id)
+                            ? { ...lane, chartData: charts.get(lane.id)! } : lane),
+                    }));
+                    clearLaneError(activeLane.id);
+                } catch (error) {
+                    reportError(error);
                 }
-
-                // apply all updates
-                const nextLanes = noteLanes.map((lane) => {
-                    const upd = updates.find((u) => u.laneId === lane.id);
-                    return upd ? { ...lane, chartData: upd.chartData } : lane;
-                });
-                prop.setSoundLaneState(prop.index, {
-                    ...prop.refSoundLaneState,
-                    noteLanes: nextLanes,
-                });
             },
             division: activeLane.division,
             setDivision: (division: number) =>
-                updateLaneData(activeLane.id, (prevLane) => ({
-                    ...prevLane,
+                setLaneMetadata({
                     division: Math.max(1, Math.floor(division)),
-                })),
-            onDelete: handleDelete,
+                }),
+            onDelete: () => deleteSelection(false),
             onCopy: handleCopy,
-            onCut: handleCut,
-            onUndo: handleUndo,
-            onRedo: handleRedo,
-            onDeleteLane: () => {
-                updateLaneData(activeLane.id, () => null);
-            },
+            onCut: () => deleteSelection(true),
+            onUndo,
+            onRedo,
             onClearLane: () => {
-                updateLaneData(activeLane.id, (prevLane) => ({
-                    ...prevLane,
-                    chartData: [],
-                }));
+                if (!ensureEditable()) return;
+                if (isSirius) {
+                    if (!setChartData([])) return;
+                } else {
+                    updateLaneData(activeLane.id, (prevLane) => ({
+                        ...prevLane,
+                        chartData: [],
+                    }));
+                }
                 setLaneEditState(activeLane.id, (prev) => ({
                     ...prev,
                     selectedIds: new Set<string>(),
@@ -717,11 +837,11 @@ export default function SoundLane(prop: _prop) {
             },
             onImportText: handleImportText,
             exportText: JSON.stringify(exportTextPayload, null, 2),
-            malodyExportText: convertToMalody(
+            malodyExportText: isSirius ? "" : convertToMalody(
                 activeLane,
                 audioData?.file ?? "unknown",
             ),
-            susExportText: convertToSus(
+            susExportText: isSirius ? "" : convertToSus(
                 activeLane,
                 audioData?.file ?? "unknown",
             ),
@@ -729,64 +849,85 @@ export default function SoundLane(prop: _prop) {
             lastError: currentLaneError,
             noteLaneOffset: prop.refSoundLaneState.noteLaneOffset ?? 0,
             setNoteLaneOffset: (offset: number) => {
-                prop.setSoundLaneState(prop.index, {
-                    ...prop.refSoundLaneState,
-                    noteLaneOffset: offset,
-                });
-            },
-            onInsertMeasure: (ref?: ChartMeasureRef) => {
-                const insertRef = ref ?? selectedMeasureRef;
-                if (!insertRef) return;
-                const next = insertMeasureAtRef(
-                    activeLane.chartData,
-                    insertRef,
-                );
-                if (!next) return;
-                setChartData(next);
-            },
-            onDeleteMeasure: (ref?: ChartMeasureRef) => {
-                const deleteRef = ref ?? selectedMeasureRef;
-                if (!deleteRef) return;
-                const next = deleteMeasureAtRef(
-                    activeLane.chartData,
-                    deleteRef,
-                );
-                if (!next) return;
-                setChartData(next);
-            },
-            getEditText: () => {
-                const laneData = omitNoteLaneId(activeLane);
-                return JSON.stringify(laneData, null, 2);
-            },
-            onEditSave: (text: string) => {
-                const result = parseImportedNoteLaneText(text, activeLane);
-                if ("error" in result) {
-                    return result.error;
+                if (!Number.isFinite(offset)) {
+                    reportError(new Error("图形偏移必须是有限秒数"));
+                    return;
                 }
-                clearLaneError(activeLane.id);
-                pushUndo(activeLane.chartData);
-                updateLaneData(activeLane.id, () => result.lane);
-                setLaneEditState(activeLane.id, (prev) => ({
+                prop.setSoundLaneState(prop.index, (prev) => ({
                     ...prev,
-                    selectedIds: new Set<string>(),
-                    lnHeadTime: null,
-                    currentBpm: result.lane.defaultBpm,
+                    noteLaneOffset: offset,
                 }));
-                return null;
             },
+            onInsertMeasure,
+            onDeleteMeasure,
+            getEditText: () => {
+                return JSON.stringify(strippedLane, null, 2);
+            },
+            onEditSave: handleImportText,
+            sirius: isSirius ? {
+                type: editState.siriusType,
+                properties: editState.siriusProperties,
+                onTypeChange: (type: number) => {
+                    try {
+                        const defaults = defaultSiriusProperties(type);
+                        setLaneEditState(activeLane.id, (prev) => {
+                            const lane = Number.isInteger(prev.siriusProperties.lane)
+                                ? Math.max(1, Math.min(SIRIUS_LANE_COUNT, prev.siriusProperties.lane)) : 1;
+                            const width = Number.isInteger(prev.siriusProperties.width)
+                                ? Math.max(1, Math.min(SIRIUS_LANE_COUNT + 1 - lane, prev.siriusProperties.width)) : 1;
+                            return {
+                                ...prev,
+                                mode: "insert-sirius",
+                                siriusType: type,
+                                siriusProperties: { ...defaults, lane, width },
+                                lnHeadTime: null,
+                            };
+                        });
+                    } catch (error) {
+                        reportError(error);
+                    }
+                },
+                onPropertiesChange: (properties: SiriusNoteProperties) => {
+                    setLaneEditState(activeLane.id, (prev) => ({
+                        ...prev, siriusProperties: { ...properties },
+                    }));
+                },
+                selectedNote,
+                onUpdateSelected: (note: ChartNote) => {
+                    if (!ensureEditable()) return;
+                    try {
+                        if (!selectedNote || selectedNote.id !== note.id || !selectedNote.sirius) {
+                            throw new Error("请先选中一个 Sirius 音符");
+                        }
+                        const merged = {
+                            ...selectedNote,
+                            ...note,
+                            sirius: { ...selectedNote.sirius, ...note.sirius },
+                        };
+                        setChartData(updateSiriusNotes(
+                            activeLane.chartData, [note.id], merged, activeLane.defaultBpm,
+                        ));
+                    } catch (error) {
+                        reportError(error);
+                    }
+                },
+                exportResult: convertToSirius(activeLane),
+                offset: activeLane.siriusOffset ?? 0,
+                setOffset: (seconds: number) => {
+                    setLaneMetadata({ siriusOffset: seconds });
+                },
+            } : undefined,
         };
     }, [
         resolvedActiveLaneId,
         noteLanes,
-        laneEditStateMap,
+        createLaneActions,
         laneSelectedMeasureRefMap,
         laneErrorMap,
         locateMeasure,
-        cloneChart,
         retimeSingleMeasureByBpm,
         setLaneEditState,
         updateLaneData,
-        setLaneError,
         clearLaneError,
         audioData,
         prop,
@@ -797,11 +938,10 @@ export default function SoundLane(prop: _prop) {
     }
 
     function handleClickToActivate() {
-        const updatedState = {
-            ...prop.refSoundLaneState,
-            isActive: !prop.refSoundLaneState.isActive,
-        };
-        prop.setSoundLaneState(prop.index, updatedState);
+        prop.setSoundLaneState(prop.index, (prev) => ({
+            ...prev,
+            isActive: !prev.isActive,
+        }));
         prop.onActivate?.(prop.audioId);
     }
 
@@ -820,10 +960,10 @@ export default function SoundLane(prop: _prop) {
                     isActive={prop.refSoundLaneState.isActive || false}
                     offset={prop.refSoundLaneState.offset ?? 0}
                     setOffset={(v) => {
-                        prop.setSoundLaneState(prop.index, {
-                            ...prop.refSoundLaneState,
+                        prop.setSoundLaneState(prop.index, (prev) => ({
+                            ...prev,
                             offset: v,
-                        });
+                        }));
                     }}
                     onDelete={prop.onDeleteSoundLane ? () => prop.onDeleteSoundLane?.(prop.audioId) : undefined}
                 />
@@ -845,13 +985,13 @@ export default function SoundLane(prop: _prop) {
                                 audioId={prop.audioId}
                                 isFolded={prop.refSoundLaneState.waveLane.isFolded}
                                 setIsFolded={(isFolded) => {
-                                    prop.setSoundLaneState(prop.index, {
-                                        ...prop.refSoundLaneState,
+                                    prop.setSoundLaneState(prop.index, (prev) => ({
+                                        ...prev,
                                         waveLane: {
-                                            ...prop.refSoundLaneState.waveLane,
+                                            ...prev.waveLane,
                                             isFolded,
                                         },
-                                    });
+                                    }));
                                 }}
                             />
                         </div>
@@ -860,10 +1000,10 @@ export default function SoundLane(prop: _prop) {
                                 audioId={prop.audioId}
                                 waveState={prop.refSoundLaneState.waveLane}
                                 setWaveState={(waveLane) => {
-                                    prop.setSoundLaneState(prop.index, {
-                                        ...prop.refSoundLaneState,
+                                    prop.setSoundLaneState(prop.index, (prev) => ({
+                                        ...prev,
                                         waveLane,
-                                    });
+                                    }));
                                 }}
                             />
                         )}
@@ -880,10 +1020,10 @@ export default function SoundLane(prop: _prop) {
                                 timelineHeight={timelineHeight}
                                 waveState={prop.refSoundLaneState.waveLane}
                                 setWaveState={(waveLane) => {
-                                    prop.setSoundLaneState(prop.index, {
-                                        ...prop.refSoundLaneState,
+                                    prop.setSoundLaneState(prop.index, (prev) => ({
+                                        ...prev,
                                         waveLane,
-                                    });
+                                    }));
                                 }}
                                 cursorTime={renderCursorTime}
                                 playheadTime={renderPlayheadTime}
@@ -905,13 +1045,13 @@ export default function SoundLane(prop: _prop) {
                                 audioId={prop.audioId}
                                 isFolded={prop.refSoundLaneState.spectrumLane.isFolded}
                                 setIsFolded={(isFolded) => {
-                                    prop.setSoundLaneState(prop.index, {
-                                        ...prop.refSoundLaneState,
+                                    prop.setSoundLaneState(prop.index, (prev) => ({
+                                        ...prev,
                                         spectrumLane: {
-                                            ...prop.refSoundLaneState.spectrumLane,
+                                            ...prev.spectrumLane,
                                             isFolded,
                                         },
-                                    });
+                                    }));
                                 }}
                             />
                         </div>
@@ -920,10 +1060,10 @@ export default function SoundLane(prop: _prop) {
                                 audioId={prop.audioId}
                                 spectrumState={prop.refSoundLaneState.spectrumLane}
                                 setSpectrumState={(spectrumLane) => {
-                                    prop.setSoundLaneState(prop.index, {
-                                        ...prop.refSoundLaneState,
+                                    prop.setSoundLaneState(prop.index, (prev) => ({
+                                        ...prev,
                                         spectrumLane,
-                                    });
+                                    }));
                                 }}
                             />
                         )}
@@ -942,10 +1082,10 @@ export default function SoundLane(prop: _prop) {
                                     prop.refSoundLaneState.spectrumLane
                                 }
                                 setSpectrumState={(spectrumLane) => {
-                                    prop.setSoundLaneState(prop.index, {
-                                        ...prop.refSoundLaneState,
+                                    prop.setSoundLaneState(prop.index, (prev) => ({
+                                        ...prev,
                                         spectrumLane,
-                                    });
+                                    }));
                                 }}
                                 cursorTime={renderCursorTime}
                                 playheadTime={renderPlayheadTime}
@@ -964,17 +1104,18 @@ export default function SoundLane(prop: _prop) {
                         className={`editor-inspector-panel w-[176px] shrink-0 self-stretch ${styles.inspector}`}
                         data-inspector="true"
                     >
-                        <div className="flex items-center gap-1">
-                            <div className="editor-pane-caption">Note Lane</div>
+                        <div className="flex flex-wrap items-center gap-1">
+                            <div className="editor-pane-caption">谱面</div>
                             <button
                                 type="button"
                                 onClick={handleToggleNoteFold}
-                                title={noteLanes.every((l) => l.isFolded) ? "展开记谱" : "折叠记谱"}
+                                disabled={visibleNoteLanes.length === 0}
+                                title={allVisibleNoteLanesFolded ? "展开记谱" : "折叠记谱"}
                                 className="inline-flex items-center justify-center w-5 h-5 border-0 bg-transparent cursor-pointer rounded-md p-0 opacity-55 hover:opacity-100 hover:bg-[rgba(15,118,110,0.12)] transition-[opacity,background-color] duration-200"
                             >
                                 <Image
-                                    src={noteLanes.every((l) => l.isFolded) ? "/assets/icons/unfold.png" : "/assets/icons/fold.png"}
-                                    alt={noteLanes.every((l) => l.isFolded) ? "展开记谱" : "折叠记谱"}
+                                    src={allVisibleNoteLanesFolded ? "/assets/icons/unfold.png" : "/assets/icons/fold.png"}
+                                    alt={allVisibleNoteLanesFolded ? "展开记谱" : "折叠记谱"}
                                     width={14}
                                     height={14}
                                 />
@@ -982,28 +1123,68 @@ export default function SoundLane(prop: _prop) {
                             <button
                                 type="button"
                                 className="inline-flex items-center justify-center w-5 h-5 border-0 bg-transparent cursor-pointer rounded-md p-0 opacity-55 hover:opacity-100 hover:bg-[rgba(15,118,110,0.12)] transition-[opacity,background-color] duration-200"
-                                onClick={handleAddNoteLane}
+                                onClick={() => handleAddNoteLane(noteEditorKind)}
                                 onMouseDown={(e) => e.stopPropagation()}
-                                title="添加记谱"
+                                title="新建记谱"
+                                aria-label="新建记谱"
                             >
                                 <Image
                                     src="/assets/icons/newNoteLane.svg"
-                                    alt="添加记谱"
+                                    alt="新建记谱"
                                     width={14}
                                     height={14}
                                 />
                             </button>
+                            <button
+                                type="button"
+                                className={styles.addSiriusButton}
+                                onClick={handleOpenSirius}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                title="打开已有制谱器，没有时新建"
+                            >
+                                制谱器
+                            </button>
                         </div>
-                        {activeNoteMenuProps && !noteLanes.every((l) => l.isFolded) && (
-                            <NoteMenu {...activeNoteMenuProps} />
+                        <label className={styles.chartSelector}>
+                            <span>当前谱面</span>
+                            <select
+                                value={resolvedActiveLaneId ?? ""}
+                                disabled={noteLanes.length === 0}
+                                onChange={(event) => {
+                                    selectNoteLane(event.target.value, true);
+                                }}
+                            >
+                                {noteLanes.length === 0 && <option value="">暂无记谱</option>}
+                                {chartOptions.map(({ id, label }) => (
+                                    <option key={id} value={id}>{label}</option>
+                                ))}
+                            </select>
+                        </label>
+                        <button
+                            type="button"
+                            className={styles.deleteNoteLaneButton}
+                            disabled={!resolvedActiveLaneId}
+                            onClick={() => {
+                                if (resolvedActiveLaneId) deleteNoteLane(resolvedActiveLaneId);
+                            }}
+                        >
+                            删除当前轨道
+                        </button>
+                        {noteLanes.length === 0 && (
+                            <p className={styles.emptyNoteLane}>暂无记谱，点击新建记谱</p>
+                        )}
+                        {activeNoteMenuProps && !allVisibleNoteLanesFolded && (
+                            <NoteMenu key={`${resolvedActiveLaneId}:${!!activeNoteMenuProps.sirius}`} {...activeNoteMenuProps} />
                         )}
                     </div>
                     <div className={`flex-1 min-w-0 flex flex-col gap-1 ${styles.noteCanvases}`}>
-                        {sortedNoteLanes.map((lane: NoteLaneData) => {
+                        {visibleNoteLanes.map((lane: NoteLaneData) => {
                             if (lane.isFolded) return null;
-                            const editState =
-                                laneEditStateMap[lane.id] ??
-                                defaultNoteEditState(lane.defaultBpm);
+                            const {
+                                editState, setChartData, setLaneMetadata,
+                                onUndo, onRedo, onInsertMeasure, onDeleteMeasure,
+                            } = createLaneActions(lane);
+                            const LaneCanvas = lane.chartKind === "sirius" ? SiriusLane : NoteLane;
                             const selectedMeasureRef =
                                 laneSelectedMeasureRefMap[lane.id] ?? null;
                             const handleSnapTimeChange =
@@ -1011,144 +1192,51 @@ export default function SoundLane(prop: _prop) {
                             const handleSelectMeasure =
                                 laneMeasureSelectHandlers[lane.id];
 
-                            const pushUndo = (before: ChartSegment[]) => {
-                                setLaneEditState(lane.id, (prev) => {
-                                    const stack = [
-                                        cloneChart(before),
-                                        ...prev.undoStack,
-                                    ].slice(0, MAX_UNDO);
-                                    return {
-                                        ...prev,
-                                        undoStack: stack,
-                                        redoStack: [],
-                                    };
-                                });
-                            };
-
-                            const setChartData = (
-                                next: ChartSegment[],
-                                saveUndo = true,
-                                undoBase?: ChartSegment[],
-                            ): boolean => {
-                                const error = validateChartData(next);
-                                if (error) {
-                                    setLaneError(lane.id, error);
-                                    return false;
-                                }
-
-                                clearLaneError(lane.id);
-                                if (saveUndo) {
-                                    pushUndo(undoBase ?? lane.chartData);
-                                }
-                                updateLaneData(lane.id, (prevLane) => ({
-                                    ...prevLane,
-                                    chartData: next,
-                                }));
-                                return true;
-                            };
-
-                            const handleUndo = () => {
-                                if (editState.undoStack.length === 0) return;
-                                const [top, ...rest] = editState.undoStack;
-                                const current = cloneChart(lane.chartData);
-                                updateLaneData(lane.id, (prevLane) => ({
-                                    ...prevLane,
-                                    chartData: top,
-                                }));
-                                setLaneEditState(lane.id, (prev) => ({
-                                    ...prev,
-                                    undoStack: rest,
-                                    redoStack: [
-                                        current,
-                                        ...prev.redoStack,
-                                    ].slice(0, MAX_UNDO),
-                                }));
-                            };
-
-                            const handleRedo = () => {
-                                if (editState.redoStack.length === 0) return;
-                                const [top, ...rest] = editState.redoStack;
-                                const current = cloneChart(lane.chartData);
-                                updateLaneData(lane.id, (prevLane) => ({
-                                    ...prevLane,
-                                    chartData: top,
-                                }));
-                                setLaneEditState(lane.id, (prev) => ({
-                                    ...prev,
-                                    redoStack: rest,
-                                    undoStack: [
-                                        current,
-                                        ...prev.undoStack,
-                                    ].slice(0, MAX_UNDO),
-                                }));
-                            };
-
                             return (
-                                <NoteLane
+                                <div
                                     key={lane.id}
-                                    chartData={lane.chartData}
-                                    setChartData={setChartData}
-                                    timeRange={prop.timeRange}
-                                    orientation={orientation}
-                                    timelineHeight={timelineHeight}
-                                    graphicalOffset={prop.refSoundLaneState.noteLaneOffset ?? 0}
-                                    playheadTime={renderPlayheadTime}
-                                    isPlaybackFrozen={isPlaybackFrozen}
-                                    beatSubdivision={lane.division}
-                                    setBeatSubdivision={(division) =>
-                                        updateLaneData(
-                                            lane.id,
-                                            (prevLane) => ({
-                                                ...prevLane,
-                                                division: Math.max(
-                                                    1,
-                                                    Math.floor(division),
-                                                ),
-                                            }),
-                                        )
-                                    }
-                                    height={isVertical ? 220 : 120}
-                                    editState={editState}
-                                    setEditState={(updater) => {
-                                        setLaneEditState(lane.id, (prev) =>
-                                            typeof updater === "function"
-                                                ? updater(prev)
-                                                : updater,
-                                        );
-                                    }}
-                                    songDuration={audioData.duration ?? 0}
-                                    onUndo={handleUndo}
-                                    onRedo={handleRedo}
-                                    onSnapTimeChange={handleSnapTimeChange}
-                                    selectedMeasureRef={selectedMeasureRef}
-                                    onSelectMeasure={handleSelectMeasure}
-                                    onActivate={() =>
-                                        setActiveNoteLaneId(lane.id)
-                                    }
-                                    laneId={lane.id}
-                                    onInsertMeasure={(ref?: ChartMeasureRef) => {
-                                        const insertRef =
-                                            ref ?? selectedMeasureRef;
-                                        if (!insertRef) return;
-                                        const next = insertMeasureAtRef(
-                                            lane.chartData,
-                                            insertRef,
-                                        );
-                                        if (!next) return;
-                                        setChartData(next);
-                                    }}
-                                    onDeleteMeasure={(ref?: ChartMeasureRef) => {
-                                        const deleteRef =
-                                            ref ?? selectedMeasureRef;
-                                        if (!deleteRef) return;
-                                        const next = deleteMeasureAtRef(
-                                            lane.chartData,
-                                            deleteRef,
-                                        );
-                                        if (!next) return;
-                                        setChartData(next);
-                                    }}
-                                />
+                                    className={styles.noteCanvas}
+                                    data-chart-kind={lane.chartKind ?? "rhythm"}
+                                    data-active={lane.id === resolvedActiveLaneId}
+                                >
+                                    <LaneCanvas
+                                        chartData={lane.chartData}
+                                        setChartData={setChartData}
+                                        timeRange={prop.timeRange}
+                                        orientation={orientation}
+                                        timelineHeight={timelineHeight}
+                                        graphicalOffset={prop.refSoundLaneState.noteLaneOffset ?? 0}
+                                        playheadTime={renderPlayheadTime}
+                                        isPlaybackFrozen={isPlaybackFrozen}
+                                        beatSubdivision={lane.division}
+                                        setBeatSubdivision={(division: number) =>
+                                            setLaneMetadata({ division: Math.max(1, Math.floor(division)) })
+                                        }
+                                        height={isVertical ? lane.chartKind === "sirius" ? 432 : 220 : 120}
+                                        editState={editState}
+                                        setEditState={(updater: SetStateAction<NoteEditState>) => {
+                                            setLaneEditState(lane.id, (prev) =>
+                                                typeof updater === "function"
+                                                    ? updater(prev)
+                                                    : updater,
+                                            );
+                                        }}
+                                        songDuration={audioData.duration ?? 0}
+                                        onUndo={onUndo}
+                                        onRedo={onRedo}
+                                        onSnapTimeChange={handleSnapTimeChange}
+                                        selectedMeasureRef={selectedMeasureRef}
+                                        onSelectMeasure={handleSelectMeasure}
+                                        onActivate={() =>
+                                            selectNoteLane(lane.id)
+                                        }
+                                        laneId={lane.id}
+                                        onInsertMeasure={onInsertMeasure}
+                                        onDeleteMeasure={onDeleteMeasure}
+                                        onError={(message: string) => setLaneError(lane.id, message)}
+                                        onRequestVertical={() => prop.onRequestVertical?.()}
+                                    />
+                                </div>
                             );
                         })}
                     </div>

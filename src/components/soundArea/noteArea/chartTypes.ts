@@ -1,3 +1,6 @@
+import type { SiriusNoteProperties } from "./siriusTypes";
+export type { SiriusNoteProperties } from "./siriusTypes";
+
 export interface Fraction {
     a: number;
     b: number;
@@ -16,6 +19,9 @@ export interface ChartNote {
     body?: Fraction[];
     tail?: Fraction;
     annotation?: string;
+    /** Required for Sirius playable notes. head is local [0, 1); tail/body
+     * are musical beat offsets from the same owning beat, across BPM changes. */
+    sirius?: SiriusNoteProperties;
 }
 
 export function isNoteBoundary(note: ChartNote): boolean {
@@ -54,6 +60,10 @@ export interface RawChartSegment {
 
 export interface NoteLaneData {
     id: string;
+    /** Omitted on legacy rhythm charts; independent of audio and UI offsets. */
+    chartKind?: "rhythm" | "sirius";
+    /** User-explicit Sirius export time offset in seconds (default 0). */
+    siriusOffset?: number;
     division: number;
     defaultBpm: number;
     chartData: ChartSegment[];
@@ -62,6 +72,6 @@ export interface NoteLaneData {
     /** @deprecated — boundary markers are now stored as boundary notes in chartData */
     endTime?: number | null;
     isFolded?: boolean;
-    /** Schema version for migration; v2 uses boundary notes */
+    /** v2 uses boundary notes; v3 omits derived times; v4 supports Sirius. */
     dataVersion?: number;
 }

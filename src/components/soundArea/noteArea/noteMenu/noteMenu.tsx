@@ -5,10 +5,26 @@ import classNames from "classnames/bind";
 import { EditMode } from "../noteState";
 import { useAppSettings } from "@/components/appSettingsContext";
 import Image from "@/components/Image";
+import type { ChartNote } from "../chartTypes";
+import type { SiriusNoteProperties } from "../siriusTypes";
+import type { SiriusExportResult } from "@/lib/siriusExport";
+import SiriusNoteControls from "./siriusNoteControls";
 
 const cls = classNames.bind(style);
 
-type ExportFormat = "internal" | "malody" | "sus";
+type ExportFormat = "internal" | "malody" | "sus" | "sirius";
+
+export interface SiriusMenuProps {
+    type: number;
+    properties: SiriusNoteProperties;
+    onTypeChange: (type: number) => void;
+    onPropertiesChange: (properties: SiriusNoteProperties) => void;
+    selectedNote: ChartNote | null;
+    onUpdateSelected: (note: ChartNote) => void;
+    exportResult: SiriusExportResult;
+    offset: number;
+    setOffset: (seconds: number) => void;
+}
 
 function getExportFileStem(fileName: string): string {
     const cleaned = (fileName || "notelane")
@@ -51,7 +67,6 @@ interface _p {
     onCut: () => void;
     onUndo: () => void;
     onRedo: () => void;
-    onDeleteLane: () => void;
     onClearLane: () => void;
     onImportText: (text: string) => string | null;
     exportText: string;
@@ -65,6 +80,7 @@ interface _p {
     onDeleteMeasure: () => void;
     onEditSave: (text: string) => string | null;
     getEditText: () => string;
+    sirius?: SiriusMenuProps;
 }
 
 interface ModeButtonProps {
@@ -100,7 +116,9 @@ function ActionButton({ label, onClick, disabled, title, children }: ActionButto
     return (
         <button
             type="button"
-            onClick={onClick}
+            onClick={() => {
+                if (!disabled) onClick();
+            }}
             onMouseDown={(event) => event.stopPropagation()}
             title={title ?? label}
             disabled={disabled}
@@ -123,6 +141,18 @@ export default function NoteMenu(p: _p) {
     const [editText, setEditText] = React.useState("");
     const [editError, setEditError] = React.useState<string | null>(null);
     const [editOriginalText, setEditOriginalText] = React.useState("");
+    const [copyStatus, setCopyStatus] = React.useState<{ text: string; message: string } | null>(null);
+    const offset = p.sirius?.offset ?? 0;
+    const [offsetDraft, setOffsetDraft] = React.useState({ value: offset, text: String(offset) });
+    if (!Object.is(offsetDraft.value, offset)) {
+        setOffsetDraft({ value: offset, text: String(offset) });
+    }
+    const exportPreviewRef = React.useRef<HTMLTextAreaElement>(null);
+    const readOnly = !!p.sirius && p.mode === "browse";
+
+    const mutate = (action: () => void) => {
+        if (!readOnly) action();
+    };
 
     const stopInteraction = (event: React.SyntheticEvent) => {
         event.stopPropagation();
@@ -136,7 +166,13 @@ export default function NoteMenu(p: _p) {
         setMeasureBpmInput(String(p.currentMeasureBpm));
     }, [p.currentMeasureBpm]);
 
-    const MODES: { mode: EditMode; label: string; title: string }[] = [
+    const MODES: { mode: EditMode; label: string; title: string }[] = p.sirius ? [
+        { mode: "browse", label: "浏览", title: "浏览模式（只读）" },
+        { mode: "insert-sirius", label: "绘制", title: "绘制当前 Sirius 类型；长条两次点击起点和终点" },
+        { mode: "select", label: "选中", title: "选中模式（可编辑及导入 JSON）" },
+        { mode: "paste", label: "粘贴", title: `粘贴模式 (${getKeyboardShortcutLabel("note.paste") || "Ctrl+V"} 直接粘贴)` },
+        { mode: "annotate", label: "标注", title: "标注模式" },
+    ] : [
         { mode: "browse", label: "浏览", title: "浏览模式 (只读)" },
         { mode: "insert-strong", label: "强拍", title: "插入强拍 (type 0)" },
         { mode: "insert-weak", label: "弱拍", title: "插入弱拍 (type 1)" },
@@ -148,7 +184,7 @@ export default function NoteMenu(p: _p) {
         { mode: "annotate", label: "标注", title: "标注模式" },
     ];
 
-    const modeShortcutMap: Record<EditMode, string> = {
+    const modeShortcutMap: Partial<Record<EditMode, string>> = {
         browse: getKeyboardShortcutLabel("note.mode.browse"),
         "insert-strong": getKeyboardShortcutLabel("note.mode.insertStrong"),
         "insert-weak": getKeyboardShortcutLabel("note.mode.insertWeak"),
@@ -160,19 +196,63 @@ export default function NoteMenu(p: _p) {
         annotate: getKeyboardShortcutLabel("note.mode.annotate"),
     };
 
+    const activeExportFormat = p.sirius
+        ? (exportFormat === "internal" ? "internal" : "sirius")
+        : (exportFormat === "sirius" ? "internal" : exportFormat);
+    const offsetInvalid = !!p.sirius && (
+        offsetDraft.text.trim() === "" || !Number.isFinite(Number(offsetDraft.text))
+    );
+    const exportError = activeExportFormat === "sirius"
+        ? p.sirius?.exportResult.error ?? (offsetInvalid ? "请输入有限的导出偏移秒数。" : null)
+        : null;
     const currentExportText =
-        exportFormat === "malody"
+        activeExportFormat === "sirius"
+            ? (exportError ? "" : p.sirius?.exportResult.text ?? "")
+            : activeExportFormat === "malody"
             ? p.malodyExportText
-            : exportFormat === "sus"
+            : activeExportFormat === "sus"
               ? p.susExportText
               : p.exportText;
     const exportFileStem = React.useMemo(
         () => getExportFileStem(p.exportFileBaseName),
         [p.exportFileBaseName],
     );
+    const exportExtension = activeExportFormat === "internal" ? "json"
+        : activeExportFormat === "malody" ? "mc"
+        : activeExportFormat === "sirius" ? "txt" : "sus";
+
+    const copyExport = async () => {
+        if (exportError) return;
+        setCopyStatus(null);
+        try {
+            if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+            await navigator.clipboard.writeText(currentExportText);
+            setCopyStatus({ text: currentExportText, message: "已复制当前导出文本。" });
+        } catch {
+            exportPreviewRef.current?.focus();
+            exportPreviewRef.current?.select();
+            setCopyStatus({
+                text: currentExportText,
+                message: "无法访问剪贴板。已选中预览文本，请按 Ctrl+C / ⌘C 手动复制，或下载文件。",
+            });
+        }
+    };
 
     return (
         <div className={cls("menu")}>
+            {p.sirius && (
+                <>
+                    <div className={cls("sirius-title")}>制谱器 ·12轨</div>
+                    <p className={cls("help-text")}>
+                        选类型后点击放置；长条依次点起点、终点。切换选中模式可修改属性或导入 JSON。
+                    </p>
+                    {readOnly && (
+                        <p className={cls("browse-notice")}>
+                            浏览只读：修改谱面、BPM、导出偏移及导入需先切换模式。
+                        </p>
+                    )}
+                </>
+            )}
             {/* Offset */}
             <div className={cls("section-label")}>图形偏移</div>
             <div className={cls("bpm-row")}>
@@ -212,14 +292,23 @@ export default function NoteMenu(p: _p) {
                 ))}
             </div>
 
+            {p.sirius && (
+                <SiriusNoteControls
+                    sirius={p.sirius}
+                    drawing={p.mode === "insert-sirius"}
+                    readOnly={readOnly}
+                    onDraw={() => p.setMode("insert-sirius")}
+                />
+            )}
+
             {/* Edit actions */}
             <div className={cls("section-label")}>编辑</div>
             <div className={cls("button-group", "edit-grid")}>
                 <ActionButton
                     label="删除"
                     title={`删除选中 Note (${getKeyboardShortcutLabel("note.delete") || "Del"})`}
-                    disabled={!p.hasSelection}
-                    onClick={p.onDelete}
+                    disabled={readOnly || !p.hasSelection}
+                    onClick={() => mutate(p.onDelete)}
                 />
                 <ActionButton
                     label="复制"
@@ -230,8 +319,8 @@ export default function NoteMenu(p: _p) {
                 <ActionButton
                     label="剪切"
                     title={`剪切选中 Note (${getKeyboardShortcutLabel("note.cut") || "Ctrl+X"})`}
-                    disabled={!p.hasSelection}
-                    onClick={p.onCut}
+                    disabled={readOnly || !p.hasSelection}
+                    onClick={() => mutate(p.onCut)}
                 />
             </div>
 
@@ -241,14 +330,14 @@ export default function NoteMenu(p: _p) {
                 <ActionButton
                     label="撤回"
                     title="撤回 (Ctrl+Z)"
-                    disabled={!p.canUndo}
-                    onClick={p.onUndo}
+                    disabled={readOnly || !p.canUndo}
+                    onClick={() => mutate(p.onUndo)}
                 />
                 <ActionButton
                     label="重做"
                     title="重做 (Ctrl+Y)"
-                    disabled={!p.canRedo}
-                    onClick={p.onRedo}
+                    disabled={readOnly || !p.canRedo}
+                    onClick={() => mutate(p.onRedo)}
                 />
             </div>
 
@@ -294,14 +383,14 @@ export default function NoteMenu(p: _p) {
                     max={999}
                     step={1}
                     value={p.currentBpm}
-                    disabled={p.bpmLocked ?? false}
+                    disabled={readOnly || (p.bpmLocked ?? false)}
                     onMouseDown={stopInteraction}
                     onClick={stopInteraction}
                     onKeyDown={stopInteraction}
                     onWheel={(e) => e.stopPropagation()}
                     onChange={(e) => {
                         const v = Number(e.target.value);
-                        if (v > 0 && Number.isFinite(v)) p.setCurrentBpm(v);
+                        if (!readOnly && !p.bpmLocked && v > 0 && Number.isFinite(v)) p.setCurrentBpm(v);
                     }}
                     className={cls("bpm-input-compact")}
                     title={
@@ -317,7 +406,7 @@ export default function NoteMenu(p: _p) {
                     max={999}
                     step={1}
                     value={measureBpmInput}
-                    disabled={!p.canEditCurrentMeasureBpm}
+                    disabled={readOnly || !p.canEditCurrentMeasureBpm}
                     onMouseDown={stopInteraction}
                     onClick={stopInteraction}
                     onKeyDown={stopInteraction}
@@ -327,6 +416,7 @@ export default function NoteMenu(p: _p) {
                         setMeasureBpmInput(nextValue);
                         const v = Number(nextValue);
                         if (
+                            !readOnly &&
                             p.canEditCurrentMeasureBpm &&
                             Number.isFinite(v) &&
                             v >= 1
@@ -343,7 +433,8 @@ export default function NoteMenu(p: _p) {
                 <span className={cls("inline-label")}>拍</span>
                 <button
                     type="button"
-                    onClick={() => p.onInsertMeasure()}
+                    disabled={readOnly}
+                    onClick={() => mutate(p.onInsertMeasure)}
                     onMouseDown={(event) => event.stopPropagation()}
                     title={
                         getKeyboardShortcutLabel("note.measure.insert")
@@ -356,7 +447,8 @@ export default function NoteMenu(p: _p) {
                 </button>
                 <button
                     type="button"
-                    onClick={() => p.onDeleteMeasure()}
+                    disabled={readOnly}
+                    onClick={() => mutate(p.onDeleteMeasure)}
                     onMouseDown={(event) => event.stopPropagation()}
                     title={
                         getKeyboardShortcutLabel("note.measure.delete")
@@ -373,13 +465,16 @@ export default function NoteMenu(p: _p) {
             <div className={cls("button-group", "lane-grid")}>
                 <ActionButton
                     title="清空当前 NoteLane 数据"
-                    onClick={p.onClearLane}
+                    disabled={readOnly}
+                    onClick={() => mutate(p.onClearLane)}
                 >
                     <Image src="/assets/icons/emptyNoteLane.svg" alt="清空" width={16} height={16} />
                 </ActionButton>
                 <ActionButton
                     title="从内部 JSON 文本覆盖当前 NoteLane"
+                    disabled={readOnly}
                     onClick={() => {
+                        if (readOnly) return;
                         setImportError(null);
                         setImportText("");
                         setIsImportOpen(true);
@@ -388,9 +483,11 @@ export default function NoteMenu(p: _p) {
                     <Image src="/assets/icons/importNoteLane.svg" alt="导入" width={16} height={16} />
                 </ActionButton>
                 <ActionButton
-                    title="导出当前 NoteLane 的 JSON"
+                    title={p.sirius ? "导出 Sirius TXT 或无损内部 JSON" : "导出当前 NoteLane 的 JSON"}
                     onClick={() => {
-                        setExportFormat("internal");
+                        setExportFormat(p.sirius ? "sirius" : "internal");
+                        setOffsetDraft({ value: offset, text: String(offset) });
+                        setCopyStatus(null);
                         setIsExportOpen(true);
                     }}
                 >
@@ -398,7 +495,9 @@ export default function NoteMenu(p: _p) {
                 </ActionButton>
                 <ActionButton
                     title="编辑当前 NoteLane JSON"
+                    disabled={readOnly}
                     onClick={() => {
+                        if (readOnly) return;
                         const text = p.getEditText();
                         setEditOriginalText(text);
                         setEditText(text);
@@ -408,15 +507,9 @@ export default function NoteMenu(p: _p) {
                 >
                     <Image src="/assets/icons/editNoteLane.svg" alt="编辑" width={16} height={16} />
                 </ActionButton>
-                <ActionButton
-                    title="删除当前 NoteLane"
-                    onClick={p.onDeleteLane}
-                >
-                    <Image src="/assets/icons/deleteNoteLane.svg" alt="删除" width={16} height={16} />
-                </ActionButton>
             </div>
 
-            {p.lastError && <div className={cls("error")}>{p.lastError}</div>}
+            {p.lastError && <div className={cls("error")} role="alert">{p.lastError}</div>}
 
             {isEditOpen && (
                 <div
@@ -435,6 +528,7 @@ export default function NoteMenu(p: _p) {
                         <textarea
                             className={cls("modal-text")}
                             value={editText}
+                            readOnly={readOnly}
                             onMouseDown={stopInteraction}
                             onClick={stopInteraction}
                             onKeyDown={stopInteraction}
@@ -452,8 +546,10 @@ export default function NoteMenu(p: _p) {
                             <button
                                 type="button"
                                 className={cls("button")}
+                                disabled={readOnly}
                                 onMouseDown={stopInteraction}
                                 onClick={() => {
+                                    if (readOnly) return;
                                     const err = p.onEditSave(editText);
                                     if (err) setEditError(err);
                                     else setIsEditOpen(false);
@@ -521,8 +617,10 @@ export default function NoteMenu(p: _p) {
                             <button
                                 type="button"
                                 className={cls("button")}
+                                disabled={readOnly}
                                 onMouseDown={stopInteraction}
                                 onClick={() => {
+                                    if (readOnly) return;
                                     const error = p.onImportText(importText);
                                     if (error) {
                                         setImportError(error);
@@ -563,105 +661,116 @@ export default function NoteMenu(p: _p) {
                         onMouseDown={stopInteraction}
                     >
                         <div className={cls("modal-title")}>
-                            导出 NoteLane
+                            {p.sirius ? "导出 Sirius 谱面" : "导出 NoteLane"}
                         </div>
                         <div className={cls("format-bar")}>
-                            <button
-                                type="button"
-                                className={cls(
-                                    "button",
-                                    exportFormat === "internal"
-                                        ? "button-active"
-                                        : "",
-                                )}
-                                onMouseDown={stopInteraction}
-                                onClick={() =>
-                                    setExportFormat("internal")
-                                }
-                            >
-                                内部
-                            </button>
-                            <button
-                                type="button"
-                                className={cls(
-                                    "button",
-                                    exportFormat === "malody"
-                                        ? "button-active"
-                                        : "",
-                                )}
-                                onMouseDown={stopInteraction}
-                                onClick={() =>
-                                    setExportFormat("malody")
-                                }
-                            >
-                                malody
-                            </button>
-                            <button
-                                type="button"
-                                title="SUS/BMS 风格文本"
-                                className={cls(
-                                    "button",
-                                    exportFormat === "sus"
-                                        ? "button-active"
-                                        : "",
-                                )}
-                                onMouseDown={stopInteraction}
-                                onClick={() =>
-                                    setExportFormat("sus")
-                                }
-                            >
-                                sus
-                            </button>
+                            {(p.sirius ? [
+                                { format: "internal" as const, label: "内部 JSON（无损）" },
+                                { format: "sirius" as const, label: "Sirius TXT" },
+                            ] : [
+                                { format: "internal" as const, label: "内部 JSON" },
+                                { format: "malody" as const, label: "malody" },
+                                { format: "sus" as const, label: "sus" },
+                            ]).map(({ format, label }) => (
+                                <button
+                                    key={format}
+                                    type="button"
+                                    className={cls("button", activeExportFormat === format && "button-active")}
+                                    aria-pressed={activeExportFormat === format}
+                                    onMouseDown={stopInteraction}
+                                    onClick={() => {
+                                        setExportFormat(format);
+                                        setCopyStatus(null);
+                                    }}
+                                >
+                                    {label}
+                                </button>
+                            ))}
                         </div>
+                        {activeExportFormat === "sirius" && p.sirius && (
+                            <>
+                                <div className={cls("export-warning")}>
+                                    <strong>不可逆、有损，不能从 TXT 恢复 BPM、拍点及编辑信息；请保留工程/内部 JSON。</strong>
+                                    {p.sirius.exportResult.warnings.length > 0 && (
+                                        <ul>
+                                            {p.sirius.exportResult.warnings.map((warning, index) => (
+                                                <li key={index}>{warning}</li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                                <label className={cls("export-offset")}>
+                                    导出时间偏移（秒）
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        className={cls("control-input")}
+                                        value={offsetDraft.text}
+                                        disabled={readOnly}
+                                        aria-invalid={offsetInvalid}
+                                        onKeyDown={stopInteraction}
+                                        onWheel={stopInteraction}
+                                        onChange={(event) => {
+                                            if (readOnly) return;
+                                            const value = event.target.value;
+                                            setCopyStatus(null);
+                                            const seconds = Number(value);
+                                            const valid = value.trim() !== "" && Number.isFinite(seconds);
+                                            setOffsetDraft({ value: valid ? seconds : offset, text: value });
+                                            if (valid) {
+                                                p.sirius?.setOffset(seconds);
+                                            }
+                                        }}
+                                    />
+                                </label>
+                                <p className={cls("export-help")}>
+                                    此工程设置由你显式指定，仅向导出的实际时间加一次；不会自动叠加图形偏移或音频偏移。输出为无表头纯文本。
+                                    {readOnly && " 浏览模式只读；请切换选中模式后修改偏移。"}
+                                </p>
+                            </>
+                        )}
+                        {exportError && (
+                            <div className={cls("error")} role="alert">导出失败：{exportError}</div>
+                        )}
                         <textarea
+                            ref={exportPreviewRef}
                             readOnly
                             className={cls("modal-text")}
+                            aria-label="导出文本预览"
                             value={currentExportText}
                             onMouseDown={stopInteraction}
                             onClick={stopInteraction}
                             onKeyDown={stopInteraction}
                             onWheel={(e) => e.stopPropagation()}
                         />
+                        {copyStatus?.text === currentExportText && !exportError && (
+                            <p className={cls("export-help")} role="status">{copyStatus.message}</p>
+                        )}
                         <div className={cls("modal-actions")}>
-                            {exportFormat === "malody" && (
-                                <button
-                                    type="button"
-                                    className={cls("button")}
-                                    onMouseDown={stopInteraction}
-                                    onClick={() => {
-                                        downloadTextFile(
-                                            currentExportText,
-                                            `${exportFileStem}.mc`,
-                                            "application/json;charset=utf-8",
-                                        );
-                                    }}
-                                >
-                                    导出 .mc
-                                </button>
-                            )}
-                            {exportFormat === "sus" && (
-                                <button
-                                    type="button"
-                                    className={cls("button")}
-                                    onMouseDown={stopInteraction}
-                                    onClick={() => {
-                                        downloadTextFile(
-                                            currentExportText,
-                                            `${exportFileStem}.sus`,
-                                            "text/plain;charset=utf-8",
-                                        );
-                                    }}
-                                >
-                                    导出 .sus
-                                </button>
-                            )}
                             <button
                                 type="button"
                                 className={cls("button")}
+                                disabled={!!exportError}
                                 onMouseDown={stopInteraction}
                                 onClick={() => {
-                                    void navigator.clipboard.writeText(currentExportText);
+                                    if (exportError) return;
+                                    downloadTextFile(
+                                        currentExportText,
+                                        `${exportFileStem}.${exportExtension}`,
+                                        activeExportFormat === "internal" || activeExportFormat === "malody"
+                                            ? "application/json;charset=utf-8"
+                                            : "text/plain;charset=utf-8",
+                                    );
                                 }}
+                            >
+                                下载 .{exportExtension}
+                            </button>
+                            <button
+                                type="button"
+                                className={cls("button")}
+                                disabled={!!exportError}
+                                onMouseDown={stopInteraction}
+                                onClick={() => { void copyExport(); }}
                             >
                                 复制
                             </button>

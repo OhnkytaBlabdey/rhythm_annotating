@@ -10,6 +10,12 @@ import {
     NOTE_BOUNDARY_START,
     NOTE_BOUNDARY_END,
 } from "./chartTypes";
+import {
+    getSiriusTailSpan,
+    isSiriusHoldType,
+    isSiriusNoteType,
+    isSiriusScratchType,
+} from "./siriusTypes";
 
 let _idCounter = 0;
 export function generateNoteId(): string {
@@ -37,21 +43,13 @@ function sanitizeMeasures(input: ChartMeasure[] | undefined): ChartMeasure[] {
 
 export function normalizeChartSegments(
     rawSegments: RawChartSegment[],
+    chartKind?: NoteLaneData["chartKind"],
 ): ChartSegment[] {
-    const filtered = rawSegments.filter(
-        (segment) => Number.isFinite(segment.tempo),
-    );
-
-    const hasTime = filtered.some((s) => Number.isFinite(s.time));
-
-    const sorted = hasTime
-        ? [...filtered].sort(
-              (a, b) => (a.time as number) - (b.time as number),
-          )
-        : filtered;
-
+    const error = validateImportSegments(rawSegments, chartKind);
+    if (error) throw new Error(error);
+    // Stored times are derived; list order and tempos are the source of truth.
     return recomputeSegmentTimes(
-        sorted.map((segment) => ({
+        rawSegments.map((segment) => ({
             tempo: segment.tempo,
             measures: sanitizeMeasures(segment.measures ?? segment.beats),
         })),
@@ -77,6 +75,8 @@ function gcd(a: number, b: number): number {
     return x === 0 ? 1 : x;
 }
 
+/** Legacy rhythm fractions historically truncate finite numerator/denominator.
+ * Sirius validation and arithmetic use normalizeSiriusFraction instead. */
 export function normalizeFraction(
     input: Fraction | undefined,
 ): Fraction | null {
@@ -92,11 +92,17 @@ export function normalizeFraction(
     const sign = input.b < 0 ? -1 : 1;
     const a = Math.trunc(input.a) * sign;
     const b = Math.abs(Math.trunc(input.b));
+    if (b === 0) return null;
     const d = gcd(a, b);
     return {
         a: a / d,
         b: b / d,
     };
+}
+
+function normalizeSiriusFraction(input: Fraction | undefined): Fraction | null {
+    if (!input || !Number.isSafeInteger(input.a) || !Number.isSafeInteger(input.b)) return null;
+    return normalizeFraction(input);
 }
 
 function fractionKey(input: Fraction | undefined): string | null {
@@ -144,6 +150,7 @@ function rangesOverlap(
 }
 
 function validateMeasureNotes(notes: ChartNote[]): string | null {
+    notes = notes.filter((note) => !note.sirius);
     const occupiedHead = new Set<string>();
 
     const lnRanges: Array<{ id: string; head: Fraction; tail: Fraction }> = [];
@@ -269,7 +276,7 @@ function collectAbsoluteNotes(chartData: ChartSegment[]): AbsoluteNote[] {
             const measureStart = segment.time + m * beatDuration;
             const measure = segment.measures[m];
             for (const note of measure.notes) {
-                if (isNoteBoundary(note)) continue;
+                if (isNoteBoundary(note) || note.sirius) continue;
                 const abs = toAbsoluteNote(note, measureStart, beatDuration);
                 if (abs) {
                     out.push(abs);
@@ -347,12 +354,28 @@ function validateGlobalAbsoluteOverlaps(
 }
 
 export function validateChartData(chartData: ChartSegment[]): string | null {
+    const structureError = validateImportSegments(chartData);
+    if (structureError) return structureError;
+    const ids = new Set<string>();
+    const records = new Set<string>();
+    let beat = 0;
     for (const segment of chartData) {
+        if (!Array.isArray(segment.measures)) return "节拍段缺少 measures 数组";
         for (const measure of segment.measures) {
+            for (const note of measure.notes) {
+                if (!note.id || ids.has(note.id)) return "Note 缺少 id 或 id 重复";
+                ids.add(note.id);
+                if (!note.sirius) continue;
+                const key = [beat, fractionKey(note.head), fractionKey(note.tail),
+                    note.type, note.sirius.lane, note.sirius.width].join(":");
+                if (records.has(key)) return "存在重复的 Sirius note（类型、时刻与范围相同）";
+                records.add(key);
+            }
             const msg = validateMeasureNotes(measure.notes);
             if (msg) {
                 return msg;
             }
+            beat++;
         }
     }
     const globalMsg = validateGlobalAbsoluteOverlaps(chartData);
@@ -363,18 +386,105 @@ export function validateChartData(chartData: ChartSegment[]): string | null {
 }
 
 export function validateNoteLaneData(lane: NoteLaneData): string | null {
-    if (!lane.id) return "NoteLane 缺少 id";
+    if (!isRecord(lane) || typeof lane.id !== "string" || !lane.id) return "NoteLane 缺少 id";
+    const metadataError = validateLaneMetadata(lane);
+    if (metadataError) return metadataError;
     if (!Number.isFinite(lane.defaultBpm) || lane.defaultBpm <= 0) {
         return "defaultBpm 非法";
     }
     if (!Number.isFinite(lane.division) || lane.division < 1) {
         return "division 非法";
     }
-    return validateChartData(lane.chartData);
+    const error = validateChartData(lane.chartData);
+    if (error) return error;
+    for (const segment of lane.chartData) {
+        for (const measure of segment.measures) {
+            for (const note of measure.notes) {
+                if (lane.chartKind === "sirius") {
+                    const siriusError = validateNoteShape(note, "sirius");
+                    if (siriusError) return siriusError;
+                }
+                if (isNoteBoundary(note)) {
+                    if (lane.chartKind === "sirius") {
+                        const head = normalizeSiriusFraction(note.head)!;
+                        if (head.a < 0 || head.a >= head.b) return "Sirius 边界 head 必须在所属拍的 [0,1) 内";
+                    }
+                    continue;
+                }
+                if ((lane.chartKind === "sirius") !== !!note.sirius) {
+                    return "Note 类型与 chartKind 不匹配；Sirius 与节奏谱不能混用";
+                }
+            }
+        }
+    }
+    return null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-    return !!value && typeof value === "object";
+    return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function validateLaneMetadata(lane: Record<string, unknown>): string | null {
+    if (lane.chartKind !== undefined && lane.chartKind !== "rhythm" && lane.chartKind !== "sirius") {
+        return "未知的 chartKind";
+    }
+    if (lane.siriusOffset !== undefined && !Number.isFinite(lane.siriusOffset)) return "siriusOffset 必须是有限秒数";
+    if (lane.defaultBpm !== undefined && (typeof lane.defaultBpm !== "number" || !Number.isFinite(lane.defaultBpm) || lane.defaultBpm <= 0 || !Number.isFinite(60 / lane.defaultBpm))) return "defaultBpm 非法";
+    if (lane.division !== undefined && (!Number.isFinite(lane.division) || Number(lane.division) < 1 || (lane.chartKind === "sirius" && !Number.isSafeInteger(lane.division)))) return "division 非法";
+    if (lane.dataVersion !== undefined && (!Number.isInteger(lane.dataVersion) || Number(lane.dataVersion) < 1 || Number(lane.dataVersion) > 4)) return "不支持的 dataVersion";
+    if (lane.isFolded !== undefined && typeof lane.isFolded !== "boolean") return "isFolded 非法";
+    for (const key of ["startTime", "endTime"]) {
+        if (lane[key] != null && (typeof lane[key] !== "number" || !Number.isFinite(lane[key]) || Number(lane[key]) < 0)) return `${key} 非法`;
+    }
+    return null;
+}
+
+function validateNoteShape(value: unknown, chartKind?: NoteLaneData["chartKind"]): string | null {
+    if (!isRecord(value)) return "Note 必须是对象";
+    const note = value as unknown as ChartNote;
+    // A legacy numeric type is not a Sirius discriminator. Old rhythm projects
+    // allowed extension types and non-integral fractions; preserve them verbatim.
+    const sirius = chartKind === "sirius" || note.sirius !== undefined;
+    if (!sirius) {
+        if (!Number.isFinite(note.type)) return "Note type 必须是有限数";
+        return null;
+    }
+    if (value.id !== undefined && (typeof value.id !== "string" || !value.id)) return "Note id 非法";
+    if (!Number.isSafeInteger(note.type)) return "Sirius note type 必须是整数";
+    if (!isNoteBoundary(note) && !isSiriusNoteType(note.type)) return `不支持的 Sirius note type: ${note.type}`;
+    const head = normalizeSiriusFraction(note.head);
+    if (!head) return "Note 缺少合法 head 分数（整数分子与非零整数分母）";
+    if (note.tail !== undefined && !normalizeSiriusFraction(note.tail)) return "Note tail 分数非法";
+    if (note.body !== undefined && (!Array.isArray(note.body) || note.body.some((f) => !normalizeSiriusFraction(f)))) return "Note body 分数数组非法";
+    if (note.annotation !== undefined && typeof note.annotation !== "string") return "Note annotation 非法";
+    if (head.a < 0 || head.a >= head.b) return "Sirius head 必须在所属拍的 [0,1) 内";
+    if (isNoteBoundary(note)) {
+        if (note.sirius !== undefined) return "边界标记不能包含 sirius 属性";
+        return null;
+    }
+    const p = note.sirius;
+    if (!isRecord(p)) return "Sirius note 缺少 sirius 属性";
+    const fields = ["lane", "width", "gimmick", "scratchLength", "holdHeadType", "autoTicks"];
+    if (Object.keys(p).some((key) => !fields.includes(key))) return "未知的 sirius 属性";
+    if (!getSiriusTailSpan(p)) return "Sirius lane/width/scratchLength 必须是合法的 1..12 列范围";
+    if (!["0", "JumpScratch", "OneDirection"].includes(p.gimmick)) return "Sirius gimmick 非法";
+    if (p.holdHeadType !== null && ![80, 81, 82, 83].includes(p.holdHeadType)) return "Sirius holdHeadType 非法";
+    if (typeof p.autoTicks !== "boolean") return "Sirius autoTicks 必须是布尔值";
+    if (!isSiriusScratchType(note.type) && (p.scratchLength !== 0 || p.gimmick !== "0")) return "该 Sirius 类型不支持 scratchLength/gimmick";
+    if (p.gimmick === "JumpScratch" && !isSiriusHoldType(note.type)) return "JumpScratch 仅用于 Scratch Hold";
+    if (!isSiriusHoldType(note.type)) {
+        if (note.tail !== undefined || (note.body?.length ?? 0) > 0 || p.holdHeadType !== null || p.autoTicks) return "Sirius 点 note 不能包含长条属性";
+    } else {
+        const tail = normalizeSiriusFraction(note.tail);
+        if (!tail || compareFractions(head, tail) >= 0) return "Sirius Hold 必须包含晚于 head 的 tail";
+        let previous = head;
+        for (const anchor of note.body ?? []) {
+            const f = normalizeSiriusFraction(anchor)!;
+            if (compareFractions(previous, f) >= 0 || compareFractions(f, tail) >= 0) return "Sirius body 必须递增并严格位于 head/tail 之间";
+            previous = f;
+        }
+    }
+    return null;
 }
 
 function pickImportCandidate(raw: unknown): {
@@ -385,6 +495,8 @@ function pickImportCandidate(raw: unknown): {
     endTime?: unknown;
     dataVersion?: unknown;
     isFolded?: unknown;
+    chartKind?: unknown;
+    siriusOffset?: unknown;
 } | null {
     if (Array.isArray(raw)) {
         return {
@@ -405,6 +517,8 @@ function pickImportCandidate(raw: unknown): {
             endTime: raw.lane.endTime,
             dataVersion: raw.lane.dataVersion,
             isFolded: raw.lane.isFolded,
+            chartKind: raw.lane.chartKind,
+            siriusOffset: raw.lane.siriusOffset,
         };
     }
 
@@ -417,16 +531,14 @@ function pickImportCandidate(raw: unknown): {
         endTime: raw.endTime,
         dataVersion: raw.dataVersion,
         isFolded: raw.isFolded,
+        chartKind: raw.chartKind,
+        siriusOffset: raw.siriusOffset,
     };
 }
 
-function validateImportSegments(rawSegments: unknown): string | null {
+function validateImportSegments(rawSegments: unknown, chartKind?: NoteLaneData["chartKind"]): string | null {
     if (!Array.isArray(rawSegments)) {
         return "导入内容缺少 chartData 数组";
-    }
-
-    if (rawSegments.length === 0) {
-        return "导入内容没有任何节拍段";
     }
 
     for (let index = 0; index < rawSegments.length; index++) {
@@ -434,14 +546,25 @@ function validateImportSegments(rawSegments: unknown): string | null {
         if (!isRecord(segment)) {
             return `第 ${index + 1} 个节拍段不是对象`;
         }
-        const tempo = Number(segment.tempo);
-        if (!Number.isFinite(tempo) || tempo <= 0) {
+        const tempo = segment.tempo;
+        if (typeof tempo !== "number" || !Number.isFinite(tempo) || tempo <= 0 || !Number.isFinite(60 / tempo)) {
             return `第 ${index + 1} 个节拍段的 tempo 非法`;
         }
         if (segment.time !== undefined) {
-            const time = Number(segment.time);
-            if (!Number.isFinite(time) || time < 0) {
+            const time = segment.time;
+            if (typeof time !== "number" || !Number.isFinite(time) || time < 0) {
                 return `第 ${index + 1} 个节拍段的 time 非法`;
+            }
+        }
+        if (segment.measures !== undefined && !Array.isArray(segment.measures)) return "measures 必须是数组";
+        if (segment.beats !== undefined && !Array.isArray(segment.beats)) return "beats 必须是数组";
+        const measures = segment.measures ?? segment.beats;
+        if (!Array.isArray(measures)) return `第 ${index + 1} 个节拍段缺少 measures/beats 数组`;
+        for (const measure of measures) {
+            if (!isRecord(measure) || !Array.isArray(measure.notes)) return `第 ${index + 1} 个节拍段的 notes 结构非法`;
+            for (const note of measure.notes) {
+                const error = validateNoteShape(note, chartKind);
+                if (error) return `第 ${index + 1} 个节拍段: ${error}`;
             }
         }
     }
@@ -449,6 +572,8 @@ function validateImportSegments(rawSegments: unknown): string | null {
     return null;
 }
 
+/** Full lane JSON uses its own kind/offset (omitted kind means legacy rhythm).
+ * A bare chartData array replaces only chart content in the destination kind. */
 export function parseImportedNoteLaneText(
     text: string,
     currentLane: NoteLaneData,
@@ -474,62 +599,32 @@ export function parseImportedNoteLaneText(
             error: "仅支持内部 NoteLane JSON 或 chartData JSON",
         };
     }
+    const metadataError = validateLaneMetadata(candidate);
+    if (metadataError) return { error: metadataError };
 
     const segmentError = validateImportSegments(candidate.chartData);
     if (segmentError) {
         return { error: segmentError };
     }
 
-    const chartData = normalizeChartSegments(
-        candidate.chartData as RawChartSegment[],
-    );
-
-    if (chartData.length === 0) {
-        return {
-            error: "导入后没有可用的 chartData",
-        };
+    try {
+        const nextLane = migrateNoteLaneData({
+            id: currentLane.id,
+            chartKind: Array.isArray(parsed) ? currentLane.chartKind : candidate.chartKind as NoteLaneData["chartKind"],
+            siriusOffset: Array.isArray(parsed) ? currentLane.siriusOffset : candidate.siriusOffset as number | undefined,
+            defaultBpm: (candidate.defaultBpm as number | undefined) ?? currentLane.defaultBpm,
+            division: (candidate.division as number | undefined) ?? currentLane.division,
+            chartData: normalizeChartSegments(candidate.chartData as RawChartSegment[]),
+            startTime: candidate.startTime as number | null | undefined,
+            endTime: candidate.endTime as number | null | undefined,
+            isFolded: (candidate.isFolded as boolean | undefined) ?? currentLane.isFolded,
+            dataVersion: candidate.dataVersion as number | undefined,
+        });
+        const validationError = validateNoteLaneData(nextLane);
+        return validationError ? { error: validationError } : { lane: nextLane };
+    } catch (error) {
+        return { error: error instanceof Error ? error.message : "导入谱面结构非法" };
     }
-
-    const importedDataVersion =
-        candidate.dataVersion == null ? NaN : Number(candidate.dataVersion);
-    const importedStartTime =
-        candidate.startTime == null ? NaN : Number(candidate.startTime);
-    const importedEndTime =
-        candidate.endTime == null ? NaN : Number(candidate.endTime);
-    const nextLane = migrateNoteLaneData({
-        id: currentLane.id,
-        defaultBpm:
-            Number.isFinite(Number(candidate.defaultBpm)) &&
-            Number(candidate.defaultBpm) > 0
-                ? Math.max(1, Math.floor(Number(candidate.defaultBpm)))
-                : currentLane.defaultBpm,
-        division:
-            Number.isFinite(Number(candidate.division)) &&
-            Number(candidate.division) >= 1
-                ? Math.max(1, Math.floor(Number(candidate.division)))
-                : currentLane.division,
-        chartData,
-        startTime: Number.isFinite(importedStartTime)
-            ? importedStartTime
-            : undefined,
-        endTime: Number.isFinite(importedEndTime) ? importedEndTime : undefined,
-        isFolded:
-            typeof candidate.isFolded === "boolean"
-                ? candidate.isFolded
-                : currentLane.isFolded,
-        dataVersion: Number.isFinite(importedDataVersion)
-            ? Math.floor(importedDataVersion)
-            : undefined,
-    });
-
-    const validationError = validateNoteLaneData(nextLane);
-    if (validationError) {
-        return {
-            error: validationError,
-        };
-    }
-
-    return { lane: nextLane };
 }
 
 // ---- boundary note helpers ----
@@ -565,6 +660,31 @@ export function removeTrailingEmptyMeasures(
         ...seg,
         measures: seg.measures.map((m) => ({ notes: [...m.notes] })),
     }));
+    // Empty beats before a Sirius tail still carry tempo. Never compact gaps.
+    if (data.some((seg) => seg.measures.some((m) => m.notes.some((n) => n.sirius)))) {
+        let count = 0;
+        let required = 0;
+        for (const seg of data) {
+            for (const measure of seg.measures) {
+                for (const note of measure.notes) {
+                    required = Math.max(required, count + 1);
+                    const tail = normalizeFraction(note.tail);
+                    if (note.sirius && tail) required = Math.max(required, Math.ceil(count + tail.a / tail.b));
+                }
+                count++;
+            }
+        }
+        while (cloned.length > 0) {
+            const seg = cloned[cloned.length - 1];
+            if (seg.measures.length === 0) {
+                cloned.pop();
+            } else if (count > required && seg.measures[seg.measures.length - 1].notes.length === 0) {
+                seg.measures.pop();
+                count--;
+            } else break;
+        }
+        return recomputeSegmentTimes(cloned);
+    }
     for (let s = cloned.length - 1; s >= 0; s--) {
         const seg = cloned[s];
         while (
@@ -703,7 +823,7 @@ export function recomputeSegmentTimes(
 ): ChartSegment[] {
     let time = 0;
     return segments.map((seg) => {
-        const beatDuration = 60 / Math.max(1, seg.tempo);
+        const beatDuration = 60 / seg.tempo;
         const segWithTime: ChartSegment = {
             time,
             tempo: seg.tempo,
@@ -778,9 +898,9 @@ function rebuildChartSegments(chunks: MeasureChunk[], initialTime: number): Char
     let nextTime = initialTime;
     for (const chunk of chunks) {
         if (chunk.measures.length === 0) continue;
-        const safeTempo = Math.max(1, Math.floor(chunk.tempo));
+        const safeTempo = chunk.tempo;
         const tail = rebuilt[rebuilt.length - 1];
-        if (tail && Math.abs(tail.tempo - safeTempo) < 1e-6) {
+        if (tail && tail.tempo === safeTempo) {
             tail.measures.push(...chunk.measures);
         } else {
             rebuilt.push({ time: nextTime, tempo: safeTempo, measures: chunk.measures });
@@ -790,19 +910,26 @@ function rebuildChartSegments(chunks: MeasureChunk[], initialTime: number): Char
     return rebuilt;
 }
 
+/** Pass lane.defaultBpm and lane.chartKind: empty Sirius charts still own an
+ * explicit tempo map. Existing two/three-argument calls remain compatible. */
 export function insertMeasureAtRef(
     chartData: ChartSegment[],
     ref: ChartMeasureRef | null | undefined,
+    defaultBpm = 120,
+    chartKind?: "rhythm" | "sirius",
 ): ChartSegment[] | null {
     const located = locateMeasureByRef(chartData, ref);
     if (!located) return null;
+    if (chartKind === "sirius" || hasSiriusNotes(chartData)) {
+        return editSiriusBeat(chartData, located.globalIndex + 1, false, defaultBpm);
+    }
 
     const chunks: MeasureChunk[] = [];
     const initialTime = chartData[0]?.time ?? 0;
 
     for (let s = 0; s < chartData.length; s++) {
         const seg = chartData[s];
-        const segTempo = Math.max(1, Math.floor(seg.tempo));
+        const segTempo = seg.tempo;
         if (seg.measures.length === 0) continue;
         if (s !== located.segmentIndex) {
             chunks.push({ tempo: segTempo, measures: seg.measures });
@@ -823,19 +950,25 @@ export function insertMeasureAtRef(
     return removeTrailingEmptyMeasures(rebuildChartSegments(chunks, initialTime));
 }
 
+/** See insertMeasureAtRef for the optional defaultBpm/chartKind arguments. */
 export function deleteMeasureAtRef(
     chartData: ChartSegment[],
     ref: ChartMeasureRef | null | undefined,
+    defaultBpm = 120,
+    chartKind?: "rhythm" | "sirius",
 ): ChartSegment[] | null {
     const located = locateMeasureByRef(chartData, ref);
     if (!located) return null;
+    if (chartKind === "sirius" || hasSiriusNotes(chartData)) {
+        return editSiriusBeat(chartData, located.globalIndex, true, defaultBpm);
+    }
 
     const chunks: MeasureChunk[] = [];
     const initialTime = chartData[0]?.time ?? 0;
 
     for (let s = 0; s < chartData.length; s++) {
         const seg = chartData[s];
-        const segTempo = Math.max(1, Math.floor(seg.tempo));
+        const segTempo = seg.tempo;
         if (seg.measures.length === 0) continue;
         if (s !== located.segmentIndex) {
             chunks.push({ tempo: segTempo, measures: seg.measures });
@@ -860,6 +993,381 @@ export function deleteMeasureAtRef(
     return removeTrailingEmptyMeasures(rebuilt);
 }
 
+// ---- Sirius musical timeline and immutable mutations ----
+
+function assertBpm(bpm: number): void {
+    if (!Number.isFinite(bpm) || bpm <= 0 || !Number.isFinite(60 / bpm)) {
+        throw new Error("BPM 必须是正有限数");
+    }
+}
+
+function siriusTempoMap(data: ChartSegment[], defaultBpm: number) {
+    assertBpm(defaultBpm);
+    if (!Array.isArray(data)) throw new Error("chartData 必须是数组");
+    let beat = 0;
+    let time = 0;
+    const segments = data.map((seg) => {
+        if (!seg || !Array.isArray(seg.measures)) throw new Error("节拍段结构非法");
+        assertBpm(seg.tempo);
+        const start = { beat, time, duration: 60 / seg.tempo, count: seg.measures.length };
+        beat += seg.measures.length;
+        time += seg.measures.length * start.duration;
+        if (!Number.isFinite(time)) throw new Error("谱面时间超出范围");
+        return start;
+    });
+    return { segments, beat, time };
+}
+
+/** List-order tempo map; the implicit tail (and negative pre-roll) uses
+ * defaultBpm, even when the final stored segment has another tempo. No offsets. */
+export function siriusBeatToTime(data: ChartSegment[], beat: number, defaultBpm: number): number {
+    if (!Number.isFinite(beat)) throw new Error("拍数必须是有限数");
+    const map = siriusTempoMap(data, defaultBpm);
+    let time = beat * (60 / defaultBpm);
+    if (beat >= 0) {
+        const seg = map.segments.find((s) => beat < s.beat + s.count);
+        time = seg ? seg.time + (beat - seg.beat) * seg.duration
+            : map.time + (beat - map.beat) * (60 / defaultBpm);
+    }
+    if (!Number.isFinite(time)) throw new Error("谱面时间超出范围");
+    return time;
+}
+
+export function siriusTimeToBeat(data: ChartSegment[], time: number, defaultBpm: number): number {
+    if (!Number.isFinite(time)) throw new Error("时间必须是有限数");
+    const map = siriusTempoMap(data, defaultBpm);
+    let beat = time / (60 / defaultBpm);
+    if (time >= 0) {
+        const seg = map.segments.find((s) => time < s.time + s.count * s.duration);
+        beat = seg ? seg.beat + (time - seg.time) / seg.duration
+            : map.beat + (time - map.time) / (60 / defaultBpm);
+    }
+    if (!Number.isFinite(beat)) throw new Error("谱面拍数超出范围");
+    return beat;
+}
+
+export interface CollectedSiriusNote {
+    note: ChartNote;
+    beat: number;
+    tailBeat: number | null;
+    /** Global single-beat index (the legacy model calls beats measures). */
+    measureIndex: number;
+    segmentIndex: number;
+    localMeasureIndex: number;
+    time: number;
+    endTime: number | null;
+}
+
+function hasSiriusNotes(data: ChartSegment[]): boolean {
+    return data.some((s) => s.measures.some((m) => m.notes.some((n) => !!n.sirius)));
+}
+
+function assertSiriusData(data: ChartSegment[]): void {
+    const structureError = validateImportSegments(data, "sirius");
+    if (structureError) throw new Error(structureError);
+    const error = validateChartData(data);
+    if (error) throw new Error(error);
+    if (data.some((s) => s.measures.some((m) => m.notes.some((n) => !isNoteBoundary(n) && !n.sirius)))) {
+        throw new Error("Sirius 编辑 API 仅适用于 Sirius 谱面");
+    }
+}
+
+/** Boundary markers are excluded. Returned notes reference source notes; do not mutate. */
+export function collectSiriusNotes(data: ChartSegment[], defaultBpm: number): CollectedSiriusNote[] {
+    assertSiriusData(data);
+    assertBpm(defaultBpm);
+    const out: CollectedSiriusNote[] = [];
+    let measureIndex = 0;
+    data.forEach((segment, segmentIndex) => {
+        segment.measures.forEach((measure, localMeasureIndex) => {
+            for (const note of measure.notes) {
+                if (isNoteBoundary(note)) continue;
+                const beat = measureIndex + fractionValue(note.head!);
+                const tailBeat = note.tail ? measureIndex + fractionValue(note.tail) : null;
+                out.push({
+                    note, beat, tailBeat, measureIndex, segmentIndex, localMeasureIndex,
+                    time: siriusBeatToTime(data, beat, defaultBpm),
+                    endTime: tailBeat === null ? null : siriusBeatToTime(data, tailBeat, defaultBpm),
+                });
+            }
+            measureIndex++;
+        });
+    });
+    return out.sort((a, b) => a.beat - b.beat || a.note.sirius!.lane - b.note.sirius!.lane || a.note.type - b.note.type);
+}
+
+function fractionValue(f: Fraction): number {
+    return f.a / f.b;
+}
+
+// Continued fractions recover musical divisions from numeric canvas positions.
+// Stored fractions are otherwise added exactly, including clipboard body anchors.
+function beatFraction(value: number): Fraction {
+    if (!Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER) throw new Error("拍数超出范围");
+    const sign = value < 0 ? -1 : 1;
+    const target = Math.abs(value);
+    let x = target;
+    let p0 = 0, p1 = 1, q0 = 1, q1 = 0;
+    for (let i = 0; i < 64; i++) {
+        const whole = Math.floor(x);
+        const p = whole * p1 + p0;
+        const q = whole * q1 + q0;
+        if (!Number.isSafeInteger(p) || !Number.isSafeInteger(q) || q > 1e9) break;
+        p0 = p1; p1 = p; q0 = q1; q1 = q;
+        if (Math.abs(p / q - target) <= 1e-10 || x === whole) break;
+        x = 1 / (x - whole);
+    }
+    if (!q1 || Math.abs(p1 / q1 - target) > 1e-9) throw new Error("拍数无法表示为安全分数");
+    return { a: sign * p1, b: q1 };
+}
+
+function addBeatFractions(left: Fraction, right: Fraction): Fraction {
+    const a = normalizeSiriusFraction(left);
+    const b = normalizeSiriusFraction(right);
+    if (!a || !b) throw new Error("拍分数非法");
+    const divisor = gcd(a.b, b.b);
+    const result = normalizeSiriusFraction({ a: a.a * (b.b / divisor) + b.a * (a.b / divisor), b: a.b * (b.b / divisor) });
+    if (!result) throw new Error("拍分数超出安全整数范围");
+    return result;
+}
+
+function shiftFraction(f: Fraction, beats: number): Fraction {
+    return addBeatFractions(f, beatFraction(beats));
+}
+
+function cloneNote(note: ChartNote): ChartNote {
+    return {
+        ...note,
+        ...(note.head ? { head: { ...note.head } } : {}),
+        ...(note.tail ? { tail: { ...note.tail } } : {}),
+        ...(note.body ? { body: note.body.map((f) => ({ ...f })) } : {}),
+        ...(note.sirius ? { sirius: { ...note.sirius } } : {}),
+    };
+}
+
+function cloneSegments(data: ChartSegment[]): ChartSegment[] {
+    return recomputeSegmentTimes(data.map((s) => ({ ...s, measures: s.measures.map((m) => ({ notes: m.notes.map(cloneNote) })) })));
+}
+
+interface PositionedSiriusNote {
+    note: ChartNote;
+    head: Fraction;
+    tail?: Fraction;
+    body?: Fraction[];
+}
+
+function siriusPositions(data: ChartSegment[]): PositionedSiriusNote[] {
+    assertSiriusData(data);
+    const out: PositionedSiriusNote[] = [];
+    let beat = 0;
+    for (const seg of data) {
+        for (const measure of seg.measures) {
+            for (const note of measure.notes) {
+                if (!note.sirius) continue;
+                out.push({
+                    note: cloneNote(note), head: shiftFraction(note.head!, beat),
+                    tail: note.tail ? shiftFraction(note.tail, beat) : undefined,
+                    body: note.body?.map((f) => shiftFraction(f, beat)),
+                });
+            }
+            beat++;
+        }
+    }
+    return out;
+}
+
+/** Materialize virtual beats with defaultBpm, never the last segment's tempo. */
+function placeSiriusNote(data: ChartSegment[], position: PositionedSiriusNote, defaultBpm: number): void {
+    const { note, head, tail, body } = position;
+    const owningBeat = Math.floor(fractionValue(head));
+    if (owningBeat < 0) throw new Error("Sirius note 不能移动到第 0 拍之前");
+    const required = Math.max(owningBeat + 1, tail ? Math.ceil(fractionValue(tail)) : 0);
+    let count = data.reduce((sum, s) => sum + s.measures.length, 0);
+    if (required - count > 1_000_000) throw new Error("一次编辑需要创建过多节拍（超过 100 万）");
+    if (count < required) {
+        let last = data[data.length - 1];
+        if (!last || last.tempo !== defaultBpm) {
+            last = { time: 0, tempo: defaultBpm, measures: [] };
+            data.push(last);
+        }
+        while (count++ < required) last.measures.push({ notes: [] });
+    }
+    const placed = cloneNote(note);
+    placed.head = shiftFraction(head, -owningBeat);
+    placed.tail = tail ? shiftFraction(tail, -owningBeat) : undefined;
+    placed.body = body?.map((f) => shiftFraction(f, -owningBeat));
+    const error = validateNoteShape(placed, "sirius");
+    if (error) throw new Error(error);
+    const target = locateMeasureByGlobalIndex(data, owningBeat);
+    if (!target) throw new Error("无法定位 Sirius note 所在拍");
+    target.measure.notes.push(placed);
+}
+
+function finishSiriusMutation(data: ChartSegment[]): ChartSegment[] {
+    const result = recomputeSegmentTimes(data);
+    for (const seg of result) {
+        for (const measure of seg.measures) {
+            measure.notes.sort((a, b) => compareFractions(a.head!, b.head!) || (a.sirius?.lane ?? 0) - (b.sirius?.lane ?? 0) || a.type - b.type);
+        }
+    }
+    assertSiriusData(result);
+    return result;
+}
+
+/** All Sirius mutations are immutable/atomic and throw Error on invalid input.
+ * beat/tailBeat are GLOBAL beats; body offsets are local to floor(beat).
+ * A supplied ID is preserved; only an omitted/empty ID is generated. */
+export function insertSiriusNote(data: ChartSegment[], note: ChartNote, beat: number, tailBeat: number | null, defaultBpm: number): ChartSegment[] {
+    assertSiriusData(data);
+    assertBpm(defaultBpm);
+    if (!note || !isSiriusNoteType(note.type)) throw new Error("只能插入 Sirius note");
+    if (beat < 0) throw new Error("Sirius note 不能插入到第 0 拍之前");
+    const cloned = cloneSegments(data);
+    const next = cloneNote({ ...note, id: note.id || generateNoteId() });
+    placeSiriusNote(cloned, {
+        note: next, head: beatFraction(beat),
+        tail: tailBeat === null ? undefined : beatFraction(tailBeat),
+        body: next.body?.map((f) => shiftFraction(f, Math.floor(beat))),
+    }, defaultBpm);
+    return finishSiriusMutation(cloned);
+}
+
+export type SiriusNoteUpdate = Partial<Omit<ChartNote, "id">> | ((note: ChartNote) => ChartNote);
+
+/** Updates local fractions/properties, preserving IDs. Use moveSiriusNotes for
+ * cross-beat motion. Property objects (including sirius) are replaced whole. */
+export function updateSiriusNotes(data: ChartSegment[], ids: readonly string[], update: SiriusNoteUpdate, defaultBpm: number): ChartSegment[] {
+    assertBpm(defaultBpm);
+    const selected = new Set(ids);
+    const positions = siriusPositions(data).filter((p) => selected.has(p.note.id));
+    const cloned = removeSiriusNotes(data, ids);
+    for (const position of positions) {
+        const owningBeat = Math.floor(fractionValue(position.head));
+        const note = typeof update === "function" ? update(cloneNote(position.note)) : { ...position.note, ...update };
+        const error = validateNoteShape(note, "sirius");
+        if (error) throw new Error(error);
+        if (!note.sirius) throw new Error("更新后必须仍为 Sirius note");
+        placeSiriusNote(cloned, {
+            note: { ...note, id: position.note.id }, head: shiftFraction(note.head!, owningBeat),
+            tail: note.tail ? shiftFraction(note.tail, owningBeat) : undefined,
+            body: note.body?.map((f) => shiftFraction(f, owningBeat)),
+        }, defaultBpm);
+    }
+    return finishSiriusMutation(cloned);
+}
+
+/** Removing the last note retains all explicit beats/tempos for subsequent edits. */
+export function removeSiriusNotes(data: ChartSegment[], ids: readonly string[]): ChartSegment[] {
+    assertSiriusData(data);
+    const selected = new Set(ids);
+    const cloned = cloneSegments(data);
+    for (const seg of cloned) {
+        for (const measure of seg.measures) measure.notes = measure.notes.filter((n) => !n.sirius || !selected.has(n.id));
+    }
+    return cloned;
+}
+
+/** Clipboard head/tail/body are relative to the earliest selected GLOBAL beat;
+ * clipboard heads may exceed one. IDs are regenerated only on paste. */
+export function copySiriusNotes(data: ChartSegment[], ids: readonly string[]): ChartNote[] {
+    const selected = new Set(ids);
+    const positions = siriusPositions(data).filter((p) => selected.has(p.note.id));
+    positions.sort((a, b) => compareFractions(a.head, b.head));
+    if (!positions.length) return [];
+    const first = positions[0].head;
+    const minusFirst = { a: -first.a, b: first.b };
+    return positions.map((p) => ({
+        ...p.note, head: addBeatFractions(p.head, minusFirst),
+        tail: p.tail ? addBeatFractions(p.tail, minusFirst) : undefined,
+        body: p.body?.map((f) => addBeatFractions(f, minusFirst)),
+    }));
+}
+
+function moveSiriusLane(note: ChartNote, laneDelta: number): ChartNote {
+    if (!Number.isInteger(laneDelta)) throw new Error("列偏移必须是整数");
+    if (!note.sirius) throw new Error("缺少 Sirius 属性");
+    const sirius = { ...note.sirius, lane: note.sirius.lane + laneDelta };
+    if (!getSiriusTailSpan(sirius)) throw new Error("移动后的音符或 Scratch 尾部超出 1..12 列");
+    return { ...note, sirius };
+}
+
+export function pasteSiriusNotes(data: ChartSegment[], clipboard: readonly ChartNote[], targetBeat: number, laneDelta: number, defaultBpm: number): ChartSegment[] {
+    assertSiriusData(data);
+    assertBpm(defaultBpm);
+    if (targetBeat < 0) throw new Error("粘贴目标不能早于第 0 拍");
+    const target = beatFraction(targetBeat);
+    const cloned = cloneSegments(data);
+    for (const original of clipboard) {
+        if (!original || !normalizeSiriusFraction(original.head) || fractionValue(original.head!) < 0) throw new Error("Sirius 剪贴板 head 非法");
+        const note = moveSiriusLane(cloneNote(original), laneDelta);
+        note.id = generateNoteId();
+        placeSiriusNote(cloned, {
+            note, head: addBeatFractions(original.head!, target),
+            tail: original.tail ? addBeatFractions(original.tail, target) : undefined,
+            body: original.body?.map((f) => addBeatFractions(f, target)),
+        }, defaultBpm);
+    }
+    return finishSiriusMutation(cloned);
+}
+
+export function moveSiriusNotes(data: ChartSegment[], ids: readonly string[], deltaBeat: number, laneDelta: number, defaultBpm: number): ChartSegment[] {
+    assertBpm(defaultBpm);
+    const delta = beatFraction(deltaBeat);
+    const selected = new Set(ids);
+    const positions = siriusPositions(data).filter((p) => selected.has(p.note.id));
+    const cloned = removeSiriusNotes(data, ids);
+    for (const p of positions) {
+        placeSiriusNote(cloned, {
+            note: moveSiriusLane(p.note, laneDelta), head: addBeatFractions(p.head, delta),
+            tail: p.tail ? addBeatFractions(p.tail, delta) : undefined,
+            body: p.body?.map((f) => addBeatFractions(f, delta)),
+        }, defaultBpm);
+    }
+    return finishSiriusMutation(cloned);
+}
+
+/** Inserting stretches only holds crossing the cut. Deleting clips holds,
+ * rebases surviving heads to the cut, and removes collapsed holds/inside points.
+ * Body anchors inside the removed beat are removed; surviving head settings stay. */
+function editSiriusBeat(data: ChartSegment[], cut: number, deleting: boolean, defaultBpm: number): ChartSegment[] {
+    assertBpm(defaultBpm);
+    const positions = siriusPositions(data);
+    const chunks: MeasureChunk[] = [];
+    let beat = 0;
+    for (const seg of data) {
+        const measures: ChartMeasure[] = [];
+        for (const measure of seg.measures) {
+            if (!deleting || beat !== cut) measures.push({ notes: measure.notes.filter((n) => !n.sirius).map(cloneNote) });
+            beat++;
+            // Inherit the tempo of the beat immediately BEFORE the cut.
+            if (!deleting && beat === cut) measures.push({ notes: [] });
+        }
+        chunks.push({ tempo: seg.tempo, measures });
+    }
+    const rebuilt = rebuildChartSegments(chunks, 0);
+    const collapse = (f: Fraction) => {
+        const value = fractionValue(f);
+        return value >= cut + 1 ? shiftFraction(f, -1) : value >= cut ? beatFraction(cut) : f;
+    };
+    for (const p of positions) {
+        const head = fractionValue(p.head);
+        if (deleting) {
+            if (!p.tail && head >= cut && head < cut + 1) continue;
+            p.head = collapse(p.head);
+            p.tail = p.tail ? collapse(p.tail) : undefined;
+            if (p.tail && compareFractions(p.head, p.tail) >= 0) continue;
+            p.body = p.body?.filter((f) => fractionValue(f) < cut || fractionValue(f) >= cut + 1)
+                .map(collapse).filter((f) => compareFractions(f, p.head) > 0 && (!p.tail || compareFractions(f, p.tail) < 0));
+        } else {
+            p.head = shiftFraction(p.head, head >= cut ? 1 : 0);
+            p.tail = p.tail ? shiftFraction(p.tail, head >= cut || fractionValue(p.tail) > cut ? 1 : 0) : undefined;
+            p.body = p.body?.map((f) => shiftFraction(f, fractionValue(f) >= cut ? 1 : 0));
+        }
+        placeSiriusNote(rebuilt, p, defaultBpm);
+    }
+    return finishSiriusMutation(rebuilt);
+}
+
 // ---- migration ----
 
 function addBoundaryNoteToChartData(
@@ -873,7 +1381,7 @@ function addBoundaryNoteToChartData(
     if (chartData.length === 0) {
         chartData.push({
             time: 0,
-            tempo: Math.max(1, defaultBpm),
+            tempo: defaultBpm,
             measures: [],
         });
     }
@@ -893,7 +1401,7 @@ function addBoundaryNoteToChartData(
 
     const seg = chartData[segIdx];
     const tempo =
-        Number.isFinite(seg.tempo) && seg.tempo > 0 ? seg.tempo : Math.max(1, defaultBpm);
+        Number.isFinite(seg.tempo) && seg.tempo > 0 ? seg.tempo : defaultBpm;
     const bd = 60 / tempo;
     const rel = Math.max(0, time - seg.time);
     // Legacy startTime/endTime migration is the only time-based measure lookup.
@@ -930,19 +1438,15 @@ function addBoundaryNoteToChartData(
 export function migrateNoteLaneData(lane: NoteLaneData): NoteLaneData {
     // Normalize old or hand-edited lanes before interpreting derived times.
     // Segment.time is never source data; rebuild it from BPM and list order.
-    const chartData = recomputeSegmentTimes(
-        (Array.isArray(lane.chartData) ? lane.chartData : []).map((seg) => ({
-            tempo: seg.tempo,
-            measures:
-                Array.isArray(seg.measures) && seg.measures.length > 0
-                    ? seg.measures.map((m) => ({
-                          notes: Array.isArray(m.notes) ? [...m.notes] : [],
-                      }))
-                    : [{ notes: [] }],
-        })),
-    );
-
-    const normalized: NoteLaneData = { ...lane, chartData };
+    if (!isRecord(lane)) throw new Error("NoteLane 必须是对象");
+    const metadataError = validateLaneMetadata(lane);
+    if (metadataError) throw new Error(metadataError);
+    const chartData = normalizeChartSegments(lane.chartData, lane.chartKind);
+    const normalized: NoteLaneData = {
+        ...lane,
+        chartData,
+        dataVersion: lane.chartKind === "sirius" ? 4 : (lane.dataVersion ?? 3),
+    };
 
     const hasLegacyBoundaryTimes =
         (normalized.startTime !== null && normalized.startTime !== undefined) ||
@@ -985,7 +1489,7 @@ export function migrateNoteLaneData(lane: NoteLaneData): NoteLaneData {
 
     delete next.startTime;
     delete next.endTime;
-    next.dataVersion = 3;
+    next.dataVersion = next.chartKind === "sirius" ? 4 : Math.max(3, next.dataVersion ?? 3);
 
     return next;
 }
