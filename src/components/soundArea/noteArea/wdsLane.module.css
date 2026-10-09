@@ -47,6 +47,11 @@
     cursor: ns-resize;
 }
 
+.note [data-note-part^="width-"],
+.note [data-note-part^="tail-width-"] {
+    cursor: ew-resize;
+}
+
 .note:focus-visible {
     outline: none;
     filter: drop-shadow(0 0 3px #fff);

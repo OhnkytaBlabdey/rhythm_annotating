@@ -5,7 +5,7 @@ import {
     wdsBeatToTime,
     validateNoteLaneData,
 } from "@/components/soundArea/noteArea/chartAdapter";
-import { isWdsHoldType } from "@/components/soundArea/noteArea/wdsTypes";
+import { isWdsHoldType, normalizeWdsJumpScratch } from "@/components/soundArea/noteArea/wdsTypes";
 
 export interface WdsExportResult {
     text: string;
@@ -25,7 +25,7 @@ interface WdsRow {
     gimmickValue: number;
 }
 
-const LOSS_WARNING = "WDS TXT 是不可逆的纯秒数导出：不保留 BPM、拍网格、音符 ID、注释及长条分组设置。请同时保存内部 JSON 或项目文件。";
+const LOSS_WARNING = "WDS TXT 是不可逆的纯秒数导出：不保留 BPM、拍网格、音符 ID、注释及编辑器辅助设置。请同时保存内部 JSON 或项目文件。";
 const MAX_ROWS = 1_000_000;
 
 // Rational identity avoids losing triplet ticks to floating-point rounding,
@@ -87,10 +87,10 @@ export function convertToWds(lane: NoteLaneData): WdsExportResult {
             records.add(key);
         };
 
-        // Register all explicit rows first, so native heads/judges win over
-        // generated counterparts regardless of source order.
+        // Holds and start keys are independent explicit rows. Only optional
+        // judge assistance can generate records; never synthesize a head key.
         for (const { note, beat, tailBeat, measureIndex } of entries) {
-            const p = note.wds!;
+            const p = normalizeWdsJumpScratch(note.wds!);
             const beatKey = exactBeatKey(measureIndex, note.head!);
             addRow({ beat, beatKey, endBeat: tailBeat,
                 endBeatKey: note.tail ? exactBeatKey(measureIndex, note.tail) : undefined,
@@ -103,11 +103,6 @@ export function convertToWds(lane: NoteLaneData): WdsExportResult {
         for (const { note, beat, tailBeat, measureIndex } of entries) {
             if (!isWdsHoldType(note.type) || tailBeat === null) continue;
             const p = note.wds!;
-            if (p.holdHeadType !== null) {
-                addRow({ beat, beatKey: exactBeatKey(measureIndex, note.head!),
-                    endBeat: null, type: p.holdHeadType, lane: p.lane,
-                    width: p.width, gimmickType: "0", gimmickValue: 0 }, true);
-            }
             if (!p.autoTicks) continue;
             const steps = autoTickSteps(note.head!, note.tail!);
             for (let index = 1; index < steps; index++) {

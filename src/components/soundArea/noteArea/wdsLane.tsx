@@ -17,13 +17,18 @@ import type { TimelineOrientation } from "@/components/timelineGeometry";
 import type { ShortcutAction } from "@/lib/shortcuts";
 import {
     collectWdsNotes,
+    alignWdsBodyRecords,
     copyWdsNotes,
+    expandWdsBodySelection,
+    findWdsNoteBody,
     generateNoteId,
+    getWdsBodyLinks,
     insertWdsNote,
     moveWdsNotes,
     normalizeFraction,
     pasteWdsNotes,
     removeWdsNotes,
+    resizeWdsNoteWidth,
     wdsBeatToTime,
     wdsTimeToBeat,
     updateWdsNotes,
@@ -36,6 +41,7 @@ import {
     getWdsScratchSpan,
     getWdsScratchDirection,
     isWdsHoldType,
+    isWdsJumpScratch,
     isWdsScratchType,
     WDS_LANE_COUNT,
     WDS_NOTE_TYPES,
@@ -97,16 +103,17 @@ interface Cursor {
     y: number;
 }
 
-interface PendingHold {
+interface PendingPlacement {
     note: ChartNote;
     beat: number;
+    propertiesKey: string;
 }
 
 interface Drag {
     pointerId: number;
     base: ChartSegment[];
     ids: string[];
-    kind: "move" | "tail";
+    kind: "move" | "tail" | "width";
     start: Cursor;
     startClientX: number;
     startClientY: number;
@@ -118,6 +125,9 @@ interface Drag {
     subdivision: number;
     deltaBeat: number;
     laneDelta: number;
+    resizeEdge: "left" | "right";
+    resizePart: "note" | "tail";
+    widthDelta: number;
     moved: boolean;
 }
 
@@ -132,9 +142,11 @@ interface PaintedNote {
     invalid: boolean;
 }
 
+type WidthHandlePart = "width-left" | "width-right" | "tail-width-left" | "tail-width-right";
+
 interface NoteHit {
     note: PaintedNote;
-    part: "head" | "body" | "tail";
+    part: "head" | "body" | "tail" | WidthHandlePart;
     distance: number;
 }
 
@@ -145,10 +157,11 @@ function errorMessage(error: unknown): string {
 function describeNote(note: ChartNote): string {
     const p = note.wds!;
     const type = REGISTRY.get(note.type);
-    const head = isWdsHoldType(note.type)
-        ? `，头 ${p.holdHeadType ?? "无"}，自动 Tick ${p.autoTicks ? "开" : "关"}`
+    const body = isWdsHoldType(note.type)
+        ? `，身子和尾巴，自动 Tick ${p.autoTicks ? "开" : "关"}`
         : "";
-    return `${note.type} ${type?.label ?? "WDS"} · 列 ${p.lane}–${p.lane + p.width - 1}${head}${p.gimmickType !== "0" ? `，${p.gimmickType} ${p.gimmickValue}` : ""}${note.annotation ? ` · ${note.annotation}` : ""}`;
+    const span = isWdsJumpScratch(p) ? getWdsScratchSpan(p) : null;
+    return `${note.type} ${type?.label ?? "WDS"} · 列 ${p.lane}–${p.lane + p.width - 1}${body}${p.gimmickType !== "0" ? `，${p.gimmickType} ${p.gimmickValue}` : ""}${span ? `（划动 ${span.lane}–${span.lane + span.width - 1} 列）` : ""}${note.annotation ? ` · ${note.annotation}` : ""}`;
 }
 
 function paintNote(
@@ -162,13 +175,36 @@ function paintNote(
     return {
         record,
         x: GUTTER + ((pointSpan?.lane ?? p.lane) - 1) * COLUMN + 2,
-        width: (pointSpan?.width ?? p.width) * COLUMN - 4,
+        width: Math.max(1, (pointSpan?.width ?? p.width) * COLUMN - 4),
         headY: timeToY(record.time),
         tailY: record.endTime === null ? null : timeToY(record.endTime),
         tailX: GUTTER + ((tail?.lane ?? p.lane) - 1) * COLUMN + 2,
-        tailWidth: (tail?.width ?? p.width) * COLUMN - 4,
+        tailWidth: Math.max(1, (tail?.width ?? p.width) * COLUMN - 4),
         invalid: invalid || !tail,
     };
+}
+
+function isWidthHandle(part: NoteHit["part"]): part is WidthHandlePart {
+    return part === "width-left" || part === "width-right" || part === "tail-width-left" || part === "tail-width-right";
+}
+
+/** The same handle geometry drives rendering and hit testing. A hold's body
+ * handles stay away from the independent start key and the tail handles. */
+function widthHandles(note: PaintedNote, viewportHeight: number): { part: WidthHandlePart; x: number; y: number }[] {
+    const handles: { part: WidthHandlePart; x: number; y: number }[] = [];
+    const { x, width, headY, tailY, tailX, tailWidth } = note;
+    const pair = (left: number, span: number, y: number, tail = false) => {
+        if (y < 0 || y > viewportHeight) return;
+        handles.push({ part: tail ? "tail-width-left" : "width-left", x: left, y },
+            { part: tail ? "tail-width-right" : "width-right", x: left + span, y });
+    };
+    if (tailY === null) pair(x, width, headY);
+    else {
+        const top = Math.max(0, tailY + 18), bottom = Math.min(viewportHeight, headY - 18);
+        if (bottom >= top) pair(x, width, (top + bottom) / 2);
+        pair(tailX, tailWidth, tailY, true);
+    }
+    return handles;
 }
 
 /** Each hold stays one SVG group, including its expanded signed tail span. */
@@ -177,12 +213,14 @@ function NoteGlyph({
     selected,
     hovered,
     preview = false,
+    resizable = false,
     viewportHeight,
 }: {
     painted: PaintedNote;
     selected: boolean;
     hovered: boolean;
     preview?: boolean;
+    resizable?: boolean;
     viewportHeight: number;
 }) {
     const { record, x, width, headY, tailY, tailX, tailWidth, invalid } = painted;
@@ -191,26 +229,26 @@ function NoteGlyph({
     const type = REGISTRY.get(note.type);
     const color = invalid ? "#ef4444" : type?.color ?? "#94a3b8";
     const hold = isWdsHoldType(note.type);
-    const headColor = p.holdHeadType === null ? color : REGISTRY.get(p.holdHeadType)?.color ?? color;
     const stroke = selected ? "#f8fafc" : hovered ? "#cbd5e1" : "#1e293b";
-    const label = hold ? String(p.holdHeadType ?? "")
-        : width > 95 ? `${note.type} ${type?.label ?? ""}` : String(note.type);
+    const label = width > 95 ? `${note.type} ${type?.label ?? ""}` : String(note.type);
     const sound = note.type === 30 || note.type === 31;
     const judge = note.type === 900;
-    const headless = hold && p.holdHeadType === null;
     const headVisible = headY >= -NOTE_RADIUS && headY <= viewportHeight + NOTE_RADIUS;
     const tailVisible = tailY !== null && tailY >= -NOTE_RADIUS && tailY <= viewportHeight + NOTE_RADIUS;
     const bodyTop = Math.max(-NOTE_RADIUS, Math.min(headY, tailY ?? headY));
     const bodyBottom = Math.min(viewportHeight + NOTE_RADIUS, Math.max(headY, tailY ?? headY));
-    const scratch = isWdsScratchType(note.type);
+    const scratch = isWdsScratchType(note.type) || (hold && isWdsJumpScratch(p));
     const scratchDirection = getWdsScratchDirection(p);
+    const jump = scratch && isWdsJumpScratch(p);
+    const directed = scratch && (!hold || p.gimmickType !== "0");
     const direction = scratchDirection === "left" ? "←" : scratchDirection === "right" ? "→" : "↔";
     return (
         <g
             className={style.note}
             data-note-id={preview ? undefined : note.id}
             data-note-type={note.type}
-            data-scratch-direction={scratch ? scratchDirection : undefined}
+            data-scratch-direction={directed ? scratchDirection : undefined}
+            data-jump-scratch={jump || undefined}
             data-selected={selected || undefined}
             role={preview ? undefined : "button"}
             tabIndex={preview ? undefined : 0}
@@ -223,6 +261,7 @@ function NoteGlyph({
             <title>{describeNote(note)} · 第 {(record.beat + 1).toFixed(3)} 拍</title>
             {tailY !== null && bodyBottom >= bodyTop && (
                 <rect
+                    data-note-part="body"
                     x={x + 2} y={bodyTop} width={Math.max(1, width - 4)} height={bodyBottom - bodyTop}
                     fill={color} fillOpacity={0.27} stroke={selected ? stroke : color}
                     strokeWidth={selected ? 2 : 1} strokeDasharray={preview ? "4 3" : undefined}
@@ -235,12 +274,20 @@ function NoteGlyph({
                         fill={color} stroke={stroke} strokeWidth={selected ? 2 : 1}
                     />
                     <text x={tailX + tailWidth / 2} y={tailY + 4} className={style.noteText}>
-                        {scratch ? direction : "━"}
+                        {directed ? direction : "━"}
                     </text>
                 </g>
             )}
-            {headVisible && (
+            {hold && headVisible && (selected || hovered || preview) && (
+                <line data-note-part="start" x1={x + 2} x2={x + width - 2} y1={headY} y2={headY}
+                    stroke={stroke} strokeDasharray="3 2" pointerEvents="none" />
+            )}
+            {!hold && headVisible && (
                 <g data-note-part="head">
+                    {sound && resizable && (selected || hovered) && (
+                        <rect x={x} y={headY - 9} width={width} height={18}
+                            fill="none" stroke={stroke} strokeDasharray="3 2" />
+                    )}
                     {sound ? (
                         <path
                             d={`M ${x + width / 2} ${headY - 10} l 3 7 l 7 3 l -7 3 l -3 7 l -3 -7 l -7 -3 l 7 -3 Z`}
@@ -250,11 +297,9 @@ function NoteGlyph({
                         <rect
                             x={x} y={headY - 7} width={width} height={14}
                             rx={2}
-                            fill={judge || headless ? "transparent" : hold ? headColor : color}
-                            stroke={headless && !selected && !hovered && !preview ? "transparent"
-                                : judge && !selected && !hovered ? color : stroke}
+                            fill={judge ? "transparent" : color}
+                            stroke={judge && !selected && !hovered ? color : stroke}
                             strokeWidth={selected ? 2 : 1}
-                            strokeDasharray={headless ? "3 2" : undefined}
                         />
                     )}
                     {note.type === 50 && (
@@ -264,19 +309,26 @@ function NoteGlyph({
                     {scratch && !hold && (
                         <text x={x + width / 2} y={headY - 11} className={style.scratchArrow}>{direction}</text>
                     )}
-                    {!sound && !judge && !headless && !(scratch && !hold) && (
+                    {!sound && !judge && !scratch && (
                         <text
                             x={x + width / 2} y={headY + 3.5} className={style.noteText}
                             textLength={label.length * 5.5 > width - 6 ? width - 6 : undefined}
                             lengthAdjust="spacingAndGlyphs"
                         >{label}</text>
                     )}
-                    {note.annotation && (
-                        <text x={x + 2} y={headY - 12} className={style.annotation}>
-                            {note.annotation.length > 48 ? `${note.annotation.slice(0, 48)}…` : note.annotation}
-                        </text>
-                    )}
                 </g>
+            )}
+            {resizable && (selected || hovered) && widthHandles(painted, viewportHeight).map(({ part, x, y }) => (
+                <g key={part} data-note-part={part}>
+                    <rect x={x - 7} y={y - 12} width={14} height={24} fill="transparent" />
+                    <rect x={x - 3} y={y - 9} width={6} height={18} rx={2} fill="#f8fafc" stroke={color} />
+                    <title>{part.startsWith("tail-") ? "拖动调整尾部 JumpScratch 属性" : "拖动调整音符宽度"} · {part.endsWith("left") ? "左边缘" : "右边缘"}</title>
+                </g>
+            ))}
+            {headVisible && note.annotation && (
+                <text x={x + 2} y={headY - 12} className={style.annotation}>
+                    {note.annotation.length > 48 ? `${note.annotation.slice(0, 48)}…` : note.annotation}
+                </text>
             )}
         </g>
     );
@@ -317,15 +369,20 @@ export default function WdsLane({
     const helpId = useId();
     const [cursor, setCursor] = useState<Cursor | null>(null);
     const [hoverId, setHoverId] = useState<string | null>(null);
-    const [pendingDraft, setPending] = useState<PendingHold | null>(null);
+    const [pendingDraft, setPending] = useState<PendingPlacement | null>(null);
     const [drag, setDrag] = useState<Drag | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [clickedBeat, setClickedBeat] = useState<number | null>(null);
+    const propertiesKey = [editState.wdsProperties.lane, editState.wdsProperties.width,
+        editState.wdsProperties.gimmickType, editState.wdsProperties.gimmickValue,
+        editState.wdsProperties.autoTicks].join(":");
     // Ignore a previous tool's draft immediately, before the cleanup effect runs.
-    const pending = editState.mode === "insert-wds" && pendingDraft?.note.type === editState.wdsType
+    const pending = editState.mode === "insert-wds" && pendingDraft?.note.type === editState.wdsType &&
+        pendingDraft.propertiesKey === propertiesKey
         ? pendingDraft : null;
     const isVertical = orientation === "vertical";
     const canEdit = isVertical && !isPlaybackFrozen && editState.mode !== "browse";
+    const canResize = canEdit && !pending;
     const defaultBpm = editState.currentBpm;
     const subdivision = Number.isFinite(beatSubdivision) ? Math.max(1, Math.min(64, Math.floor(beatSubdivision))) : 4;
     const viewHeight = Math.max(1, timelineHeight);
@@ -350,6 +407,7 @@ export default function WdsLane({
             return { notes: [] as CollectedWdsNote[], error: errorMessage(reason) };
         }
     }, [chartData, defaultBpm]);
+    const bodyLinks = useMemo(() => getWdsBodyLinks(collected.notes), [collected.notes]);
 
     const tempoSegments = useMemo(() => {
         if (collected.error) return [];
@@ -400,7 +458,7 @@ export default function WdsLane({
             }
         });
         return () => { cancelled = true; };
-    }, [editState.mode, editState.wdsType, isPlaybackFrozen, orientation, laneId]);
+    }, [editState.mode, editState.wdsType, propertiesKey, isPlaybackFrozen, orientation, laneId]);
 
     const snapTime = !isPlaybackFrozen && isVertical ? cursor?.time ?? null : null;
     useEffect(() => {
@@ -417,32 +475,40 @@ export default function WdsLane({
             const beatToTime = (beat: number) => wdsBeatToTime(chartData, beat, defaultBpm);
             const activeDrag = drag?.moved && drag.base === chartData ? drag : null;
             const movingIds = new Set(activeDrag?.ids);
-            for (const source of collected.notes) {
+            const previousLinks = new Map(bodyLinks);
+            if (activeDrag?.kind === "move") {
+                for (const [id, body] of previousLinks) {
+                    if (movingIds.has(id) && !movingIds.has(body)) previousLinks.delete(id);
+                }
+            }
+            const projected = collected.notes.map((source) => {
                 let record = source;
-                let invalid = false;
                 if (activeDrag && movingIds.has(source.note.id)) {
                     const tailBeat = source.tailBeat === null ? null : source.tailBeat + activeDrag.deltaBeat;
                     const beat = source.beat + (activeDrag.kind === "move" ? activeDrag.deltaBeat : 0);
                     record = {
                         ...source, beat, tailBeat,
                         time: beatToTime(beat), endTime: tailBeat === null ? null : beatToTime(tailBeat),
-                        note: {
-                            ...source.note,
-                            wds: { ...source.note.wds!, lane: source.note.wds!.lane + activeDrag.laneDelta },
-                        },
+                        note: activeDrag.kind === "width"
+                            ? resizeWdsNoteWidth(source.note, activeDrag.resizeEdge, activeDrag.widthDelta, activeDrag.resizePart)
+                            : { ...source.note, wds: { ...source.note.wds!, lane: source.note.wds!.lane + activeDrag.laneDelta } },
                     };
-                    invalid = beat < 0 || (tailBeat !== null && tailBeat <= beat);
                 }
-                const painted = paintNote(record, timeToY, invalid);
+                return record;
+            });
+            for (const record of alignWdsBodyRecords(projected, previousLinks)) {
+                const painted = paintNote(record, timeToY, record.beat < 0 || (record.tailBeat !== null && record.tailBeat <= record.beat));
                 if (Math.max(painted.headY, painted.tailY ?? painted.headY) < -20 ||
                     Math.min(painted.headY, painted.tailY ?? painted.headY) > viewHeight + 20) continue;
                 notes.push(painted);
             }
+            // Independent keys stay above every hold body, including at its start.
+            notes.sort((a, b) => Number(isWdsHoldType(b.record.note.type)) - Number(isWdsHoldType(a.record.note.type)));
             return { notes, error: null };
         } catch (reason) {
             return { notes: [], error: errorMessage(reason) };
         }
-    }, [chartData, collected, defaultBpm, drag, timeToY, viewHeight, isPlaybackFrozen, isVertical]);
+    }, [chartData, collected, bodyLinks, defaultBpm, drag, timeToY, viewHeight, isPlaybackFrozen, isVertical]);
 
     const scene = useMemo(() => {
         const ticks: { beat: number; y: number; major: boolean; bpm: number | null }[] = [];
@@ -497,8 +563,11 @@ export default function WdsLane({
                     measureIndex: Math.floor(activePending.beat), segmentIndex: -1, localMeasureIndex: -1,
                 }, timeToY, tailBeat <= activePending.beat);
             } else if (editState.mode === "insert-wds" && cursor && cursor.lane >= 1 && cursor.lane <= WDS_LANE_COUNT) {
+                let note: ChartNote = { id: "preview", type: editState.wdsType, wds: { ...editState.wdsProperties, lane: cursor.lane } };
+                const body = findWdsNoteBody(collected.notes, note, cursor.beat)?.note.wds;
+                if (body) note = { ...note, wds: { ...note.wds!, lane: body.lane, width: body.width } };
                 preview = paintNote({
-                    note: { id: "preview", type: editState.wdsType, wds: { ...editState.wdsProperties, lane: cursor.lane } },
+                    note,
                     beat: cursor.beat, tailBeat: null, time: cursor.time, endTime: null,
                     measureIndex: Math.floor(cursor.beat), segmentIndex: -1, localMeasureIndex: -1,
                 }, timeToY, cursor.beat < 0);
@@ -507,7 +576,7 @@ export default function WdsLane({
         } catch (reason) {
             return { preview: null, error: errorMessage(reason) };
         }
-    }, [chartData, defaultBpm, scene.error, subdivision, timeToY, pending, cursor, editState.mode,
+    }, [chartData, collected.notes, defaultBpm, scene.error, subdivision, timeToY, pending, cursor, editState.mode,
         editState.wdsType, editState.wdsProperties, isPlaybackFrozen, isVertical]);
 
     function pointerAt(clientX: number, clientY: number, divisions = subdivision): Cursor {
@@ -523,14 +592,22 @@ export default function WdsLane({
     function hitsAt(point: Cursor): NoteHit[] {
         const hits: NoteHit[] = [];
         for (const note of scene.notes) {
+            const record = note.record.note;
+            const hold = isWdsHoldType(record.type);
             const inHeadSpan = point.x >= note.x && point.x <= note.x + note.width;
             const headDistance = Math.abs(point.y - note.headY);
             const tailDistance = note.tailY === null ? Infinity : Math.abs(point.y - note.tailY);
             const inTailSpan = point.x >= note.tailX && point.x <= note.tailX + note.tailWidth;
-            if (inTailSpan && tailDistance <= NOTE_RADIUS && (!inHeadSpan || tailDistance < headDistance)) {
+            const handle = canResize && (editState.selectedIds.has(record.id) || hoverId === record.id)
+                ? widthHandles(note, viewHeight).find(({ x, y }) => Math.abs(point.x - x) <= 7 && Math.abs(point.y - y) <= 12)
+                : null;
+            if (handle) {
+                hits.push({ note, part: handle.part, distance: -1 });
+            } else if (inTailSpan && tailDistance <= NOTE_RADIUS && (!inHeadSpan || tailDistance < headDistance)) {
                 hits.push({ note, part: "tail", distance: tailDistance });
             } else if (inHeadSpan && headDistance <= NOTE_RADIUS) {
-                hits.push({ note, part: "head", distance: headDistance });
+                // A hold start is body geometry, not a key occupying this beat.
+                hits.push({ note, part: hold ? "body" : "head", distance: hold ? NOTE_RADIUS + 1 : headDistance });
             } else if (inTailSpan && tailDistance <= NOTE_RADIUS) {
                 hits.push({ note, part: "tail", distance: tailDistance });
             } else if (inHeadSpan && note.tailY !== null && point.y > note.tailY && point.y < note.headY) {
@@ -587,7 +664,7 @@ export default function WdsLane({
         if (!canEdit) return;
         if (pending) {
             if (point.beat <= pending.beat) {
-                reportError("长条尾部必须晚于头部；请点击更晚的拍，或按 Esc 取消。");
+                reportError("长条尾部必须晚于身子起点；请点击更晚的拍，或按 Esc 取消。");
                 return;
             }
             commit(
@@ -599,10 +676,12 @@ export default function WdsLane({
             );
             return;
         }
-        const note: ChartNote = {
+        let note: ChartNote = {
             id: generateNoteId(), type: editState.wdsType,
             wds: { ...editState.wdsProperties, lane: point.lane },
         };
+        const body = findWdsNoteBody(collected.notes, note, point.beat)?.note.wds;
+        if (body) note = { ...note, wds: { ...note.wds!, lane: body.lane, width: body.width } };
         if (!getWdsScratchSpan(note.wds!)) {
             reportError("音符宽度或 Scratch 尾部超出 1–12 列；请更换位置或调整属性。");
             return;
@@ -611,7 +690,7 @@ export default function WdsLane({
             try {
                 // Validate the entire captured draft through the adapter before arming it.
                 insertWdsNote(chartData, note, point.beat, point.beat + 1 / subdivision, defaultBpm);
-                setPending({ note, beat: point.beat });
+                setPending({ note, beat: point.beat, propertiesKey });
                 setError(null);
             } catch (reason) { reportError(reason); }
         } else {
@@ -675,7 +754,7 @@ export default function WdsLane({
             setCursor(point);
             setHoverId(hit?.note.record.note.id ?? null);
             selectBeat(point.beat);
-            if (editState.mode === "select" || editState.mode === "browse") {
+            if (editState.mode === "select" || editState.mode === "browse" || (hit && canResize && isWidthHandle(hit.part))) {
                 if (!hit) {
                     if (!event.shiftKey && !event.ctrlKey && !event.metaKey) {
                         setEditState((previous) => ({ ...previous, selectedIds: new Set() }));
@@ -685,11 +764,15 @@ export default function WdsLane({
                 const additive = event.shiftKey || event.ctrlKey || event.metaKey;
                 const ids = selectNote(hit, additive);
                 if (!canEdit || additive || event.altKey) return;
+                const kind = isWidthHandle(hit.part) ? "width" : hit.part === "tail" ? "tail" : "move";
+                const hitId = hit.note.record.note.id;
+                const widthTarget = kind === "width" && !hit.part.startsWith("tail-") ? bodyLinks.get(hitId) ?? hitId : hitId;
                 const next: Drag = {
                     pointerId: event.pointerId, base: chartData,
-                    ids: hit.part === "tail" ? [hit.note.record.note.id] : ids,
-                    kind: hit.part === "tail" ? "tail" : "move",
+                    ids: kind === "move" ? expandWdsBodySelection(collected.notes, ids) : [widthTarget], kind,
                     start: point, subdivision, deltaBeat: 0, laneDelta: 0, moved: false,
+                    resizeEdge: hit.part.endsWith("left") ? "left" : "right",
+                    resizePart: hit.part.startsWith("tail-width-") ? "tail" : "note", widthDelta: 0,
                     startClientX: event.clientX, startClientY: event.clientY,
                     startTime: rangeStart + (1 - point.y / viewHeight) * span - graphicalOffset,
                     timePerPixel: span / rect.height, xPerPixel: WIDTH / rect.width, defaultBpm,
@@ -703,7 +786,8 @@ export default function WdsLane({
             if (editState.mode === "annotate") {
                 if (hit) { selectNote(hit, false); annotate(hit.note.record.note); }
             } else if (editState.mode === "insert-wds") {
-                // The second hold click specifies time only, including over the ruler.
+                // The second click sets only the end time. JumpScratch belongs
+                // to the tail properties, edited through its edge handles/form.
                 if (pending || point.x >= GUTTER) insertAt(point);
             } else if (editState.mode === "paste" && point.x >= GUTTER) {
                 pasteAt(point);
@@ -723,10 +807,13 @@ export default function WdsLane({
         const lane = Math.floor((active.start.x + dx * active.xPerPixel - GUTTER) / COLUMN) + 1;
         const next = {
             ...active, moved,
-            deltaBeat: Math.round((beat - active.start.beat) * active.subdivision) / active.subdivision,
+            deltaBeat: active.kind === "width" ? 0
+                : Math.round((beat - active.start.beat) * active.subdivision) / active.subdivision,
             laneDelta: active.kind === "move" ? lane - active.start.lane : 0,
+            widthDelta: active.kind === "width" ? Math.round(dx * active.xPerPixel / COLUMN) : 0,
         };
-        if (next.moved === active.moved && next.deltaBeat === active.deltaBeat && next.laneDelta === active.laneDelta) return active;
+        if (next.moved === active.moved && next.deltaBeat === active.deltaBeat && next.laneDelta === active.laneDelta &&
+            next.widthDelta === active.widthDelta) return active;
         dragRef.current = next;
         setDrag(next);
         return next;
@@ -750,10 +837,13 @@ export default function WdsLane({
             if (!canEdit) { cancelDrag(); return; }
             if (active.base !== chartData) throw new Error("谱面已发生变化，已取消本次拖动，请重新选择音符。");
             const next = updateDrag(event.clientX, event.clientY);
-            if (next?.moved && (next.deltaBeat !== 0 || next.laneDelta !== 0)) {
+            const widthChanged = next?.kind === "width" && collected.notes.some(({ note }) => next.ids.includes(note.id) &&
+                resizeWdsNoteWidth(note, next.resizeEdge, next.widthDelta, next.resizePart) !== note);
+            if (next?.moved && (next.deltaBeat !== 0 || next.laneDelta !== 0 || widthChanged)) {
                 commit(() => next.kind === "move"
                     ? moveWdsNotes(next.base, next.ids, next.deltaBeat, next.laneDelta, defaultBpm)
                     : updateWdsNotes(next.base, next.ids, (note) => {
+                        if (next.kind === "width") return resizeWdsNoteWidth(note, next.resizeEdge, next.widthDelta, next.resizePart);
                         if (!note.tail) throw new Error("该音符没有可调整的尾部。");
                         const tail = normalizeFraction({
                             a: note.tail.a * next.subdivision + Math.round(next.deltaBeat * next.subdivision) * note.tail.b,
@@ -863,8 +953,8 @@ export default function WdsLane({
     }
 
     const selectedBeat = selectedMeasureRef?.globalIndex ?? clickedBeat;
-    const focusedNote = collected.notes.find(({ note }) => note.id === hoverId) ??
-        collected.notes.find(({ note }) => editState.selectedIds.has(note.id));
+    const focusedNote = scene.notes.find(({ record }) => record.note.id === hoverId)?.record ??
+        scene.notes.find(({ record }) => editState.selectedIds.has(record.note.id))?.record;
     const visibleError = error ?? scene.error ?? previewResult.error;
     const playheadY = playheadTime == null ? null : timeToY(playheadTime - graphicalOffset);
     const audioEndY = songDuration > 0 ? timeToY(songDuration - graphicalOffset) : null;
@@ -892,6 +982,7 @@ export default function WdsLane({
             <span id={helpId} className={style.srOnly}>
                 时间向上增加。1 Tap，2 Critical，3 Hold，4 选择，5 粘贴，8 标注，B 只读浏览。
                 Shift 或 Ctrl 点击多选，Alt 点击轮换重叠音符。拖动长条尾部调整长度。Esc 取消。
+                长条不包含头键，起点可独立放键。悬停时显示左右宽度柄；尾巴的宽度柄编辑 JumpScratch 属性。
                 Tab 聚焦音符，Enter 选择。音频结束后仍可编辑。
             </span>
             {!isPlaybackFrozen && !isVertical && (
@@ -953,6 +1044,7 @@ export default function WdsLane({
                             <NoteGlyph
                                 key={note.record.note.id} painted={note} viewportHeight={viewHeight}
                                 selected={editState.selectedIds.has(note.record.note.id)} hovered={hoverId === note.record.note.id}
+                                resizable={canResize}
                             />
                         ))}
                         {previewResult.preview && <NoteGlyph painted={previewResult.preview} viewportHeight={viewHeight} selected preview hovered={false} />}
@@ -972,13 +1064,15 @@ export default function WdsLane({
                     </div>
                     <div className={style.status} aria-live="polite">
                         <div>
-                            <strong>{editState.mode === "browse" ? "只读浏览" : pending ? "选择长条尾部 · Esc 取消" : "WDS"}</strong>
+                            <strong>{editState.mode === "browse" ? "只读浏览" : pending ? "选择长条结束拍 · Esc 取消"
+                                : drag?.kind === "width" ? "拖动宽度 · Esc 取消" : "WDS"}</strong>
                             <span>1/{subdivision} 拍</span>
                             {selectedBeat !== null && <span>选中第 {selectedBeat + 1} 拍 · {bpmAt(selectedBeat)} BPM</span>}
                             {cursor && <span>光标 {(cursor.beat + 1).toFixed(3)} 拍 · 列 {cursor.lane >= 1 && cursor.lane <= 12 ? cursor.lane : "—"}</span>}
                         </div>
                         <div className={style.noteDescription}>
-                            {pending ? describeNote(pending.note) : focusedNote ? describeNote(focusedNote.note) : "Alt 点击轮换重叠音符 · Shift / Ctrl 多选"}
+                            {pending ? describeNote(previewResult.preview?.record.note ?? pending.note)
+                                : focusedNote ? describeNote(focusedNote.note) : "悬停显示左右宽度柄 · Alt 点击轮换重叠音符"}
                         </div>
                     </div>
                 </>

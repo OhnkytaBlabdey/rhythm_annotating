@@ -4,12 +4,12 @@ import React from "react";
 import classNames from "classnames/bind";
 import type { ChartNote } from "../chartTypes";
 import {
-    defaultWdsProperties,
     getWdsScratchSpan,
     isWdsHoldType,
     isWdsScratchType,
     isWdsJumpScratch,
     isWdsOneDirection,
+    normalizeWdsJumpScratch,
     WDS_LANE_COUNT,
     WDS_NOTE_TYPES,
     type WdsNoteProperties,
@@ -19,7 +19,6 @@ import type { WdsMenuProps } from "./noteMenu";
 import style from "./noteMenu.module.css";
 
 const cls = classNames.bind(style);
-const HEAD_TYPES = [80, 81, 82, 83] as const;
 
 // Preserve partial numeric input; the adapter validates it on insertion/update.
 function NumberField({ value, onChange, ...inputProps }:
@@ -45,49 +44,32 @@ function NumberField({ value, onChange, ...inputProps }:
     );
 }
 
-function PropertyFields({ type, properties, onChange, defaults = false }: {
+function PropertyFields({ type, properties, onChange }: {
     type: number;
     properties: WdsNoteProperties;
     onChange: (properties: WdsNoteProperties) => void;
-    defaults?: boolean;
 }) {
     const hold = isWdsHoldType(type);
-    const scratch = isWdsScratchType(type);
+    const scratch = isWdsScratchType(type) || hold;
     const jump = isWdsJumpScratch(properties);
     const oneDirection = isWdsOneDirection(properties);
     const span = getWdsScratchSpan(properties);
-    // Insertion takes its lane from the pointer, not an unused default lane.
-    const startLanes = defaults ? Array.from({ length: WDS_LANE_COUNT }, (_, index) => index + 1)
-        .filter((lane) => getWdsScratchSpan({ ...properties, lane }) !== null) : [];
-    const validRange = defaults ? startLanes.length > 0 : span !== null;
-    const rangeText = defaults
-        ? (validRange
-            ? `可放置的起始轨道：${startLanes[0]}${startLanes.length > 1 ? `–${startLanes[startLanes.length - 1]}` : ""}`
-            : "当前覆盖范围无法放入 12 轨，请检查宽度与 gimmickValue。")
-        : (span
-            ? `${scratch ? hold ? "尾部" : "划键" : "本体"}覆盖：${span.lane}–${span.lane + span.width - 1} 轨（宽 ${span.width}）`
-            : "覆盖范围未完成或超出 1–12 轨，请检查宽度与 gimmickValue。");
     const change = (patch: Partial<WdsNoteProperties>) => onChange({ ...properties, ...patch });
 
     return (
         <>
-            <div className={cls(!defaults && "property-grid")}>
-                {!defaults && (
-                    <label className={cls("control-field")}>
-                        起始轨道
-                        <NumberField min={1} max={WDS_LANE_COUNT} value={properties.lane}
-                            onChange={(lane) => change({ lane })} />
-                    </label>
-                )}
+            <div className={cls("property-grid")}>
+                <label className={cls("control-field")}>
+                    起始轨道
+                    <NumberField min={1} max={WDS_LANE_COUNT} value={properties.lane}
+                        onChange={(lane) => change({ lane })} />
+                </label>
                 <label className={cls("control-field")}>
                     宽度（轨）
                     <NumberField min={1} max={WDS_LANE_COUNT} value={properties.width}
                         onChange={(width) => change({ width })} />
                 </label>
             </div>
-            {defaults && (
-                <p className={cls("help-text")}>宽度为音符占用的连续轨道数；在画布上点击确定起始轨道。</p>
-            )}
             {scratch && (
                 <>
                     <label className={cls("control-field")}>
@@ -96,11 +78,13 @@ function PropertyFields({ type, properties, onChange, defaults = false }: {
                             value={jump ? "JumpScratch" : oneDirection ? "OneDirection" : "0"}
                             onChange={(event) => change({
                                 gimmickType: event.target.value as WdsNoteProperties["gimmickType"],
-                                gimmickValue: event.target.value === "JumpScratch" ? properties.width : 0,
+                                gimmickValue: event.target.value === "JumpScratch"
+                                    ? (properties.lane + properties.width <= WDS_LANE_COUNT ? 1 : -1) * (properties.width + 1) : 0,
                             })}>
-                            <option value="0">0 · 双向</option>
-                            <option value="OneDirection">OneDirection / 2 · 单向</option>
-                            <option value="JumpScratch">JumpScratch / 1 · 改变覆盖范围</option>
+                            <option value="0">默认</option>
+                            {isWdsScratchType(type) && <option value="OneDirection">OneDirection / 2 · 单向</option>}
+                            {hold && <option value="JumpScratch" disabled={properties.width >= WDS_LANE_COUNT}>JumpScratch / 1 · 尾部覆盖范围</option>}
+                            {!hold && jump && <option value="JumpScratch" disabled>JumpScratch · 已有原始记录属性</option>}
                         </select>
                     </label>
                     {oneDirection && (
@@ -120,43 +104,41 @@ function PropertyFields({ type, properties, onChange, defaults = false }: {
                     {jump && (
                         <>
                             <label className={cls("control-field")}>
+                                划动方向
+                                <select className={cls("control-input")}
+                                    value={properties.gimmickValue < 0 ? "left" : "right"}
+                                    onChange={(event) => change({ gimmickValue:
+                                        (event.target.value === "left" ? -1 : 1) * (Math.abs(properties.gimmickValue) || properties.width),
+                                    })}>
+                                    <option value="left">向左</option>
+                                    <option value="right">向右</option>
+                                </select>
+                            </label>
+                            <label className={cls("control-field")}>
                                 带符号覆盖宽度 / gimmickValue
                                 <NumberField min={-WDS_LANE_COUNT} max={WDS_LANE_COUNT}
                                     value={properties.gimmickValue}
                                     onChange={(gimmickValue) => change({ gimmickValue })} />
                             </label>
                             <p className={cls("help-text")}>
-                                负数向左并对齐本体右缘，正数向右并对齐本体左缘；绝对值为覆盖宽度，不能为 0。
+                                负数向左，正数向右；绝对值为尾部覆盖宽度。
+                                收回身子范围会清除 JumpScratch 和方向；改变身子宽度时保留尾巴的额外延伸格数。
                             </p>
                         </>
                     )}
                 </>
             )}
-            <p className={cls("span-preview", !validRange && "invalid-preview")} aria-live="polite">{rangeText}</p>
+            {!span && <p className={cls("invalid-preview")} role="alert">覆盖范围未完成或超出 1–12 轨。</p>}
             {hold && (
                 <>
-                    <label className={cls("control-field")}>
-                        起点的头记录
-                        <select className={cls("control-input")} value={properties.holdHeadType ?? "none"}
-                            onChange={(event) => change({
-                                holdHeadType: event.target.value === "none" ? null
-                                    : Number(event.target.value) as WdsNoteProperties["holdHeadType"],
-                            })}>
-                            <option value="none">无 · 延续段</option>
-                            {HEAD_TYPES.map((head) => (
-                                <option key={head} value={head}>
-                                    {WDS_NOTE_TYPES.find(({ code }) => code === head)?.label}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
                     <label className={cls("checkbox-field")}>
                         <input type="checkbox" checked={properties.autoTicks}
                             onChange={(event) => change({ autoTicks: event.target.checked })} />
                         辅助生成 · 每半拍添加 900 记录
                     </label>
                     <p className={cls("help-text")}>
-                        头记录与长条区间分开保存。半拍生成是编辑器辅助选项，默认关闭；WDS 判定以实际 900 记录为准。
+                        长条只有身子和尾巴。起点的键请单独放置，可独立选择、移动和删除。
+                        半拍生成是编辑器辅助选项，默认关闭；WDS 判定以实际 900 记录为准。
                     </p>
                 </>
             )}
@@ -186,7 +168,7 @@ function SelectedNoteForm({ note, readOnly, onUpdate }: {
                         onChange={(event) => {
                             const nextType = Number(event.target.value);
                             setType(nextType);
-                            if (!isWdsScratchType(nextType)) {
+                            if (!isWdsScratchType(nextType) && !(isWdsHoldType(nextType) && isWdsJumpScratch(properties))) {
                                 setProperties((previous) => ({
                                     ...previous, gimmickType: "0", gimmickValue: 0,
                                 }));
@@ -206,7 +188,14 @@ function SelectedNoteForm({ note, readOnly, onUpdate }: {
             </fieldset>
             <button type="button" className={cls("button")} disabled={readOnly}
                 onClick={() => {
-                    if (!readOnly) onUpdate({ ...note, type, wds: { ...properties }, annotation });
+                    if (!readOnly) {
+                        const resizingBody = hold && properties.width !== note.wds.width &&
+                            properties.gimmickType === note.wds.gimmickType && properties.gimmickValue === note.wds.gimmickValue;
+                        // The adapter derives a resized tail from the saved body.
+                        // Only an explicit tail edit can clear this form early.
+                        if (!resizingBody) setProperties(normalizeWdsJumpScratch(properties));
+                        onUpdate({ ...note, type, wds: { ...properties }, annotation });
+                    }
                 }}>应用到选中音符</button>
         </>
     );
@@ -219,19 +208,7 @@ export default function WdsNoteControls({ wds, drawing, readOnly, onDraw }: {
     onDraw: () => void;
 }) {
     const selectType = (type: number) => {
-        if (type !== wds.type) {
-            const defaults = defaultWdsProperties(type);
-            const scratch = isWdsScratchType(type);
-            const hold = isWdsHoldType(type);
-            wds.onTypeChange(type);
-            wds.onPropertiesChange({
-                ...wds.properties,
-                holdHeadType: defaults.holdHeadType,
-                autoTicks: hold && (isWdsHoldType(wds.type) ? wds.properties.autoTicks : defaults.autoTicks),
-                gimmickType: scratch ? wds.properties.gimmickType : "0",
-                gimmickValue: scratch ? wds.properties.gimmickValue : 0,
-            });
-        }
+        wds.onTypeChange(type);
         onDraw();
     };
     const typeButton = ({ code, label, color }: WdsNoteType) => (
@@ -252,25 +229,15 @@ export default function WdsNoteControls({ wds, drawing, readOnly, onDraw }: {
             onWheel={(event) => event.stopPropagation()}>
             <div className={cls("section-label")}>WDS 绘制类型</div>
             <div className={cls("type-grid")}>
-                {WDS_NOTE_TYPES.filter(({ recordOnly }) => !recordOnly).map(typeButton)}
+                {WDS_NOTE_TYPES.filter(({ uncommon }) => !uncommon).map(typeButton)}
             </div>
             <details className={cls("advanced-types")}>
-                <summary>原始记录编码</summary>
-                <p className={cls("help-text")}>
-                    用于编辑底层记录，不代表额外键种。100/101 共用蓝色长条，110/111 共用紫色长条；80–83 通常在长条属性中设置。
-                </p>
+                <summary>少用键种</summary>
                 <div className={cls("type-grid")}>
-                    {WDS_NOTE_TYPES.filter(({ recordOnly }) => recordOnly).map(typeButton)}
+                    {WDS_NOTE_TYPES.filter(({ uncommon }) => uncommon).map(typeButton)}
                 </div>
             </details>
-            {drawing ? (
-                <>
-                    <div className={cls("section-label")}>新音符属性 · {wds.type}</div>
-                    <p className={cls("help-text")}>在绘制前设置，作用于接下来新建的音符。长条依次点击起点和终点。</p>
-                    <PropertyFields type={wds.type} properties={wds.properties}
-                        onChange={wds.onPropertiesChange} defaults />
-                </>
-            ) : selectedNote?.wds ? (
+            {!drawing && selectedNote?.wds ? (
                 <>
                     <div className={cls("section-label", "selected-heading")}>选中音符属性</div>
                     <SelectedNoteForm key={`${JSON.stringify(selectedNote)}:${readOnly}`}

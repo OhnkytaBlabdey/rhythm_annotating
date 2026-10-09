@@ -19,7 +19,8 @@ export interface ChartNote {
     body?: Fraction[];
     tail?: Fraction;
     annotation?: string;
-    /** Required for WDS notes. head is local [0, 1); tail/body
+    /** Required for WDS notes. head is the record's start position, NOT a head
+     * key; any key there is an independent ChartNote. head is local [0, 1); tail/body
      * are musical beat offsets from the same owning beat, across BPM changes. */
     wds?: WdsNoteProperties;
 }

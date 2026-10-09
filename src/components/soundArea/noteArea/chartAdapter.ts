@@ -6,6 +6,7 @@ import {
     ChartMeasureRef,
     RawChartSegment,
     Fraction,
+    WdsNoteProperties,
     isNoteBoundary,
     NOTE_BOUNDARY_START,
     NOTE_BOUNDARY_END,
@@ -13,8 +14,11 @@ import {
 import {
     getWdsScratchSpan,
     isWdsHoldType,
+    isWdsBodyNoteType,
+    isWdsJumpScratch,
     isWdsNoteType,
     isWdsScratchType,
+    normalizeWdsJumpScratch,
 } from "./wdsTypes";
 
 let _idCounter = 0;
@@ -45,15 +49,16 @@ export function normalizeChartSegments(
     rawSegments: RawChartSegment[],
     chartKind?: NoteLaneData["chartKind"],
 ): ChartSegment[] {
+    rawSegments = normalizeStoredWdsRecords(rawSegments) as RawChartSegment[];
     const error = validateImportSegments(rawSegments, chartKind);
     if (error) throw new Error(error);
     // Stored times are derived; list order and tempos are the source of truth.
-    return recomputeSegmentTimes(
+    return alignWdsBodyData(recomputeSegmentTimes(
         rawSegments.map((segment) => ({
             tempo: segment.tempo,
             measures: sanitizeMeasures(segment.measures ?? segment.beats),
         })),
-    );
+    ));
 }
 
 /** Parse a NoteLaneSnapshot (Feature 17) back into usable ChartSegment[] */
@@ -464,15 +469,14 @@ function validateNoteShape(value: unknown, chartKind?: NoteLaneData["chartKind"]
     }
     const p = note.wds;
     if (!isRecord(p)) return "WDS note 缺少 wds 属性";
-    const fields = ["lane", "width", "gimmickType", "gimmickValue", "holdHeadType", "autoTicks"];
+    const fields = ["lane", "width", "gimmickType", "gimmickValue", "autoTicks"];
     if (Object.keys(p).some((key) => !fields.includes(key))) return "未知的 wds 属性";
     if (!getWdsScratchSpan(p)) return "WDS lane/width 或 JumpScratch 覆盖范围非法（1..12 列，宽度大于 0）";
     if (!["0", "1", "JumpScratch", "2", "OneDirection"].includes(p.gimmickType)) return "WDS gimmickType 非法";
-    if (p.holdHeadType !== null && ![80, 81, 82, 83].includes(p.holdHeadType)) return "WDS holdHeadType 非法";
     if (typeof p.autoTicks !== "boolean") return "WDS autoTicks 必须是布尔值";
-    if (!isWdsScratchType(note.type) && p.gimmickType !== "0") return "该 WDS 类型不支持划动 gimmick";
+    if (!isWdsScratchType(note.type) && !(isWdsHoldType(note.type) && isWdsJumpScratch(p)) && p.gimmickType !== "0") return "该 WDS 类型不支持划动 gimmick";
     if (!isWdsHoldType(note.type)) {
-        if (note.tail !== undefined || (note.body?.length ?? 0) > 0 || p.holdHeadType !== null || p.autoTicks) return "WDS 点 note 不能包含长条属性";
+        if (note.tail !== undefined || (note.body?.length ?? 0) > 0 || p.autoTicks) return "WDS 点 note 不能包含长条属性";
     } else {
         const tail = normalizeWdsFraction(note.tail);
         if (!tail || compareFractions(head, tail) >= 0) return "WDS 长条必须包含晚于 head 的 tail";
@@ -499,7 +503,7 @@ function pickImportCandidate(raw: unknown): {
 } | null {
     if (Array.isArray(raw)) {
         return {
-            chartData: raw,
+            chartData: normalizeStoredWdsRecords(raw),
         };
     }
 
@@ -511,7 +515,7 @@ function pickImportCandidate(raw: unknown): {
     if (!isRecord(source)) return null;
 
     return {
-        chartData: source.chartData,
+        chartData: normalizeStoredWdsRecords(source.chartData),
         defaultBpm:
             source.defaultBpm !== undefined ? source.defaultBpm : source.currentBpm,
         division: source.division,
@@ -1051,6 +1055,81 @@ export interface CollectedWdsNote {
     endTime: number | null;
 }
 
+type WdsBodyRecord = Pick<CollectedWdsNote, "note" | "beat" | "tailBeat">;
+
+function wdsBodyRecords(data: ChartSegment[]): WdsBodyRecord[] {
+    let beat = 0;
+    return data.flatMap((segment) => segment.measures.flatMap((measure) => {
+        const owningBeat = beat++;
+        return measure.notes.filter((note) => note.wds).map((note) => ({
+            note, beat: owningBeat + fractionValue(note.head!),
+            tailBeat: note.tail ? owningBeat + fractionValue(note.tail) : null,
+        }));
+    }));
+}
+
+/** Scratch/Sound records on a body inherit that body's horizontal span.
+ * Prefer an exact span, then the most recently started overlapping body. */
+export function findWdsNoteBody(records: readonly WdsBodyRecord[], note: ChartNote, beat: number): WdsBodyRecord | null {
+    if (!isWdsBodyNoteType(note.type) || !note.wds) return null;
+    const p = note.wds;
+    const candidates = records.filter((record) => {
+        const body = record.note.wds;
+        return body && isWdsHoldType(record.note.type) && record.tailBeat !== null &&
+            beat >= record.beat && beat <= record.tailBeat &&
+            p.lane < body.lane + body.width && body.lane < p.lane + p.width;
+    });
+    const exact = (record: WdsBodyRecord) => Number(record.note.wds!.lane === p.lane && record.note.wds!.width === p.width);
+    candidates.sort((a, b) => exact(b) - exact(a) || b.beat - a.beat || a.note.wds!.width - b.note.wds!.width);
+    return candidates[0] ?? null;
+}
+
+export function getWdsBodyLinks(records: readonly WdsBodyRecord[], previous?: ReadonlyMap<string, string>): Map<string, string> {
+    const byId = new Map(records.map((record) => [record.note.id, record]));
+    const links = new Map<string, string>();
+    for (const record of records) {
+        if (!isWdsBodyNoteType(record.note.type)) continue;
+        const prior = byId.get(previous?.get(record.note.id) ?? "");
+        const body = prior && isWdsHoldType(prior.note.type) && prior.tailBeat !== null &&
+            record.beat >= prior.beat && record.beat <= prior.tailBeat
+            ? prior : findWdsNoteBody(records, record.note, record.beat);
+        if (body) links.set(record.note.id, body.note.id);
+    }
+    return links;
+}
+
+export function alignWdsBodyRecords<T extends WdsBodyRecord>(records: readonly T[], previous?: ReadonlyMap<string, string>): T[] {
+    const links = getWdsBodyLinks(records, previous);
+    const byId = new Map(records.map((record) => [record.note.id, record]));
+    return records.map((record) => {
+        const body = byId.get(links.get(record.note.id) ?? "")?.note.wds;
+        const p = record.note.wds;
+        if (!body || !p || (p.lane === body.lane && p.width === body.width)) return record;
+        return { ...record, note: { ...record.note, wds: normalizeWdsJumpScratch({ ...p, lane: body.lane, width: body.width }) } };
+    });
+}
+
+/** Derived ownership is never persisted as a new schema or version. */
+function alignWdsBodyData(data: ChartSegment[], before?: ChartSegment[], rebind = new Set<string>()): ChartSegment[] {
+    const records = wdsBodyRecords(data);
+    const previous = before ? getWdsBodyLinks(wdsBodyRecords(before)) : undefined;
+    for (const id of rebind) previous?.delete(id);
+    const aligned = alignWdsBodyRecords(records, previous);
+    if (aligned.every((record, index) => record === records[index])) return data;
+    const notes = new Map(aligned.map((record) => [record.note.id, record.note]));
+    return data.map((segment) => ({ ...segment, measures: segment.measures.map((measure) => ({
+        ...measure, notes: measure.notes.map((note) => notes.get(note.id) ?? note),
+    })) }));
+}
+
+export function expandWdsBodySelection(records: readonly WdsBodyRecord[], ids: readonly string[]): string[] {
+    const selected = new Set(ids);
+    for (const [id, body] of getWdsBodyLinks(records)) {
+        if (selected.has(body)) selected.add(id);
+    }
+    return [...selected];
+}
+
 function hasWdsNotes(data: ChartSegment[]): boolean {
     return data.some((s) => s.measures.some((m) => m.notes.some((n) => !!n.wds)));
 }
@@ -1186,6 +1265,7 @@ function placeWdsNote(data: ChartSegment[], position: PositionedWdsNote, default
         while (count++ < required) last.measures.push({ notes: [] });
     }
     const placed = cloneNote(note);
+    if (placed.wds) placed.wds = normalizeWdsJumpScratch(placed.wds);
     placed.head = shiftFraction(head, -owningBeat);
     placed.tail = tail ? shiftFraction(tail, -owningBeat) : undefined;
     placed.body = body?.map((f) => shiftFraction(f, -owningBeat));
@@ -1196,8 +1276,8 @@ function placeWdsNote(data: ChartSegment[], position: PositionedWdsNote, default
     target.measure.notes.push(placed);
 }
 
-function finishWdsMutation(data: ChartSegment[]): ChartSegment[] {
-    const result = recomputeSegmentTimes(data);
+function finishWdsMutation(data: ChartSegment[], before?: ChartSegment[], rebind?: Set<string>): ChartSegment[] {
+    const result = recomputeSegmentTimes(alignWdsBodyData(data, before, rebind));
     for (const seg of result) {
         for (const measure of seg.measures) {
             measure.notes.sort((a, b) => compareFractions(a.head!, b.head!) || (a.wds?.lane ?? 0) - (b.wds?.lane ?? 0) || a.type - b.type);
@@ -1216,7 +1296,9 @@ export function insertWdsNote(data: ChartSegment[], note: ChartNote, beat: numbe
     if (!note || !isWdsNoteType(note.type)) throw new Error("只能插入已核实的 WDS note 类型");
     if (beat < 0) throw new Error("WDS note 不能插入到第 0 拍之前");
     const cloned = cloneSegments(data);
-    const next = cloneNote({ ...note, id: note.id || generateNoteId() });
+    let next = cloneNote({ ...note, id: note.id || generateNoteId() });
+    const body = findWdsNoteBody(wdsBodyRecords(data), next, beat)?.note.wds;
+    if (body) next = { ...next, wds: { ...next.wds!, lane: body.lane, width: body.width } };
     placeWdsNote(cloned, {
         note: next, head: beatFraction(beat),
         tail: tailBeat === null ? undefined : beatFraction(tailBeat),
@@ -1227,6 +1309,51 @@ export function insertWdsNote(data: ChartSegment[], note: ChartNote, beat: numbe
 
 export type WdsNoteUpdate = Partial<Omit<ChartNote, "id">> | ((note: ChartNote) => ChartNote);
 
+/** Resizing a body preserves the tail's extra columns, not its old total width.
+ * Shared by canvas resizing, linked Sound/Scratch edits and the property form. */
+export function withWdsBodySpan(p: WdsNoteProperties, lane: number, width: number): WdsNoteProperties {
+    const extra = isWdsJumpScratch(p) ? Math.max(0, Math.abs(p.gimmickValue) - p.width) : 0;
+    return normalizeWdsJumpScratch({ ...p, lane, width,
+        ...(isWdsJumpScratch(p) ? { gimmickValue: (p.gimmickValue < 0 ? -1 : 1) * (width + extra) } : {}),
+    });
+}
+
+/** Width-drag projection, shared by preview and commit. Does not clamp invalid
+ * spans: updateWdsNotes validates the final change atomically on pointer-up.
+ * Every hold's tail edits only its gimmick; its body and times stay intact.
+ * Crossing the fixed endpoint reverses the resize instead of collapsing it. */
+export function resizeWdsNoteWidth(
+    note: ChartNote,
+    edge: "left" | "right",
+    deltaColumns: number,
+    part: "note" | "tail" = "note",
+): ChartNote {
+    if (!note.wds || !Number.isSafeInteger(deltaColumns)) throw new Error("宽度拖动参数非法");
+    if (deltaColumns === 0) return note;
+    const p = note.wds;
+    if (part === "tail" && !isWdsHoldType(note.type)) {
+        throw new Error("只有长条拥有可独立调整的尾部");
+    }
+    // The renderer also accepts raw scratch point records carrying a span.
+    // Preserve their encoding when resizing imported data.
+    if (part === "tail" || (!isWdsHoldType(note.type) && isWdsJumpScratch(p))) {
+        const span = getWdsScratchSpan(p);
+        if (!span) throw new Error("原有尾部范围非法");
+        const target = (edge === "left" ? span.lane : span.lane + span.width - 1) + deltaColumns;
+        const right = p.lane + p.width - 1;
+        const leftward = edge === "left" ? target <= right : target < p.lane;
+        const wds = normalizeWdsJumpScratch({ ...p,
+            gimmickType: isWdsJumpScratch(p) ? p.gimmickType : "JumpScratch",
+            gimmickValue: leftward ? target - right - 1 : target - p.lane + 1,
+        });
+        return wds.gimmickType === p.gimmickType && wds.gimmickValue === p.gimmickValue ? note : { ...note, wds };
+    }
+    const fixed = edge === "left" ? p.lane + p.width - 1 : p.lane;
+    const target = (edge === "left" ? p.lane : p.lane + p.width - 1) + deltaColumns;
+    const lane = Math.min(fixed, target), width = Math.abs(target - fixed) + 1;
+    return { ...note, wds: isWdsHoldType(note.type) ? withWdsBodySpan(p, lane, width) : { ...p, lane, width } };
+}
+
 /** Updates local fractions/properties, preserving IDs. Use moveWdsNotes for
  * cross-beat motion. Property objects (including wds) are replaced whole. */
 export function updateWdsNotes(data: ChartSegment[], ids: readonly string[], update: WdsNoteUpdate, defaultBpm: number): ChartSegment[] {
@@ -1234,19 +1361,42 @@ export function updateWdsNotes(data: ChartSegment[], ids: readonly string[], upd
     const selected = new Set(ids);
     const positions = wdsPositions(data).filter((p) => selected.has(p.note.id));
     const cloned = removeWdsNotes(data, ids);
+    const links = getWdsBodyLinks(wdsBodyRecords(data));
+    const bodySpans = new Map<string, { lane: number; width: number }>();
+    const rebind = new Set<string>();
     for (const position of positions) {
         const owningBeat = Math.floor(fractionValue(position.head));
-        const note = typeof update === "function" ? update(cloneNote(position.note)) : { ...position.note, ...update };
+        let note = typeof update === "function" ? update(cloneNote(position.note)) : { ...position.note, ...update };
+        if (note.wds) {
+            const old = position.note.wds!, next = note.wds;
+            const bodyWidthChanged = isWdsHoldType(note.type) && next.width !== old.width &&
+                next.gimmickType === old.gimmickType && next.gimmickValue === old.gimmickValue;
+            const tail = bodyWidthChanged ? withWdsBodySpan(old, next.lane, next.width) : normalizeWdsJumpScratch(next);
+            note = { ...note, wds: { ...next, gimmickType: tail.gimmickType, gimmickValue: tail.gimmickValue } };
+        }
         const error = validateNoteShape(note, "wds");
         if (error) throw new Error(error);
         if (!note.wds) throw new Error("更新后必须仍为 WDS note");
+        if (isWdsBodyNoteType(note.type)) {
+            const body = links.get(note.id);
+            if (body && !selected.has(body) && fractionKey(note.head) === fractionKey(position.note.head) &&
+                (note.wds.lane !== position.note.wds!.lane || note.wds.width !== position.note.wds!.width)) {
+                bodySpans.set(body, { lane: note.wds.lane, width: note.wds.width });
+            } else if (fractionKey(note.head) !== fractionKey(position.note.head)) rebind.add(note.id);
+        }
         placeWdsNote(cloned, {
             note: { ...note, id: position.note.id }, head: shiftFraction(note.head!, owningBeat),
             tail: note.tail ? shiftFraction(note.tail, owningBeat) : undefined,
             body: note.body?.map((f) => shiftFraction(f, owningBeat)),
         }, defaultBpm);
     }
-    return finishWdsMutation(cloned);
+    for (const segment of cloned) for (const measure of segment.measures) {
+        measure.notes = measure.notes.map((note) => {
+            const span = bodySpans.get(note.id);
+            return span ? { ...note, wds: withWdsBodySpan(note.wds!, span.lane, span.width) } : note;
+        });
+    }
+    return finishWdsMutation(cloned, data, rebind);
 }
 
 /** Removing the last note retains all explicit beats/tempos for subsequent edits. */
@@ -1307,9 +1457,10 @@ export function pasteWdsNotes(data: ChartSegment[], clipboard: readonly ChartNot
 export function moveWdsNotes(data: ChartSegment[], ids: readonly string[], deltaBeat: number, laneDelta: number, defaultBpm: number): ChartSegment[] {
     assertBpm(defaultBpm);
     const delta = beatFraction(deltaBeat);
-    const selected = new Set(ids);
+    const records = wdsBodyRecords(data);
+    const selected = new Set(expandWdsBodySelection(records, ids));
     const positions = wdsPositions(data).filter((p) => selected.has(p.note.id));
-    const cloned = removeWdsNotes(data, ids);
+    const cloned = removeWdsNotes(data, [...selected]);
     for (const p of positions) {
         placeWdsNote(cloned, {
             note: moveWdsLane(p.note, laneDelta), head: addBeatFractions(p.head, delta),
@@ -1317,7 +1468,8 @@ export function moveWdsNotes(data: ChartSegment[], ids: readonly string[], delta
             body: p.body?.map((f) => addBeatFractions(f, delta)),
         }, defaultBpm);
     }
-    return finishWdsMutation(cloned);
+    const rebind = new Set([...getWdsBodyLinks(records)].filter(([id, body]) => selected.has(id) && !selected.has(body)).map(([id]) => id));
+    return finishWdsMutation(cloned, data, rebind);
 }
 
 /** Inserting stretches only holds crossing the cut. Deleting clips holds,
@@ -1363,6 +1515,67 @@ function editWdsBeat(data: ChartSegment[], cut: number, deleting: boolean, defau
 }
 
 // ---- migration ----
+
+/** Recover grouped heads as independent points and canonicalize tail spans.
+ * This runs only at the storage/import boundary, not in the runtime model.
+ * Preserve explicit records, IDs and source data; repeated loads are idempotent. */
+function normalizeStoredWdsRecords(raw: unknown): unknown {
+    if (!Array.isArray(raw)) return raw;
+    const ids = new Set<string>();
+    for (const segment of raw) {
+        const measures = isRecord(segment) ? segment.measures ?? segment.beats : null;
+        if (!Array.isArray(measures)) continue;
+        for (const measure of measures) {
+            if (!isRecord(measure) || !Array.isArray(measure.notes)) continue;
+            for (const note of measure.notes) {
+                if (isRecord(note) && typeof note.id === "string") ids.add(note.id);
+            }
+        }
+    }
+    const splitMeasures = (value: unknown) => {
+        if (!Array.isArray(value)) return value;
+        return value.map((measure) => {
+            if (!isRecord(measure) || !Array.isArray(measure.notes)) return measure;
+            const notes = [...measure.notes];
+            const independent: ChartNote[] = [];
+            const cleaned = notes.map((note) => {
+                if (!isRecord(note) || !isRecord(note.wds)) return note;
+                const stored = note.wds as unknown as WdsNoteProperties;
+                const canonical = normalizeWdsJumpScratch(stored);
+                if (!("holdHeadType" in note.wds)) return canonical === stored ? note : { ...note, wds: canonical };
+                const { holdHeadType, ...properties } = canonical as unknown as Record<string, unknown>;
+                if (holdHeadType !== null) {
+                    if (![80, 81, 82, 83].includes(holdHeadType as number) || !isWdsHoldType(Number(note.type))) {
+                        throw new Error("存储的长条头记录非法");
+                    }
+                    const present = [...notes, ...independent].some((other) => (
+                        isRecord(other) && other.type === holdHeadType && isRecord(other.wds) &&
+                        other.wds.lane === properties.lane && other.wds.width === properties.width &&
+                        fractionKey(other.head as Fraction) === fractionKey(note.head as Fraction)
+                    ));
+                    if (!present) {
+                        const base = `${typeof note.id === "string" ? note.id : generateNoteId()}-head`;
+                        let id = base;
+                        for (let suffix = 2; ids.has(id); suffix++) id = `${base}-${suffix}`;
+                        ids.add(id);
+                        independent.push({
+                            id, type: holdHeadType as number, head: note.head as Fraction,
+                            wds: { lane: properties.lane as number, width: properties.width as number,
+                                gimmickType: "0", gimmickValue: 0, autoTicks: false },
+                        });
+                    }
+                }
+                return { ...note, wds: properties };
+            });
+            return { ...measure, notes: [...cleaned, ...independent] };
+        });
+    };
+    return raw.map((segment) => !isRecord(segment) ? segment : {
+        ...segment,
+        ...(segment.measures !== undefined ? { measures: splitMeasures(segment.measures) } : {}),
+        ...(segment.beats !== undefined ? { beats: splitMeasures(segment.beats) } : {}),
+    });
+}
 
 /** Stored chart-maker notes used the lane's discriminator as their property key
  * and `${chartKind}Offset` for the export offset. Normalize that layout before

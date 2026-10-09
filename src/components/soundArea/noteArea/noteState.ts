@@ -7,7 +7,7 @@ export type EditMode =
     | "insert-strong" // tap note, type 0 (strong beat)
     | "insert-weak" // tap note, type 1 (weak beat)
     | "insert-ln" // long note, two-click: head then tail
-    | "insert-wds" // WDS point or grouped hold (head, then tail)
+    | "insert-wds" // WDS point or body/tail interval; start keys are independent
     | "select" // select / drag notes
     | "paste" // paste clipboard notes at cursor
     | "insert-start" // set start marker
