@@ -336,23 +336,17 @@ export default function SiriusNoteControls({
                         defaults
                     />
                 </>
-            ) : (
+            ) : selectedNote?.sirius ? (
                 <>
                     <div className={cls("section-label", "selected-heading")}>选中音符属性</div>
-                    {selectedNote?.sirius ? (
-                        <SelectedNoteForm
-                            key={`${JSON.stringify(selectedNote)}:${readOnly}`}
-                            note={{ ...selectedNote, sirius: selectedNote.sirius }}
-                            readOnly={readOnly}
-                            onUpdate={sirius.onUpdateSelected}
-                        />
-                    ) : (
-                        <p className={cls("help-text")}>
-                            切换到「选中」模式，再点击画布上的一个音符，即可修改其轨道、宽度等属性。
-                        </p>
-                    )}
+                    <SelectedNoteForm
+                        key={`${JSON.stringify(selectedNote)}:${readOnly}`}
+                        note={{ ...selectedNote, sirius: selectedNote.sirius }}
+                        readOnly={readOnly}
+                        onUpdate={sirius.onUpdateSelected}
+                    />
                 </>
-            )}
+            ) : null}
         </section>
     );
 }
