@@ -10,7 +10,7 @@ import SpectrumMenu from "./soundMenu/spectrumMenu/spectrumMenu";
 import FoldSpectrum from "./soundMenu/spectrumMenu/foldSpectrum";
 import NoteMenu from "./noteArea/noteMenu/noteMenu";
 import Image from "@/components/Image";
-import { useContext, useCallback, useMemo, useState } from "react";
+import { useContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AudioDataCtx } from "../audioContext";
 import { SoundLaneState, defaultNoteLaneData } from "@/interface/audioData";
 import NoteLane from "./noteArea/noteLane";
@@ -50,7 +50,6 @@ interface _prop {
     audioId: string;
     timeRange: [number, number];
     orientation?: TimelineOrientation;
-    timelineHeight?: number;
     playheadTime?: number | null;
     playbackRenderMode: PlaybackRenderMode;
     refSoundLaneState: SoundLaneState;
@@ -67,11 +66,24 @@ function omitNoteLaneId(lane: NoteLaneData): Omit<NoteLaneData, "id"> {
 
 export default function SoundLane(prop: _prop) {
     const orientation = prop.orientation ?? "horizontal";
-    const timelineHeight = prop.timelineHeight ?? 640;
     const isVertical = orientation === "vertical";
+    const [timelineHeight, setTimelineHeight] = useState(640);
+    const editingRegionRef = useRef<HTMLDivElement | null>(null);
     const audioDataList = useContext(AudioDataCtx);
     const audioData = audioDataList.find((a) => a.id === prop.audioId);
     const isPlaybackFrozen = prop.playbackRenderMode === "frozen";
+
+    useEffect(() => {
+        const region = editingRegionRef.current;
+        if (!isVertical || !region) return;
+
+        // Measure the space left after the toolbar, footer, lane header, and scrollbar.
+        const observer = new ResizeObserver(([entry]) => {
+            setTimelineHeight(Math.max(1, Math.floor(entry.contentRect.height)));
+        });
+        observer.observe(region);
+        return () => observer.disconnect();
+    }, [isVertical, audioData]);
 
     const noteLanes = useMemo(
         () =>
@@ -795,7 +807,7 @@ export default function SoundLane(prop: _prop) {
 
     return (
         <div
-            className={`SoundLane flex flex-col gap-1 border border-[var(--editor-border)] bg-[var(--editor-surface-strong)] px-3 pt-1.5 pb-1.5 shadow-[0_10px_24px_rgba(53,36,19,0.05)] cursor-pointer ${isVertical ? styles.vertical : ""}`}
+            className={`SoundLane flex flex-col gap-1 border border-[var(--editor-border)] bg-[var(--editor-surface-strong)] p-1 shadow-[0_10px_24px_rgba(53,36,19,0.05)] cursor-pointer ${isVertical ? styles.vertical : ""}`}
             onClick={handleClickToActivate}
             style={{
                 "--timeline-height": `${timelineHeight}px`,
@@ -817,8 +829,11 @@ export default function SoundLane(prop: _prop) {
                 />
             </div>
 
-            <div className={`flex flex-col flex-1 gap-1 ${styles.editingRegion}`}>
-                <div className={`flex items-start gap-3 ${styles.waveSection}`}>
+            <div
+                ref={editingRegionRef}
+                className={`flex flex-col flex-1 gap-1 ${styles.editingRegion}`}
+            >
+                <div className={`flex items-start gap-1 ${styles.waveSection}`}>
                     <div
                         className={`editor-inspector-panel w-[176px] shrink-0 ${styles.inspector}`}
                         data-inspector="true"
@@ -878,7 +893,7 @@ export default function SoundLane(prop: _prop) {
                     </div>
                 </div>
 
-                <div className={`flex items-start gap-3 ${styles.spectrumSection}`}>
+                <div className={`flex items-start gap-1 ${styles.spectrumSection}`}>
                     <div
                         className={`editor-inspector-panel w-[176px] shrink-0 ${styles.inspector}`}
                         data-inspector="true"
@@ -942,7 +957,7 @@ export default function SoundLane(prop: _prop) {
 
                 {/* Note area: shared NoteMenu + stacked NoteLanes */}
                 <div
-                    className={`flex items-start gap-3 ${styles.noteSection}`}
+                    className={`flex items-start gap-1 ${styles.noteSection}`}
                     onClick={(e) => e.stopPropagation()}
                 >
                     <div

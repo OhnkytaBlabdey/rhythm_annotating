@@ -34,6 +34,9 @@ interface _prop {
 
 function WorkMenu(prop: _prop) {
     const [isShortcutModalOpen, setIsShortcutModalOpen] = React.useState(false);
+    const isVertical = prop.orientation === "vertical";
+    const orientationLabel = isVertical ? "纵向" : "横向";
+    const nextOrientationLabel = isVertical ? "横向" : "纵向";
 
     return (
         <div className="WorkMenu">
@@ -148,38 +151,27 @@ function WorkMenu(prop: _prop) {
                     >
                         <span>导入工程</span>
                     </button>
-                    <button
-                        type="button"
-                        className="editor-toolbar-button"
-                        onClick={() => setIsShortcutModalOpen(true)}
-                    >
-                        <span>快捷键</span>
-                    </button>
-                </div>
-                <div
-                    role="group"
-                    aria-label="时间轴方向"
-                    className={styles.orientationToggle}
-                    onKeyDown={(event) => event.stopPropagation()}
-                >
-                    <span className="editor-meta-text">时间轴</span>
-                    <button
-                        type="button"
-                        className="editor-toolbar-button"
-                        aria-pressed={prop.orientation === "horizontal"}
-                        onClick={() => prop.onOrientationChange("horizontal")}
-                    >
-                        横向
-                    </button>
-                    <button
-                        type="button"
-                        className="editor-toolbar-button"
-                        aria-pressed={prop.orientation === "vertical"}
-                        onClick={() => prop.onOrientationChange("vertical")}
-                        title="时间从下向上递增；Shift+滚轮横向浏览音频"
-                    >
-                        纵向
-                    </button>
+                    <div className={styles.viewActions}>
+                        <button
+                            type="button"
+                            className="editor-toolbar-button"
+                            onClick={() => setIsShortcutModalOpen(true)}
+                        >
+                            <span>快捷键</span>
+                        </button>
+                        <button
+                            type="button"
+                            className={`editor-toolbar-button ${styles.orientationToggle}`}
+                            aria-label={`时间轴：${orientationLabel}，点击切换为${nextOrientationLabel}`}
+                            onClick={() =>
+                                prop.onOrientationChange(isVertical ? "horizontal" : "vertical")
+                            }
+                            onKeyDown={(event) => event.stopPropagation()}
+                            title={`点击切换为${nextOrientationLabel}时间轴；纵向模式下 Shift+滚轮横向浏览音频`}
+                        >
+                            时间轴：{orientationLabel}
+                        </button>
+                    </div>
                 </div>
             </div>
             {isShortcutModalOpen && (

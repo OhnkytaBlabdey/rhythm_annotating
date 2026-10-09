@@ -66,7 +66,6 @@ export default function WorkArea() {
     } = useAppSettings();
     const orientation = hasHydratedSettings ? timeView.orientation : "horizontal";
     const isVertical = orientation === "vertical";
-    const [timelineHeight, setTimelineHeight] = useState(640);
     const [objProject, setProject] = useState<project>(() => ({
         ...defaultProject(),
         currentTime: timeView.currentTime,
@@ -121,15 +120,6 @@ export default function WorkArea() {
         },
         [isEditableTarget, isVertical],
     );
-
-    useEffect(() => {
-        const updateTimelineHeight = () => {
-            setTimelineHeight(clamp(window.innerHeight - 220, 320, 960));
-        };
-        updateTimelineHeight();
-        window.addEventListener("resize", updateTimelineHeight);
-        return () => window.removeEventListener("resize", updateTimelineHeight);
-    }, []);
 
     useEffect(() => {
         latestProjectRef.current = objProject;
@@ -765,8 +755,8 @@ export default function WorkArea() {
             <div className="WorkArea" ref={workAreaRef}>
                 <div className="editor-shell flex flex-col">
                     {/* Menu */}
-                    <div className="sticky top-0 z-50 flex">
-                        <div className="editor-toolbar-card mb-1">
+                    <div className="relative z-50 flex shrink-0">
+                        <div className="editor-toolbar-card">
                             <WorkMenu
                                 key={"menu"}
                                 setSoundLaneStates={setSoundLaneStates}
@@ -795,11 +785,9 @@ export default function WorkArea() {
                         </div>
                     </div>
                     {/* Sound Lanes */}
-                    <div
-                        className="flex flex-col gap-2 pt-2 pb-2"
-                    >
+                    <div className={styles.laneViewport}>
                         <div
-                            className={`editor-lane-card ${isVertical ? styles.verticalLaneCard : ""}`}
+                            className={`editor-lane-card ${styles.laneCard} ${isVertical ? styles.verticalLaneCard : ""}`}
                             ref={editorLaneCardRef}
                             role={isVertical ? "region" : undefined}
                             aria-label={isVertical ? "音频编辑区，可横向滚动" : undefined}
@@ -847,7 +835,6 @@ export default function WorkArea() {
                                             }
                                             timeRange={renderTimeRange}
                                             orientation={orientation}
-                                            timelineHeight={timelineHeight}
                                             playheadTime={renderPlayheadTime}
                                             playbackRenderMode={
                                                 playbackRenderMode
@@ -861,19 +848,17 @@ export default function WorkArea() {
                         </div>
                     </div>
                     {/* About */}
-                    <div className="mt-8 pt-4 border-t border-stone-300 text-center text-sm text-stone-500 pb-6">
+                    <footer className={styles.footer}>
                         <p className="font-medium text-stone-600">Explicitize - A rhythm annotating tool</p>
-                        <p className="mt-1">
-                            <a
-                                href="https://github.com/OhnkytaBlabdey/rhythm_annotating"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="underline hover:text-stone-700 transition-colors"
-                            >
-                                GitHub Repository
-                            </a>
-                        </p>
-                    </div>
+                        <a
+                            href="https://github.com/OhnkytaBlabdey/rhythm_annotating"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline hover:text-stone-700 transition-colors"
+                        >
+                            GitHub Repository
+                        </a>
+                    </footer>
                 </div>
             </div>
         </AudioDataCtx.Provider>

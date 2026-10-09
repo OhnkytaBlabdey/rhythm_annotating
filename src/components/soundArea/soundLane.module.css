@@ -7,6 +7,8 @@
 .vertical {
     flex: 0 0 auto;
     width: max-content;
+    height: 100%;
+    min-height: 0;
 }
 
 .vertical .header {
@@ -35,11 +37,11 @@
 /* Keep the React tree intact while placing the inspectors beside all canvases. */
 .vertical .editingRegion {
     display: grid;
-    flex: none;
+    flex: 1;
+    min-height: 0;
     grid-template-columns: 176px repeat(3, max-content);
     grid-template-rows: fit-content(110px) fit-content(110px) minmax(0, 1fr);
-    gap: 4px 12px;
-    height: var(--timeline-height);
+    gap: 4px;
 }
 
 .vertical .waveSection,

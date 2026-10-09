@@ -1,8 +1,21 @@
-.verticalLaneCard {
+.laneViewport {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    padding: 4px 0;
+}
+
+.laneCard {
     min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+.verticalLaneCard {
     max-width: 100%;
     overflow-x: auto;
-    overscroll-behavior-x: contain;
+    overflow-y: hidden;
 }
 
 .verticalLaneCard:focus-visible {
@@ -12,8 +25,33 @@
 
 .verticalLaneList {
     display: flex;
-    align-items: flex-start;
-    gap: 8px;
+    align-items: stretch;
+    gap: 4px;
     width: max-content;
     min-width: 100%;
+    height: 100%;
+}
+
+.footer {
+    display: flex;
+    flex: 0 0 28px;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-width: 0;
+    overflow: hidden;
+    border-top: 1px solid var(--editor-border);
+    color: var(--editor-muted);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.footer p {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.footer a {
+    flex-shrink: 0;
 }
