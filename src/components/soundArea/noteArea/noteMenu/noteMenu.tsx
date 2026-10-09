@@ -8,11 +8,12 @@ import Image from "@/components/Image";
 import type { ChartNote } from "../chartTypes";
 import type { WdsNoteProperties } from "../wdsTypes";
 import type { WdsExportResult } from "@/lib/wdsExport";
+import type { WdsChartExportResult } from "@/lib/wdsChartExport";
 import WdsNoteControls from "./wdsNoteControls";
 
 const cls = classNames.bind(style);
 
-type ExportFormat = "internal" | "malody" | "sus" | "wds";
+type ExportFormat = "internal" | "malody" | "sus" | "wds" | "wdschart";
 
 export interface WdsMenuProps {
     type: number;
@@ -22,6 +23,7 @@ export interface WdsMenuProps {
     selectedNote: ChartNote | null;
     onUpdateSelected: (note: ChartNote) => void;
     exportResult: WdsExportResult;
+    chartExportResult: WdsChartExportResult;
     offset: number;
     setOffset: (seconds: number) => void;
 }
@@ -142,7 +144,12 @@ export default function NoteMenu(p: _p) {
     const [editText, setEditText] = React.useState("");
     const [editError, setEditError] = React.useState<string | null>(null);
     const [editOriginalText, setEditOriginalText] = React.useState("");
-    const [copyStatus, setCopyStatus] = React.useState<{ text: string; message: string } | null>(null);
+    const [copyStatus, setCopyStatus] = React.useState<{
+        format: ExportFormat;
+        text: string;
+        message: string;
+    } | null>(null);
+    const copyRequestRef = React.useRef(0);
     const offset = p.wds?.offset ?? 0;
     const [offsetDraft, setOffsetDraft] = React.useState({ value: offset, text: String(offset) });
     if (!Object.is(offsetDraft.value, offset)) {
@@ -198,16 +205,20 @@ export default function NoteMenu(p: _p) {
     };
 
     const activeExportFormat = p.wds
-        ? (exportFormat === "internal" ? "internal" : "wds")
-        : (exportFormat === "wds" ? "internal" : exportFormat);
+        ? (exportFormat === "internal" || exportFormat === "wdschart" ? exportFormat : "wds")
+        : (exportFormat === "wds" || exportFormat === "wdschart" ? "internal" : exportFormat);
     const offsetInvalid = !!p.wds && (
         offsetDraft.text.trim() === "" || !Number.isFinite(Number(offsetDraft.text))
     );
     const exportError = activeExportFormat === "wds"
         ? p.wds?.exportResult.error ?? (offsetInvalid ? "请输入有限的导出偏移秒数。" : null)
+        : activeExportFormat === "wdschart"
+        ? p.wds?.chartExportResult.error ?? null
         : null;
     const currentExportText =
-        activeExportFormat === "wds"
+        activeExportFormat === "wdschart"
+            ? p.wds?.chartExportResult.text ?? ""
+            : activeExportFormat === "wds"
             ? (exportError ? "" : p.wds?.exportResult.text ?? "")
             : activeExportFormat === "malody"
             ? p.malodyExportText
@@ -220,19 +231,35 @@ export default function NoteMenu(p: _p) {
     );
     const exportExtension = activeExportFormat === "internal" ? "json"
         : activeExportFormat === "malody" ? "mc"
+        : activeExportFormat === "wdschart" ? "wdschart"
         : activeExportFormat === "wds" ? "txt" : "sus";
+
+    React.useEffect(() => {
+        return () => {
+            // Ignore clipboard completions after the export target changes or closes.
+            copyRequestRef.current += 1;
+        };
+    }, [activeExportFormat, currentExportText, exportError, isExportOpen]);
 
     const copyExport = async () => {
         if (exportError) return;
+        const request = ++copyRequestRef.current;
         setCopyStatus(null);
         try {
             if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
             await navigator.clipboard.writeText(currentExportText);
-            setCopyStatus({ text: currentExportText, message: "已复制当前导出文本。" });
+            if (request !== copyRequestRef.current) return;
+            setCopyStatus({
+                format: activeExportFormat,
+                text: currentExportText,
+                message: "已复制当前导出文本。",
+            });
         } catch {
+            if (request !== copyRequestRef.current) return;
             exportPreviewRef.current?.focus();
             exportPreviewRef.current?.select();
             setCopyStatus({
+                format: activeExportFormat,
                 text: currentExportText,
                 message: "无法访问剪贴板。已选中预览文本，请按 Ctrl+C / ⌘C 手动复制，或下载文件。",
             });
@@ -471,7 +498,7 @@ export default function NoteMenu(p: _p) {
                     <Image src="/assets/icons/importNoteLane.svg" alt="导入" width={16} height={16} />
                 </ActionButton>
                 <ActionButton
-                    title={p.wds ? "导出 WDS TXT 或无损内部 JSON" : "导出当前 NoteLane 的 JSON"}
+                    title={p.wds ? "导出 WDS TXT、WDSCHART 或无损内部 JSON" : "导出当前 NoteLane 的 JSON"}
                     onClick={() => {
                         setExportFormat(p.wds ? "wds" : "internal");
                         setOffsetDraft({ value: offset, text: String(offset) });
@@ -661,6 +688,7 @@ export default function NoteMenu(p: _p) {
                             {(p.wds ? [
                                 { format: "internal" as const, label: "内部 JSON（无损）" },
                                 { format: "wds" as const, label: "WDS TXT" },
+                                { format: "wdschart" as const, label: "WDSCHART (.wdschart)" },
                             ] : [
                                 { format: "internal" as const, label: "内部 JSON" },
                                 { format: "malody" as const, label: "malody" },
@@ -723,6 +751,22 @@ export default function NoteMenu(p: _p) {
                                 </p>
                             </>
                         )}
+                        {activeExportFormat === "wdschart" && p.wds && (
+                            <>
+                                <p className={cls("export-help")}>
+                                    .wdschart 保留拍位与 BPM；音频绑定和偏移需在目标编辑器的工程中设置，TXT 导出偏移不写入此文件。
+                                </p>
+                                {p.wds.chartExportResult.warnings.length > 0 && (
+                                    <div className={cls("export-warning")}>
+                                        <ul>
+                                            {p.wds.chartExportResult.warnings.map((warning, index) => (
+                                                <li key={index}>{warning}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                            </>
+                        )}
                         {exportError && (
                             <div className={cls("error")} role="alert">导出失败：{exportError}</div>
                         )}
@@ -737,7 +781,7 @@ export default function NoteMenu(p: _p) {
                             onKeyDown={stopInteraction}
                             onWheel={(e) => e.stopPropagation()}
                         />
-                        {copyStatus?.text === currentExportText && !exportError && (
+                        {copyStatus?.format === activeExportFormat && copyStatus.text === currentExportText && !exportError && (
                             <p className={cls("export-help")} role="status">{copyStatus.message}</p>
                         )}
                         <div className={cls("modal-actions")}>

@@ -53,6 +53,7 @@ import {
     WDS_LANE_COUNT,
 } from "./noteArea/wdsTypes";
 import { convertToWds } from "@/lib/wdsExport";
+import { convertToWdsChart } from "@/lib/wdsChartExport";
 import { convertToMalody } from "@/lib/malodyExport";
 import { convertToSus } from "@/lib/susExport";
 import type { CSSProperties, SetStateAction } from "react";
@@ -908,6 +909,7 @@ export default function SoundLane(prop: _prop) {
                     }
                 },
                 exportResult: convertToWds(activeLane),
+                chartExportResult: convertToWdsChart(activeLane),
                 offset: activeLane.wdsOffset ?? 0,
                 setOffset: (seconds: number) => {
                     setLaneMetadata({ wdsOffset: seconds });
