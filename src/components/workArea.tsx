@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { defaultProject, project } from "@/interface/project";
 import SoundLane from "./soundArea/soundLane";
 import WorkMenu from "./menuArea/workMenu";
+import styles from "./workArea.module.css";
 import {
     SoundLaneState,
     defaultSoundLaneState,
@@ -47,7 +48,7 @@ function formatLocalExportTimestamp(date: Date): string {
 
 type LaneWheelEvent = Pick<
     WheelEvent,
-    "deltaY" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey" | "target"
+    "deltaX" | "deltaY" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey" | "target"
 > & {
     preventDefault: () => void;
     stopPropagation: () => void;
@@ -63,6 +64,9 @@ export default function WorkArea() {
         timeView,
         spectrumView,
     } = useAppSettings();
+    const orientation = hasHydratedSettings ? timeView.orientation : "horizontal";
+    const isVertical = orientation === "vertical";
+    const [timelineHeight, setTimelineHeight] = useState(640);
     const [objProject, setProject] = useState<project>(() => ({
         ...defaultProject(),
         currentTime: timeView.currentTime,
@@ -96,6 +100,37 @@ export default function WorkArea() {
         );
     }, []);
 
+    const isTimelineWheel = useCallback(
+        (event: LaneWheelEvent) => {
+            const target = event.target;
+            if (!(target instanceof Element)) return false;
+            if (isEditableTarget(target)) return false;
+            if (target.closest('[data-inspector="true"]')) return false;
+            if (!target.closest('[data-lane="true"]')) return false;
+            if (event.deltaY === 0) return false;
+            if (!isVertical) return true;
+            if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return false;
+            // Configured time shortcuts take priority over Shift+wheel scrolling.
+            return (
+                !event.shiftKey ||
+                matchesShortcutRef.current("timeRange.zoomIn", event) ||
+                matchesShortcutRef.current("timeRange.zoomOut", event) ||
+                matchesShortcutRef.current("timeRange.panUp", event) ||
+                matchesShortcutRef.current("timeRange.panDown", event)
+            );
+        },
+        [isEditableTarget, isVertical],
+    );
+
+    useEffect(() => {
+        const updateTimelineHeight = () => {
+            setTimelineHeight(clamp(window.innerHeight - 220, 320, 960));
+        };
+        updateTimelineHeight();
+        window.addEventListener("resize", updateTimelineHeight);
+        return () => window.removeEventListener("resize", updateTimelineHeight);
+    }, []);
+
     useEffect(() => {
         latestProjectRef.current = objProject;
     }, [objProject]);
@@ -125,7 +160,7 @@ export default function WorkArea() {
             },
             deserialize: (raw) => {
                 if (!raw || typeof raw !== "object") {
-                    return latestTimeViewRef.current;
+                    return { ...latestTimeViewRef.current, orientation: "horizontal" };
                 }
                 const candidate = raw as Partial<TimeViewSettings>;
                 return {
@@ -141,6 +176,8 @@ export default function WorkArea() {
                         candidate.timeMultiplier > 0
                             ? candidate.timeMultiplier
                             : latestTimeViewRef.current.timeMultiplier,
+                    orientation:
+                        candidate.orientation === "vertical" ? "vertical" : "horizontal",
                 };
             },
         });
@@ -192,7 +229,10 @@ export default function WorkArea() {
 
                 setProject(restored.projectState);
                 setAudioDataList(restored.audioDataList);
-                applyPersistSliceStates(restored.slices);
+                applyPersistSliceStates({
+                    timeView: { orientation: "horizontal" },
+                    ...restored.slices,
+                });
             } catch (error) {
                 console.error("Hydrating persisted project failed", error);
             } finally {
@@ -398,7 +438,10 @@ export default function WorkArea() {
                 });
                 setProject(hydrated.projectState);
                 setAudioDataList(hydrated.audioDataList);
-                applyPersistSliceStates(hydrated.slices);
+                applyPersistSliceStates({
+                    timeView: { orientation: "horizontal" },
+                    ...hydrated.slices,
+                });
             };
             reader.onerror = () => {
                 alert("读取文件失败");
@@ -593,8 +636,7 @@ export default function WorkArea() {
             if (!card) return;
             const target = event.target as HTMLElement | null;
             if (!target || !card.contains(target)) return;
-            if (isEditableTarget(event.target)) return;
-            if (!target.closest('[data-lane="true"]')) return;
+            if (!isTimelineWheel(event)) return;
             event.preventDefault();
         };
 
@@ -616,19 +658,13 @@ export default function WorkArea() {
             window.removeEventListener("keydown", onAltKey, true);
             window.removeEventListener("keyup", onAltKey, true);
         };
-    }, [isEditableTarget]);
+    }, [isEditableTarget, isTimelineWheel]);
 
     const handleLaneWheel = useCallback(
         (event: LaneWheelEvent) => {
             if (duration <= 0) return;
             if (wheelUpdateGuardRef.current) return;
-            if (isEditableTarget(event.target)) return;
-            if (
-                !(event.target as HTMLElement | null)?.closest(
-                    '[data-lane="true"]',
-                )
-            )
-                return;
+            if (!isTimelineWheel(event)) return;
 
             const isZoomIn = matchesShortcutRef.current("timeRange.zoomIn", event);
             const isZoomOut = matchesShortcutRef.current("timeRange.zoomOut", event);
@@ -681,7 +717,7 @@ export default function WorkArea() {
             // Pan: skip when playing
             if (current.isPlaying) return;
 
-            const panDirection = isPanUp ? -1 : 1;
+            const panDirection = (isPanUp ? -1 : 1) * (isVertical ? -1 : 1);
             const visibleSpan = getVisibleSpan(duration, current.timeMultiplier);
             const maxStart = Math.max(0, duration - visibleSpan);
             const panStep = visibleSpan * WHEEL_PAN_RATIO;
@@ -704,7 +740,7 @@ export default function WorkArea() {
                 timeMultiplier: current.timeMultiplier,
             });
         },
-        [duration, isEditableTarget],
+        [duration, isTimelineWheel, isVertical],
     );
 
     useEffect(() => {
@@ -753,6 +789,8 @@ export default function WorkArea() {
                                 onImport={handleImport}
                                 playheadOffset={objProject.playheadOffset}
                                 setPlayheadOffset={setPlayheadOffset}
+                                orientation={orientation}
+                                onOrientationChange={(next) => setTimeView({ orientation: next })}
                             />
                         </div>
                     </div>
@@ -760,8 +798,14 @@ export default function WorkArea() {
                     <div
                         className="flex flex-col gap-2 pt-2 pb-2"
                     >
-                        <div className="editor-lane-card" ref={editorLaneCardRef}>
-                            <div className="flex flex-col gap-2">
+                        <div
+                            className={`editor-lane-card ${isVertical ? styles.verticalLaneCard : ""}`}
+                            ref={editorLaneCardRef}
+                            role={isVertical ? "region" : undefined}
+                            aria-label={isVertical ? "音频编辑区，可横向滚动" : undefined}
+                            tabIndex={isVertical ? 0 : undefined}
+                        >
+                            <div className={isVertical ? styles.verticalLaneList : "flex flex-col gap-2"}>
                                 {sortedLaneEntries.map((entry) => {
                                     const isAudible = audibleAudioIds.has(
                                         entry.audio.id,
@@ -802,6 +846,8 @@ export default function WorkArea() {
                                                 setIndexSoundLaneState
                                             }
                                             timeRange={renderTimeRange}
+                                            orientation={orientation}
+                                            timelineHeight={timelineHeight}
                                             playheadTime={renderPlayheadTime}
                                             playbackRenderMode={
                                                 playbackRenderMode

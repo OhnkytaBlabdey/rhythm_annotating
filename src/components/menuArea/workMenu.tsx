@@ -6,6 +6,8 @@ import DeleteActiveSound from "./removeActiveSound";
 import PlaySelected from "./playSelectedSound";
 import ResetEditor from "./resetEditor";
 import ShortcutSettingsModal from "./shortcutSettingsModal";
+import type { TimelineOrientation } from "../timelineGeometry";
+import styles from "./workMenu.module.css";
 
 interface _prop {
     refSoundLaneStates: SoundLaneState[];
@@ -26,6 +28,8 @@ interface _prop {
     onImport: () => void;
     playheadOffset: number;
     setPlayheadOffset: (v: number) => void;
+    orientation: TimelineOrientation;
+    onOrientationChange: (orientation: TimelineOrientation) => void;
 }
 
 function WorkMenu(prop: _prop) {
@@ -33,7 +37,7 @@ function WorkMenu(prop: _prop) {
 
     return (
         <div className="WorkMenu">
-            <div className="editor-toolbar-actions">
+            <div className={`editor-toolbar-actions ${styles.actions}`}>
                 <AddSound key={"add sound"} addAudioData={prop.addAudioData} />
                 <DeleteActiveSound
                     key={"delete sound"}
@@ -71,6 +75,7 @@ function WorkMenu(prop: _prop) {
                 <div
                     style={{
                         display: "flex",
+                        flexWrap: "wrap",
                         alignItems: "center",
                         gap: "4px",
                     }}
@@ -149,6 +154,31 @@ function WorkMenu(prop: _prop) {
                         onClick={() => setIsShortcutModalOpen(true)}
                     >
                         <span>快捷键</span>
+                    </button>
+                </div>
+                <div
+                    role="group"
+                    aria-label="时间轴方向"
+                    className={styles.orientationToggle}
+                    onKeyDown={(event) => event.stopPropagation()}
+                >
+                    <span className="editor-meta-text">时间轴</span>
+                    <button
+                        type="button"
+                        className="editor-toolbar-button"
+                        aria-pressed={prop.orientation === "horizontal"}
+                        onClick={() => prop.onOrientationChange("horizontal")}
+                    >
+                        横向
+                    </button>
+                    <button
+                        type="button"
+                        className="editor-toolbar-button"
+                        aria-pressed={prop.orientation === "vertical"}
+                        onClick={() => prop.onOrientationChange("vertical")}
+                        title="时间从下向上递增；Shift+滚轮横向浏览音频"
+                    >
+                        纵向
                     </button>
                 </div>
             </div>

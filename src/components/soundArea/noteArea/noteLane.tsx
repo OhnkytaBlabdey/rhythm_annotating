@@ -23,14 +23,25 @@ import {
 } from "./chartAdapter";
 import { NoteEditState } from "./noteState";
 import { useAppSettings } from "@/components/appSettingsContext";
+import {
+    projectTimelinePoint,
+    unprojectTimelinePoint,
+    type TimelineOrientation,
+} from "@/components/timelineGeometry";
 
 interface NoteLaneProps {
     chartData: ChartSegment[];
-    setChartData: (next: ChartSegment[], saveUndo?: boolean) => boolean;
+    setChartData: (
+        next: ChartSegment[],
+        saveUndo?: boolean,
+        undoBase?: ChartSegment[],
+    ) => boolean;
     timeRange: [number, number];
     beatSubdivision?: number;
     setBeatSubdivision: (next: number) => void;
     height?: number;
+    orientation?: TimelineOrientation;
+    timelineHeight?: number;
     editState: NoteEditState;
     setEditState: Dispatch<SetStateAction<NoteEditState>>;
     songDuration: number;
@@ -66,10 +77,12 @@ interface GridTick {
 interface NoteHit {
     id: string;
     time: number;
+    endTime: number;
 }
 
 interface DragState {
     startSnapTime: number;
+    deltaTime: number;
     baseChartData: ChartSegment[];
     minSelectedTime: number;
     maxSelectedTime: number;
@@ -87,11 +100,9 @@ function getSelectedTimeBounds(
             const measureStart = segment.time + mi * beatDuration;
             for (const note of segment.measures[mi].notes) {
                 if (!ids.has(note.id)) continue;
-                const headBeat = toBeatValue(note.head);
-                if (headBeat !== null) {
-                    const t = measureStart + headBeat * beatDuration;
-                    if (t < minTime) minTime = t;
-                    if (t > maxTime) maxTime = t;
+                for (const anchor of toAnchors(note, measureStart, beatDuration)) {
+                    if (anchor.time < minTime) minTime = anchor.time;
+                    if (anchor.time > maxTime) maxTime = anchor.time;
                 }
             }
         }
@@ -177,6 +188,8 @@ export default function NoteLane({
     beatSubdivision = 4,
     setBeatSubdivision,
     height = 120,
+    orientation = "horizontal",
+    timelineHeight = 640,
     editState,
     setEditState,
     songDuration,
@@ -195,7 +208,12 @@ export default function NoteLane({
     const { matchesKeyShortcut } = useAppSettings();
     const wrapperRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const [width, setWidth] = useState(1200);
+    const [measuredWidth, setWidth] = useState(1200);
+    const isVertical = orientation === "vertical";
+    // Rendering geometry uses x for time and y for the cross axis.
+    const width = isVertical ? timelineHeight : measuredWidth;
+    const screenWidth = isVertical ? height : width;
+    const screenHeight = isVertical ? timelineHeight : height;
     const [snapTick, setSnapTick] = useState<GridTick | null>(null);
     const [hoverNoteId, setHoverNoteId] = useState<string | null>(null);
     const [anchorSelectionId, setAnchorSelectionId] = useState<string | null>(
@@ -207,8 +225,7 @@ export default function NoteLane({
     );
     const [lnHeadTick, setLnHeadTick] = useState<GridTick | null>(null);
     const [annotationInputValue, setAnnotationInputValue] = useState("");
-    const [annotationBoxX, setAnnotationBoxX] = useState(0);
-    const [annotationBoxY, setAnnotationBoxY] = useState(0);
+    const [annotationBoxTime, setAnnotationBoxTime] = useState(0);
     const [annotationBoxWidth, setAnnotationBoxWidth] = useState(60);
     const editingRef = useRef<{
         noteId: string | null;
@@ -273,8 +290,12 @@ export default function NoteLane({
     const safeSubdivision = Math.max(1, Math.floor(beatSubdivision));
 
     const [rangeStart, rangeEnd] = timeRange;
+    const chartRangeStart = rangeStart - graphicalOffset;
+    const chartRangeEnd = rangeEnd - graphicalOffset;
     const span = Math.max(1e-6, rangeEnd - rangeStart);
     const snapTime = snapTick?.time ?? null;
+    const isStartEndMode =
+        editState.mode === "insert-start" || editState.mode === "insert-end";
 
     const mapTimeToX = useCallback(
         (time: number) => ((time + graphicalOffset - rangeStart) / span) * width,
@@ -285,9 +306,37 @@ export default function NoteLane({
         [rangeStart, span, width, graphicalOffset],
     );
 
+    const getAnnotationRect = useCallback(
+        (time: number, desiredWidth: number) => {
+            const timeAxis = mapTimeToX(time);
+            if (
+                timeAxis < -20 || timeAxis > width + 20 ||
+                (!isStartEndMode &&
+                    (time < (startTime ?? -Infinity) || time > (endTime ?? Infinity)))
+            ) {
+                return null;
+            }
+            const [x, y] = projectTimelinePoint(
+                timeAxis, height / 2 + 20, width, orientation,
+            );
+            const boxWidth = Math.min(
+                desiredWidth,
+                isVertical ? Math.max(1, screenWidth - x - 2) : screenWidth,
+            );
+            return {
+                x: Math.max(0, Math.min(screenWidth - boxWidth, isVertical ? x : x - boxWidth / 2)),
+                y: Math.max(0, Math.min(screenHeight - 18, isVertical ? y - 9 : y)),
+                width: boxWidth,
+                height: 18,
+            };
+        },
+        [endTime, height, isStartEndMode, isVertical, mapTimeToX, orientation, screenHeight, screenWidth, startTime, width],
+    );
+    const annotationRect = getAnnotationRect(annotationBoxTime, annotationBoxWidth);
+
     const buildGridTicks = useCallback((): GridTick[] => {
         const ticks: GridTick[] = [];
-        const maxTime = Math.max(songDuration, rangeEnd);
+        const maxTime = Math.max(songDuration - graphicalOffset, chartRangeEnd);
         let globalMeasureIndex = 0;
 
         for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
@@ -297,8 +346,8 @@ export default function NoteLane({
             for (let measureIndex = 0; measureIndex < segment.measures.length; measureIndex++) {
                 const measureStart = segment.time + measureIndex * beatDuration;
                 if (
-                    measureStart >= rangeStart - graphicalOffset - beatDuration &&
-                    measureStart <= rangeEnd + beatDuration
+                    measureStart >= chartRangeStart - beatDuration &&
+                    measureStart <= chartRangeEnd + beatDuration
                 ) {
                     ticks.push({
                         time: measureStart,
@@ -314,8 +363,8 @@ export default function NoteLane({
                     const t =
                         measureStart + (step * beatDuration) / safeSubdivision;
                     if (
-                        t >= rangeStart - graphicalOffset - beatDuration &&
-                        t <= rangeEnd + beatDuration
+                        t >= chartRangeStart - beatDuration &&
+                        t <= chartRangeEnd + beatDuration
                     ) {
                         ticks.push({
                             time: t,
@@ -347,8 +396,8 @@ export default function NoteLane({
             measureStart += beatDuration, virtualMeasureIndex++
         ) {
             if (
-                measureStart >= rangeStart - graphicalOffset - beatDuration &&
-                measureStart <= rangeEnd + beatDuration
+                measureStart >= chartRangeStart - beatDuration &&
+                measureStart <= chartRangeEnd + beatDuration
             ) {
                 ticks.push({
                     time: measureStart,
@@ -364,8 +413,8 @@ export default function NoteLane({
                 const t =
                     measureStart + (step * beatDuration) / safeSubdivision;
                 if (
-                    t >= rangeStart - graphicalOffset - beatDuration &&
-                    t <= rangeEnd + beatDuration
+                    t >= chartRangeStart - beatDuration &&
+                    t <= chartRangeEnd + beatDuration
                 ) {
                     ticks.push({
                         time: t,
@@ -385,8 +434,8 @@ export default function NoteLane({
     }, [
         editState.currentBpm,
         graphicalOffset,
-        rangeEnd,
-        rangeStart,
+        chartRangeEnd,
+        chartRangeStart,
         safeSubdivision,
         segments,
         songDuration,
@@ -442,8 +491,8 @@ export default function NoteLane({
     })();
 
     const commitChart = useCallback(
-        (next: ChartSegment[], saveUndo = true): boolean => {
-            return setChartData(next, saveUndo);
+        (next: ChartSegment[], saveUndo = true, undoBase?: ChartSegment[]): boolean => {
+            return setChartData(next, saveUndo, undoBase);
         },
         [setChartData],
     );
@@ -476,6 +525,7 @@ export default function NoteLane({
                     out.push({
                         id: note.id,
                         time: anchors[0].time,
+                        endTime: anchors[anchors.length - 1].time,
                     });
                 }
             }
@@ -506,15 +556,29 @@ export default function NoteLane({
             if (noteHits.length === 0) return null;
             let best: NoteHit | null = null;
             let bestDist = Number.POSITIVE_INFINITY;
+            // Preserve head targeting before falling back to tails or LN bodies.
             for (const hit of noteHits) {
                 const dist = Math.abs(hit.time - time);
-                if (dist < bestDist) {
+                if (dist <= bestDist) {
                     bestDist = dist;
                     best = hit;
                 }
             }
-            const pxDist = (bestDist / span) * width;
-            return pxDist <= 18 ? best : null;
+            if ((bestDist / span) * width <= 18) return best;
+
+            best = null;
+            bestDist = Number.POSITIVE_INFINITY;
+            let body: NoteHit | null = null;
+            for (const hit of noteHits) {
+                const dist = Math.abs(hit.endTime - time);
+                // Later notes are drawn on top, so they win equal-distance hits.
+                if (dist <= bestDist) {
+                    bestDist = dist;
+                    best = hit;
+                }
+                if (time >= hit.time && time <= hit.endTime) body = hit;
+            }
+            return (bestDist / span) * width <= 18 ? best : body;
         },
         [noteHits, span, width],
     );
@@ -679,10 +743,10 @@ export default function NoteLane({
 
         const ratio = window.devicePixelRatio || 1;
 
-        canvas.width = Math.max(1, Math.floor(width * ratio));
-        canvas.height = Math.max(1, Math.floor(height * ratio));
-        canvas.style.width = `${width}px`;
-        canvas.style.height = `${height}px`;
+        canvas.width = Math.max(1, Math.floor(screenWidth * ratio));
+        canvas.height = Math.max(1, Math.floor(screenHeight * ratio));
+        canvas.style.width = `${screenWidth}px`;
+        canvas.style.height = `${screenHeight}px`;
 
         const ctx = canvas.getContext("2d");
         if (!ctx) {
@@ -690,17 +754,17 @@ export default function NoteLane({
         }
 
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-        ctx.clearRect(0, 0, width, height);
+        ctx.clearRect(0, 0, screenWidth, screenHeight);
 
         if (isPlaybackFrozen) {
             ctx.fillStyle = FROZEN_BACKGROUND;
-            ctx.fillRect(0, 0, width, height);
+            ctx.fillRect(0, 0, screenWidth, screenHeight);
             return;
         }
 
         if (renderValidationError) {
             ctx.fillStyle = "#1f1720";
-            ctx.fillRect(0, 0, width, height);
+            ctx.fillRect(0, 0, screenWidth, screenHeight);
             ctx.fillStyle = "#fecaca";
             ctx.font = "13px sans-serif";
             ctx.textAlign = "left";
@@ -711,9 +775,16 @@ export default function NoteLane({
             return;
         }
 
-        const isStartEndMode =
-            editState.mode === "insert-start" ||
-            editState.mode === "insert-end";
+        // Rotate only geometry. Labels, icons, and annotation boxes use screen pixels.
+        if (isVertical) {
+            ctx.transform(0, -1, 1, 0, 0, width);
+        }
+        const drawUpright = (draw: () => void) => {
+            ctx.save();
+            ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+            draw();
+            ctx.restore();
+        };
         const hasStartOrEnd =
             (startTime !== null && startTime !== undefined) ||
             (endTime !== null && endTime !== undefined);
@@ -789,8 +860,8 @@ export default function NoteLane({
 
         if (
             snapTime !== null &&
-            snapTime >= rangeStart &&
-            snapTime <= rangeEnd &&
+            snapTime >= chartRangeStart &&
+            snapTime <= chartRangeEnd &&
             !(
                 !isStartEndMode &&
                 hasStartOrEnd &&
@@ -867,7 +938,7 @@ export default function NoteLane({
 
         // Draw persistent start/end markers
         if (startTime !== null && startTime !== undefined) {
-            if (startTime >= rangeStart && startTime <= rangeEnd) {
+            if (startTime >= chartRangeStart && startTime <= chartRangeEnd) {
                 const sx = mapTimeToX(startTime);
                 ctx.strokeStyle = "#ef4444";
                 ctx.lineWidth = 2;
@@ -881,11 +952,14 @@ export default function NoteLane({
                 ctx.fillStyle = "#ef4444";
                 ctx.font = "10px sans-serif";
                 ctx.textAlign = "center";
-                ctx.fillText("始", sx, 11);
+                drawUpright(() => {
+                    const [x, y] = projectTimelinePoint(sx, 11, width, orientation);
+                    ctx.fillText("始", x, isVertical ? Math.min(screenHeight - 2, y + 12) : y);
+                });
             }
         }
         if (endTime !== null && endTime !== undefined) {
-            if (endTime >= rangeStart && endTime <= rangeEnd) {
+            if (endTime >= chartRangeStart && endTime <= chartRangeEnd) {
                 const ex = mapTimeToX(endTime);
                 ctx.strokeStyle = "#ef4444";
                 ctx.lineWidth = 2;
@@ -898,7 +972,10 @@ export default function NoteLane({
                 ctx.fillStyle = "#ef4444";
                 ctx.font = "10px sans-serif";
                 ctx.textAlign = "center";
-                ctx.fillText("终", ex, 11);
+                drawUpright(() => {
+                    const [x, y] = projectTimelinePoint(ex, 11, width, orientation);
+                    ctx.fillText("终", x, isVertical ? Math.min(screenHeight - 2, y + 12) : y);
+                });
             }
         }
 
@@ -915,15 +992,21 @@ export default function NoteLane({
                 if (beatStart < s || beatStart > e) continue;
             }
             const bpm = Math.round(tick.tempo);
-            ctx.fillStyle = "#cbd5e1";
-            ctx.font = "10px sans-serif";
-            ctx.textAlign = "left";
-            ctx.fillText(`#${tick.globalMeasureIndex}`, x + 2, 11);
-            ctx.fillStyle = "#94a3b8";
-            if (bpmImageRef.current) {
-                ctx.drawImage(bpmImageRef.current, x + 2, height - 16, 12, 12);
-            }
-            ctx.fillText(`${bpm}`, x + 16, height - 4);
+            drawUpright(() => {
+                const [, screenY] = projectTimelinePoint(x, 0, width, orientation);
+                const labelY = isVertical ? Math.max(11, screenY - 3) : 11;
+                ctx.fillStyle = "#cbd5e1";
+                ctx.font = "10px sans-serif";
+                ctx.textAlign = "left";
+                ctx.fillText(`#${tick.globalMeasureIndex}`, isVertical ? 2 : x + 2, labelY);
+                ctx.fillStyle = "#94a3b8";
+                const bpmX = isVertical ? screenWidth - 58 : x + 2;
+                const bpmY = isVertical ? labelY - 12 : height - 16;
+                if (bpmImageRef.current) {
+                    ctx.drawImage(bpmImageRef.current, bpmX, bpmY, 12, 12);
+                }
+                ctx.fillText(`${bpm}`, bpmX + 14, bpmY + 12);
+            });
         }
 
         for (const segment of segments) {
@@ -974,7 +1057,7 @@ export default function NoteLane({
                     if (anchors.length > 1) {
                         const start = anchors[0].time;
                         const end = anchors[anchors.length - 1].time;
-                        if (end >= rangeStart && start <= rangeEnd) {
+                        if (end >= chartRangeStart && start <= chartRangeEnd) {
                             if (
                                 !isStartEndMode &&
                                 hasStartOrEnd &&
@@ -1025,32 +1108,21 @@ export default function NoteLane({
                         }
                     }
 
-                    // Draw annotation box in annotate mode
+                    // The same screen-space rectangle is used by hit testing and the input.
                     {
                         const boxCenterTime =
                             note.type === NOTE_LN && anchors.length > 1
                                 ? (anchors[0].time + anchors[anchors.length - 1].time) / 2
                                 : anchors[0].time;
-                        const boxCenterX = mapTimeToX(boxCenterTime);
-                        if (
-                            boxCenterX >= -20 &&
-                            boxCenterX <= width + 20 &&
-                            !(
-                                !isStartEndMode &&
-                                hasStartOrEnd &&
-                                (boxCenterTime < (startTime ?? -Infinity) ||
-                                    boxCenterTime > (endTime ?? Infinity))
-                            )
-                        ) {
-                            if (note.id === annotationEditing) continue;
-                            if (editState.mode !== "annotate" && !note.annotation) continue;
-                            const displayText = note.annotation || "";
-                            ctx.font = "10px sans-serif";
-                            const measuredW = displayText ? ctx.measureText(displayText).width : 0;
-                            const aboxW = Math.min(300, Math.max(60, measuredW + 12));
-                            const aboxH = 18;
-                            const aboxY = centerY + 20;
-                            const aboxX = Math.max(0, Math.min(width - aboxW, boxCenterX - aboxW / 2));
+                        if (note.id === annotationEditing) continue;
+                        if (editState.mode !== "annotate" && !note.annotation) continue;
+                        const displayText = note.annotation || "";
+                        ctx.font = "10px sans-serif";
+                        const measuredW = displayText ? ctx.measureText(displayText).width : 0;
+                        const box = getAnnotationRect(boxCenterTime, Math.min(300, Math.max(60, measuredW + 12)));
+                        if (!box) continue;
+                        drawUpright(() => {
+                            const { x: aboxX, y: aboxY, width: aboxW, height: aboxH } = box;
                             if (editState.mode === "annotate") {
                                 ctx.fillStyle = "#ffffffdd";
                                 ctx.strokeStyle = "#64748b";
@@ -1067,6 +1139,9 @@ export default function NoteLane({
                                 ctx.fillRect(aboxX, aboxY, aboxW, aboxH);
                             }
                             if (displayText) {
+                                ctx.beginPath();
+                                ctx.rect(aboxX + 2, aboxY, Math.max(0, aboxW - 4), aboxH);
+                                ctx.clip();
                                 ctx.fillStyle = "#1e293b";
                                 ctx.font = "10px sans-serif";
                                 ctx.textAlign = "center";
@@ -1076,7 +1151,7 @@ export default function NoteLane({
                                     aboxY + 13,
                                 );
                             }
-                        }
+                        });
                     }
                 }
             }
@@ -1088,11 +1163,16 @@ export default function NoteLane({
         editState.mode,
         editState.selectedIds,
         gridTicks,
+        getAnnotationRect,
         height,
         hoverNoteId,
         isPlaybackFrozen,
+        isStartEndMode,
+        isVertical,
         mapTimeToX,
-        rangeEnd,
+        orientation,
+        chartRangeEnd,
+        chartRangeStart,
         rangeStart,
         selectedMeasureRange,
         annotationEditing,
@@ -1105,12 +1185,14 @@ export default function NoteLane({
         playheadTime,
         startTime,
         endTime,
+        screenHeight,
+        screenWidth,
         width,
         bpmImageLoaded,
     ]);
 
     const updatePointer = useCallback(
-        (clientX: number) => {
+        (clientX: number, clientY: number) => {
             const rect = canvasRef.current?.getBoundingClientRect();
             if (!rect)
                 return {
@@ -1118,8 +1200,13 @@ export default function NoteLane({
                     tick: null as GridTick | null,
                     note: null as NoteHit | null,
                 };
-            const x = clientX - rect.left;
-            const time = mapXToTime(Math.max(0, Math.min(rect.width, x)));
+            const [x] = unprojectTimelinePoint(
+                (clientX - rect.left) * screenWidth / Math.max(1, rect.width),
+                (clientY - rect.top) * screenHeight / Math.max(1, rect.height),
+                width,
+                orientation,
+            );
+            const time = mapXToTime(Math.max(0, Math.min(width, x)));
             const snapped = findNearestSnapTick(time);
             const nearest = findNearestNote(time);
             setSnapTick((prev) => (prev === snapped ? prev : snapped));
@@ -1129,7 +1216,7 @@ export default function NoteLane({
             );
             return { time: snapped?.time ?? null, tick: snapped, note: nearest };
         },
-        [findNearestNote, findNearestSnapTick, mapXToTime],
+        [findNearestNote, findNearestSnapTick, mapXToTime, orientation, screenHeight, screenWidth, width],
     );
 
     const moveSelectedNotes = useCallback(
@@ -1171,6 +1258,15 @@ export default function NoteLane({
                                 a: Math.round(newTail * 10000),
                                 b: 10000,
                             };
+                        }
+                        if (note.body) {
+                            note.body = note.body.map((point) => {
+                                const beat = toBeatValue(point);
+                                return beat === null ? point : {
+                                    a: Math.round((beat + deltaTime / beatDuration) * 10000),
+                                    b: 10000,
+                                };
+                            });
                         }
                     }
                 }
@@ -1431,7 +1527,7 @@ export default function NoteLane({
             if (renderValidationError) {
                 return;
             }
-            const { time } = updatePointer(e.clientX);
+            const { time } = updatePointer(e.clientX, e.clientY);
             if (dragState && time !== null) {
                 const lowerBound = Math.max(
                     0,
@@ -1442,16 +1538,20 @@ export default function NoteLane({
                         ? endTime
                         : songDuration;
                 let delta = time - dragState.startSnapTime;
+                // An existing out-of-range selection can move inward without jumping.
                 delta = Math.max(
                     delta,
-                    lowerBound - dragState.minSelectedTime,
+                    Math.min(0, lowerBound - dragState.minSelectedTime),
                 );
                 delta = Math.min(
                     delta,
-                    upperBound - dragState.maxSelectedTime,
+                    Math.max(0, upperBound - dragState.maxSelectedTime),
                 );
+                if (delta === dragState.deltaTime) return;
                 const moved = moveSelectedNotes(dragState.baseChartData, delta);
-                commitChart(moved, false);
+                if (commitChart(moved, false)) {
+                    setDragState({ ...dragState, deltaTime: delta });
+                }
             }
         },
         [
@@ -1478,20 +1578,17 @@ export default function NoteLane({
             if (e.button !== 0) return;
             onActivate?.();
             canvasRef.current?.focus();
-            const { time, tick, note } = updatePointer(e.clientX);
+            const { time, tick, note } = updatePointer(e.clientX, e.clientY);
             if (time === null || tick === null) return;
 
             if (editState.mode === "annotate") {
-                // Hit-test annotation boxes (below each note)
                 const rect = canvasRef.current?.getBoundingClientRect();
                 if (!rect) return;
-                const clickX = e.clientX - rect.left;
-                const clickY = e.clientY - rect.top;
-                const boxY = height / 2 + 20;
-                const boxH = 18;
+                const clickX = (e.clientX - rect.left) * screenWidth / Math.max(1, rect.width);
+                const clickY = (e.clientY - rect.top) * screenHeight / Math.max(1, rect.height);
                 const measureCtx = canvasRef.current?.getContext("2d");
 
-                let hitNoteId: string | null = null;
+                let hit: { note: ChartNote; time: number; width: number } | null = null;
                 for (const segment of segments) {
                     if (!Number.isFinite(segment.tempo) || segment.tempo <= 0)
                         continue;
@@ -1517,87 +1614,44 @@ export default function NoteLane({
                         )
                             continue;
                         for (const n of segment.measures[mi].notes) {
+                            if (isNoteBoundary(n)) continue;
                             const a = toAnchors(n, mStart, beatDuration);
                             if (a.length === 0) continue;
                             const boxTime =
                                 n.type === NOTE_LN && a.length > 1
                                     ? (a[0].time + a[a.length - 1].time) / 2
                                     : a[0].time;
-                            if (boxTime < rangeStart || boxTime > rangeEnd)
-                                continue;
-                            const bx = mapTimeToX(boxTime);
                             let noteBoxW = 60;
                             if (measureCtx) {
                                 measureCtx.font = "10px sans-serif";
                                 const textW = n.annotation ? measureCtx.measureText(n.annotation).width : 0;
                                 noteBoxW = Math.min(300, Math.max(60, textW + 12));
                             }
-                            const boxHW = noteBoxW / 2;
-                            const aboxX = Math.max(0, Math.min(width - noteBoxW, bx - boxHW));
+                            const box = getAnnotationRect(boxTime, noteBoxW);
+                            if (!box) continue;
                             if (
-                                clickX >= aboxX &&
-                                clickX <= aboxX + noteBoxW &&
-                                clickY >= boxY &&
-                                clickY <= boxY + boxH
+                                clickX >= box.x &&
+                                clickX <= box.x + box.width &&
+                                clickY >= box.y &&
+                                clickY <= box.y + box.height
                             ) {
-                                hitNoteId = n.id;
-                                break;
+                                // Later boxes are drawn on top when annotations overlap.
+                                hit = { note: n, time: boxTime, width: noteBoxW };
                             }
                         }
-                        if (hitNoteId) break;
                     }
-                    if (hitNoteId) break;
                 }
 
-                if (hitNoteId) {
-                    const fullNote = segments
-                        .flatMap((seg) => seg.measures)
-                        .flatMap((m) => m.notes)
-                        .find((n) => n.id === hitNoteId);
-                    // Record annotation box screen position
-                    const hitAnchors = (() => {
-                        for (const seg of segments) {
-                            if (!Number.isFinite(seg.tempo) || seg.tempo <= 0)
-                                continue;
-                            const bd = 60 / seg.tempo;
-                            for (let mi = 0; mi < seg.measures.length; mi++) {
-                                for (const n of seg.measures[mi].notes) {
-                                    if (n.id !== hitNoteId) continue;
-                                    const a = toAnchors(
-                                        n,
-                                        seg.time + mi * bd,
-                                        bd,
-                                    );
-                                    if (a.length > 0) return a;
-                                }
-                            }
-                        }
-                        return null;
-                    })();
-                    if (hitAnchors) {
-                        const boxTime =
-                            fullNote?.type === NOTE_LN && hitAnchors.length > 1
-                                ? (hitAnchors[0].time + hitAnchors[hitAnchors.length - 1].time) / 2
-                                : hitAnchors[0].time;
-                        const bx = mapTimeToX(boxTime);
-                        const annotText = fullNote?.annotation ?? "";
-                        let boxW = 60;
-                        if (measureCtx) {
-                            measureCtx.font = "10px sans-serif";
-                            const tw = annotText ? measureCtx.measureText(annotText).width : 0;
-                            boxW = Math.min(300, Math.max(60, tw + 12));
-                        }
-                        setAnnotationBoxX(Math.max(0, Math.min(width - boxW, bx - boxW / 2)));
-                        setAnnotationBoxY(height / 2 + 20);
-                        setAnnotationBoxWidth(boxW);
-                    }
-                    const nextAnnotationValue = fullNote?.annotation ?? "";
+                if (hit) {
+                    setAnnotationBoxTime(hit.time);
+                    setAnnotationBoxWidth(hit.width);
+                    const nextAnnotationValue = hit.note.annotation ?? "";
                     editingRef.current = {
-                        noteId: hitNoteId,
+                        noteId: hit.note.id,
                         text: nextAnnotationValue,
                         saved: false,
                     };
-                    setAnnotationEditing(hitNoteId);
+                    setAnnotationEditing(hit.note.id);
                     setAnnotationInputValue(nextAnnotationValue);
                 } else if (annotationEditing !== null) {
                     // Clicked outside — save and close
@@ -1703,6 +1757,7 @@ export default function NoteLane({
                         );
                         setDragState({
                             startSnapTime: time,
+                            deltaTime: 0,
                             baseChartData: cloneChart(segments),
                             minSelectedTime: bounds?.minTime ?? time,
                             maxSelectedTime: bounds?.maxTime ?? time,
@@ -1726,14 +1781,13 @@ export default function NoteLane({
             cloneChart,
             editState.mode,
             editState.selectedIds,
+            getAnnotationRect,
             handleLeftClickAtSnap,
-            height,
             isPlaybackFrozen,
-            mapTimeToX,
             noteHits,
             onActivate,
-            rangeStart,
-            rangeEnd,
+            screenHeight,
+            screenWidth,
             segments,
             setChartData,
             setEditState,
@@ -1742,7 +1796,6 @@ export default function NoteLane({
             updatePointer,
             onSelectMeasure,
             renderValidationError,
-            width,
         ],
     );
 
@@ -1751,30 +1804,13 @@ export default function NoteLane({
             return;
         }
         if (dragState) {
-            const lowerBound = Math.max(
-                0,
-                startTime ?? 0,
-            );
-            const upperBound =
-                endTime != null
-                    ? endTime
-                    : songDuration;
-            let delta =
-                (snapTime ?? dragState.startSnapTime) -
-                dragState.startSnapTime;
-            delta = Math.max(
-                delta,
-                lowerBound - dragState.minSelectedTime,
-            );
-            delta = Math.min(
-                delta,
-                upperBound - dragState.maxSelectedTime,
-            );
-            const moved = moveSelectedNotes(dragState.baseChartData, delta);
-            commitChart(moved, true);
+            if (dragState.deltaTime !== 0) {
+                const moved = moveSelectedNotes(dragState.baseChartData, dragState.deltaTime);
+                commitChart(moved, true, dragState.baseChartData);
+            }
             setDragState(null);
         }
-    }, [commitChart, dragState, endTime, isPlaybackFrozen, moveSelectedNotes, snapTime, songDuration, startTime]);
+    }, [commitChart, dragState, isPlaybackFrozen, moveSelectedNotes]);
 
     const handleContextMenu = useCallback(
         (e: MouseEvent<HTMLCanvasElement>) => {
@@ -1786,7 +1822,7 @@ export default function NoteLane({
             }
             if (editState.mode === "browse") return;
             e.preventDefault();
-            const { note } = updatePointer(e.clientX);
+            const { note } = updatePointer(e.clientX, e.clientY);
             if (note) {
                 deleteById(new Set<string>([note.id]));
             }
@@ -1975,7 +2011,7 @@ export default function NoteLane({
                 if (clipboard.length === 0) return;
                 const pasteTick =
                     snapTickRef.current ??
-                    findNearestSnapTick((timeRange[0] + timeRange[1]) / 2);
+                    findNearestSnapTick((timeRange[0] + timeRange[1]) / 2 - graphicalOffset);
                 if (!pasteTick) return;
                 const target = resolveInsertTarget(segments, pasteTick);
                 const refHeadBeat = clipboard.reduce(
@@ -2038,6 +2074,7 @@ export default function NoteLane({
             editState.clipboard,
             editState.selectedIds,
             findNearestSnapTick,
+            graphicalOffset,
             hoverNoteId,
             isPlaybackFrozen,
             matchesKeyShortcut,
@@ -2065,9 +2102,16 @@ export default function NoteLane({
     return (
         <div
             className={style.noteLaneRoot}
+            data-orientation={orientation}
+            style={isVertical ? { width: height } : undefined}
             onClick={(e) => e.stopPropagation()}
         >
-            <div className={style.noteLaneCanvasWrap} ref={wrapperRef} data-lane="true">
+            <div
+                className={style.noteLaneCanvasWrap}
+                style={{ height: screenHeight }}
+                ref={wrapperRef}
+                data-lane="true"
+            >
                 <canvas
                     ref={canvasRef}
                     className={style.noteLaneCanvas}
@@ -2093,9 +2137,10 @@ export default function NoteLane({
                     <div
                         className={style.annotationOverlay}
                         style={{
-                            left: annotationBoxX,
-                            top: annotationBoxY,
-                            width: annotationBoxWidth,
+                            left: annotationRect?.x ?? 0,
+                            top: annotationRect?.y ?? 0,
+                            width: annotationRect?.width ?? 0,
+                            visibility: annotationRect ? "visible" : "hidden",
                         }}
                         onMouseDown={(e) => e.stopPropagation()}
                     >

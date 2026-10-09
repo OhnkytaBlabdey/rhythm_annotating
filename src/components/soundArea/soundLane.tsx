@@ -1,5 +1,5 @@
 "use client";
-import "./soundLane.module.css";
+import styles from "./soundLane.module.css";
 import SoundFileTitleBar from "./soundFileTitleBar";
 
 import WaveLane from "./waveArea/waveLane";
@@ -39,6 +39,8 @@ import {
 } from "./noteArea/chartAdapter";
 import { convertToMalody } from "@/lib/malodyExport";
 import { convertToSus } from "@/lib/susExport";
+import type { CSSProperties } from "react";
+import type { TimelineOrientation } from "../timelineGeometry";
 
 const MAX_UNDO = 50;
 type PlaybackRenderMode = "idle" | "full" | "limited" | "frozen";
@@ -47,6 +49,8 @@ interface _prop {
     index: number;
     audioId: string;
     timeRange: [number, number];
+    orientation?: TimelineOrientation;
+    timelineHeight?: number;
     playheadTime?: number | null;
     playbackRenderMode: PlaybackRenderMode;
     refSoundLaneState: SoundLaneState;
@@ -62,6 +66,9 @@ function omitNoteLaneId(lane: NoteLaneData): Omit<NoteLaneData, "id"> {
 }
 
 export default function SoundLane(prop: _prop) {
+    const orientation = prop.orientation ?? "horizontal";
+    const timelineHeight = prop.timelineHeight ?? 640;
+    const isVertical = orientation === "vertical";
     const audioDataList = useContext(AudioDataCtx);
     const audioData = audioDataList.find((a) => a.id === prop.audioId);
     const isPlaybackFrozen = prop.playbackRenderMode === "frozen";
@@ -788,17 +795,14 @@ export default function SoundLane(prop: _prop) {
 
     return (
         <div
-            className="SoundLane flex flex-col gap-1 border border-[var(--editor-border)] bg-[var(--editor-surface-strong)] px-3 pt-1.5 pb-1.5 shadow-[0_10px_24px_rgba(53,36,19,0.05)] cursor-pointer"
+            className={`SoundLane flex flex-col gap-1 border border-[var(--editor-border)] bg-[var(--editor-surface-strong)] px-3 pt-1.5 pb-1.5 shadow-[0_10px_24px_rgba(53,36,19,0.05)] cursor-pointer ${isVertical ? styles.vertical : ""}`}
             onClick={handleClickToActivate}
-            style={
-                isPlaybackFrozen
-                    ? {
-                          background: "rgba(226, 232, 240, 0.9)",
-                      }
-                    : undefined
-            }
+            style={{
+                "--timeline-height": `${timelineHeight}px`,
+                background: isPlaybackFrozen ? "rgba(226, 232, 240, 0.9)" : undefined,
+            } as CSSProperties}
         >
-            <div className="w-auto">
+            <div className={`w-auto ${styles.header}`} title={audioData.file}>
                 <SoundFileTitleBar
                     soundFile={audioData.file}
                     isActive={prop.refSoundLaneState.isActive || false}
@@ -813,10 +817,11 @@ export default function SoundLane(prop: _prop) {
                 />
             </div>
 
-            <div className="flex flex-col flex-1 gap-1">
-                <div className="flex items-start gap-3">
+            <div className={`flex flex-col flex-1 gap-1 ${styles.editingRegion}`}>
+                <div className={`flex items-start gap-3 ${styles.waveSection}`}>
                     <div
-                        className="editor-inspector-panel w-[176px] shrink-0"
+                        className={`editor-inspector-panel w-[176px] shrink-0 ${styles.inspector}`}
+                        data-inspector="true"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="flex items-center gap-1">
@@ -848,11 +853,16 @@ export default function SoundLane(prop: _prop) {
                             />
                         )}
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <div
+                        className={`flex-1 min-w-0 ${styles.waveCanvas}`}
+                        data-folded={prop.refSoundLaneState.waveLane.isFolded}
+                    >
                         {!prop.refSoundLaneState.waveLane.isFolded && (
                             <WaveLane
                                 audioId={prop.audioId}
                                 timeRange={prop.timeRange}
+                                orientation={orientation}
+                                timelineHeight={timelineHeight}
                                 waveState={prop.refSoundLaneState.waveLane}
                                 setWaveState={(waveLane) => {
                                     prop.setSoundLaneState(prop.index, {
@@ -868,9 +878,10 @@ export default function SoundLane(prop: _prop) {
                     </div>
                 </div>
 
-                <div className="flex items-start gap-3">
+                <div className={`flex items-start gap-3 ${styles.spectrumSection}`}>
                     <div
-                        className="editor-inspector-panel w-[176px] shrink-0"
+                        className={`editor-inspector-panel w-[176px] shrink-0 ${styles.inspector}`}
+                        data-inspector="true"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="flex items-center gap-1">
@@ -902,11 +913,16 @@ export default function SoundLane(prop: _prop) {
                             />
                         )}
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <div
+                        className={`flex-1 min-w-0 ${styles.spectrumCanvas}`}
+                        data-folded={prop.refSoundLaneState.spectrumLane.isFolded}
+                    >
                         <div className={prop.refSoundLaneState.spectrumLane.isFolded ? 'hidden' : ''}>
                             <SpectrumLane
                                 audioId={prop.audioId}
                                 timeRange={prop.timeRange}
+                                orientation={orientation}
+                                timelineHeight={timelineHeight}
                                 spectrumState={
                                     prop.refSoundLaneState.spectrumLane
                                 }
@@ -926,10 +942,13 @@ export default function SoundLane(prop: _prop) {
 
                 {/* Note area: shared NoteMenu + stacked NoteLanes */}
                 <div
-                    className="flex items-start gap-3"
+                    className={`flex items-start gap-3 ${styles.noteSection}`}
                     onClick={(e) => e.stopPropagation()}
                 >
-                    <div className="editor-inspector-panel w-[176px] shrink-0 self-stretch">
+                    <div
+                        className={`editor-inspector-panel w-[176px] shrink-0 self-stretch ${styles.inspector}`}
+                        data-inspector="true"
+                    >
                         <div className="flex items-center gap-1">
                             <div className="editor-pane-caption">Note Lane</div>
                             <button
@@ -964,7 +983,7 @@ export default function SoundLane(prop: _prop) {
                             <NoteMenu {...activeNoteMenuProps} />
                         )}
                     </div>
-                    <div className="flex-1 min-w-0 flex flex-col gap-1">
+                    <div className={`flex-1 min-w-0 flex flex-col gap-1 ${styles.noteCanvases}`}>
                         {sortedNoteLanes.map((lane: NoteLaneData) => {
                             if (lane.isFolded) return null;
                             const editState =
@@ -994,6 +1013,7 @@ export default function SoundLane(prop: _prop) {
                             const setChartData = (
                                 next: ChartSegment[],
                                 saveUndo = true,
+                                undoBase?: ChartSegment[],
                             ): boolean => {
                                 const error = validateChartData(next);
                                 if (error) {
@@ -1003,7 +1023,7 @@ export default function SoundLane(prop: _prop) {
 
                                 clearLaneError(lane.id);
                                 if (saveUndo) {
-                                    pushUndo(lane.chartData);
+                                    pushUndo(undoBase ?? lane.chartData);
                                 }
                                 updateLaneData(lane.id, (prevLane) => ({
                                     ...prevLane,
@@ -1054,6 +1074,8 @@ export default function SoundLane(prop: _prop) {
                                     chartData={lane.chartData}
                                     setChartData={setChartData}
                                     timeRange={prop.timeRange}
+                                    orientation={orientation}
+                                    timelineHeight={timelineHeight}
                                     graphicalOffset={prop.refSoundLaneState.noteLaneOffset ?? 0}
                                     playheadTime={renderPlayheadTime}
                                     isPlaybackFrozen={isPlaybackFrozen}
@@ -1070,7 +1092,7 @@ export default function SoundLane(prop: _prop) {
                                             }),
                                         )
                                     }
-                                    height={120}
+                                    height={isVertical ? 220 : 120}
                                     editState={editState}
                                     setEditState={(updater) => {
                                         setLaneEditState(lane.id, (prev) =>

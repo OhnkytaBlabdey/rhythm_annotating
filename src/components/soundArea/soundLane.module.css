@@ -3,3 +3,101 @@
     display: flex;
     flex-direction: column;
 }
+
+.vertical {
+    flex: 0 0 auto;
+    width: max-content;
+}
+
+.vertical .header {
+    contain: inline-size;
+    flex: none;
+    height: 36px;
+    min-width: 0;
+}
+
+.vertical .header > div {
+    height: 100%;
+    overflow: hidden;
+}
+
+.vertical .header > div > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vertical .header button {
+    flex-shrink: 0;
+}
+
+/* Keep the React tree intact while placing the inspectors beside all canvases. */
+.vertical .editingRegion {
+    display: grid;
+    flex: none;
+    grid-template-columns: 176px repeat(3, max-content);
+    grid-template-rows: fit-content(110px) fit-content(110px) minmax(0, 1fr);
+    gap: 4px 12px;
+    height: var(--timeline-height);
+}
+
+.vertical .waveSection,
+.vertical .spectrumSection,
+.vertical .noteSection {
+    display: contents;
+}
+
+.vertical .inspector {
+    grid-column: 1;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+.vertical .waveSection > .inspector {
+    grid-row: 1;
+}
+
+.vertical .spectrumSection > .inspector {
+    grid-row: 2;
+}
+
+.vertical .noteSection > .inspector {
+    grid-row: 3;
+}
+
+.vertical .waveCanvas,
+.vertical .spectrumCanvas,
+.vertical .noteCanvases {
+    grid-row: 1 / 4;
+    height: var(--timeline-height);
+    align-self: start;
+}
+
+.vertical .waveCanvas {
+    grid-column: 2;
+    width: 110px;
+}
+
+.vertical .spectrumCanvas {
+    grid-column: 3;
+    width: 110px;
+}
+
+.vertical .waveCanvas[data-folded="true"],
+.vertical .spectrumCanvas[data-folded="true"] {
+    display: none;
+}
+
+.vertical .noteCanvases {
+    grid-column: 4;
+    flex-direction: row;
+    width: max-content;
+}
+
+.vertical .noteCanvases > * {
+    flex: 0 0 220px;
+    width: 220px;
+    padding: 0;
+}

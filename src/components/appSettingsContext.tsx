@@ -8,6 +8,7 @@ import React, {
     useMemo,
     useState,
 } from "react";
+import type { TimelineOrientation } from "./timelineGeometry";
 import {
     DEFAULT_SHORTCUTS,
     SHORTCUT_DEFINITIONS,
@@ -24,6 +25,7 @@ const STORAGE_KEY = "explicitize.app-settings";
 export interface TimeViewSettings {
     currentTime: number;
     timeMultiplier: number;
+    orientation: TimelineOrientation;
 }
 
 export interface SpectrumViewSettings {
@@ -41,6 +43,7 @@ interface PersistedSettings {
 const DEFAULT_TIME_VIEW: TimeViewSettings = {
     currentTime: 0,
     timeMultiplier: 1,
+    orientation: "horizontal",
 };
 
 const DEFAULT_SPECTRUM_VIEW: SpectrumViewSettings = {
@@ -142,6 +145,7 @@ function normalizeTimeView(input: unknown): TimeViewSettings {
             Number.isFinite(rawMultiplier) && rawMultiplier > 0
                 ? rawMultiplier
                 : DEFAULT_TIME_VIEW.timeMultiplier,
+        orientation: input.orientation === "vertical" ? "vertical" : "horizontal",
     };
 }
 
@@ -260,7 +264,8 @@ export function AppSettingsProvider({
 
             if (
                 prev.timeView.currentTime === normalized.currentTime &&
-                prev.timeView.timeMultiplier === normalized.timeMultiplier
+                prev.timeView.timeMultiplier === normalized.timeMultiplier &&
+                prev.timeView.orientation === normalized.orientation
             ) {
                 return prev;
             }
@@ -350,6 +355,7 @@ export function AppSettingsProvider({
             if (
                 prev.timeView.currentTime === next.timeView.currentTime &&
                 prev.timeView.timeMultiplier === next.timeView.timeMultiplier &&
+                prev.timeView.orientation === next.timeView.orientation &&
                 prev.spectrumView.brightnessOffset ===
                     next.spectrumView.brightnessOffset &&
                 prev.spectrumView.resolutionScale ===

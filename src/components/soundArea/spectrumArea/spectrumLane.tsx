@@ -2,9 +2,13 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { AudioDataCtx } from "../../audioContext";
 import { SpectrumLaneState } from "@/interface/audioData";
 import { createSpectrumWorker } from "./createSpectrumWorker";
+import {
+    projectTimelinePoint,
+    type TimelineOrientation,
+} from "../../timelineGeometry";
 
 const MAX_INTERNAL_CANVAS_WIDTH = 1800;
-const MAX_RENDER_HEIGHT = 110;
+const MAX_CROSS_EXTENT = 110;
 const MIN_REDRAW_PIXEL_SHIFT = 1;
 
 interface _p {
@@ -15,6 +19,8 @@ interface _p {
     cursorTime?: number | null;
     playheadTime?: number | null;
     isPlaybackFrozen?: boolean;
+    orientation?: TimelineOrientation;
+    timelineHeight?: number;
 }
 
 interface SpectrumFrameCache {
@@ -56,7 +62,6 @@ function renderFrozenBackground(
 ) {
     if (canvas.width !== width) canvas.width = width;
     if (canvas.height !== height) canvas.height = height;
-    canvas.style.height = `${height}px`;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.fillStyle = FROZEN_BACKGROUND;
@@ -86,12 +91,12 @@ function chooseLayer(
     layers: SpectrumFrameCache[],
     targets: ResolutionTargets,
     timeRange: [number, number],
-    canvasWidth: number,
+    timeExtent: number,
 ): SpectrumFrameCache | null {
     if (!layers.length) return null;
 
     const rangeMs = Math.max(1, (timeRange[1] - timeRange[0]) * 1000);
-    const msPerPixel = rangeMs / Math.max(1, canvasWidth);
+    const msPerPixel = rangeMs / Math.max(1, timeExtent);
     const desiredTimeMs = Math.min(
         targets.minTimeMs,
         Math.max(0.6, msPerPixel * 1.5),
@@ -149,6 +154,9 @@ function mixDownToMono(audioBuffer: AudioBuffer): Float32Array {
 
 function SpectrumLane(p: _p) {
     const CANVAS_HEIGHT = 40;
+    const orientation = p.orientation ?? "horizontal";
+    const timelineHeight = p.timelineHeight ?? 640;
+    const isVertical = orientation === "vertical";
 
     const audioDataList = useContext(AudioDataCtx);
     const audioData = audioDataList.find((a) => a.id === p.audioId);
@@ -161,7 +169,10 @@ function SpectrumLane(p: _p) {
     const [ready, setReady] = useState(false);
     const [workerDone, setWorkerDone] = useState(false);
     const [canvasWidth, setCanvasWidth] = useState(1200);
-    const renderHeightRef = useRef(32);
+    const renderCrossExtentRef = useRef(32);
+    const timeExtent = isVertical
+        ? Math.max(1, Math.round(timelineHeight))
+        : canvasWidth;
 
     const contrast =
         (p.spectrumState as unknown as { contrast?: number }).contrast ?? 1;
@@ -172,7 +183,7 @@ function SpectrumLane(p: _p) {
     const logLUTRangeRef = useRef<{
         minFreq: number;
         maxFreq: number;
-        height: number;
+        crossExtent: number;
     } | null>(null);
     const colorLUTRef = useRef<[number, number, number][]>([]);
     const prevDrawRef = useRef<{
@@ -180,8 +191,10 @@ function SpectrumLane(p: _p) {
         tR: number;
         span: number;
         layerId: string;
+        layerVersion: number;
+        orientation: TimelineOrientation;
         canvasWidth: number;
-        renderHeight: number;
+        canvasHeight: number;
         contrast: number;
         brightnessOffset: number;
         resolutionScale: number;
@@ -190,7 +203,7 @@ function SpectrumLane(p: _p) {
 
     useEffect(() => {
         const canvas = canvasRef.current;
-        if (!canvas) return;
+        if (!canvas || isVertical) return;
 
         const updateCanvasWidth = () => {
             const cssWidth = Math.max(
@@ -219,7 +232,7 @@ function SpectrumLane(p: _p) {
 
         window.addEventListener("resize", updateCanvasWidth);
         return () => window.removeEventListener("resize", updateCanvasWidth);
-    }, []);
+    }, [isVertical]);
 
     // ======== 初始化 LUT ========
 
@@ -347,13 +360,15 @@ function SpectrumLane(p: _p) {
     // ======== 绘制 ========
 
     useEffect(() => {
-        if (!canvasRef.current) return;
-        if (p.isPlaybackFrozen) {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        if (p.isPlaybackFrozen || !(p.timeRange[1] > p.timeRange[0])) {
             renderFrozenBackground(
-                canvasRef.current,
-                canvasWidth,
-                renderHeightRef.current,
+                canvas,
+                isVertical ? MAX_CROSS_EXTENT : timeExtent,
+                isVertical ? timeExtent : renderCrossExtentRef.current,
             );
+            canvas.style.height = `${isVertical ? timelineHeight : renderCrossExtentRef.current}px`;
             prevDrawRef.current = null;
             return;
         }
@@ -361,7 +376,7 @@ function SpectrumLane(p: _p) {
         const layers = Object.values(cacheRef.current);
         if (!layers.length) return;
 
-        const ctx = canvasRef.current.getContext("2d");
+        const ctx = canvas.getContext("2d");
         if (!ctx) return;
 
         const targets = getResolutionTargets(resolutionScale);
@@ -369,7 +384,7 @@ function SpectrumLane(p: _p) {
             layers,
             targets,
             p.timeRange,
-            canvasWidth,
+            timeExtent,
         );
         if (!selectedLayer) return;
 
@@ -385,9 +400,13 @@ function SpectrumLane(p: _p) {
             1,
             10,
         );
-        const desiredHeight = Math.round(spectrumLen / binsPerPixel);
-        const renderHeight = clampNumber(desiredHeight, 32, MAX_RENDER_HEIGHT);
-        renderHeightRef.current = renderHeight;
+        const desiredCrossExtent = Math.round(spectrumLen / binsPerPixel);
+        const crossExtent = isVertical
+            ? MAX_CROSS_EXTENT
+            : clampNumber(desiredCrossExtent, 32, MAX_CROSS_EXTENT);
+        renderCrossExtentRef.current = crossExtent;
+        const width = isVertical ? crossExtent : timeExtent;
+        const height = isVertical ? timeExtent : crossExtent;
 
         const [tL, tR] = p.timeRange;
         const spectrumOffset = p.spectrumState.offset ?? 0;
@@ -395,8 +414,10 @@ function SpectrumLane(p: _p) {
         if (
             prevDraw &&
             prevDraw.layerId === selectedLayer.id &&
-            prevDraw.canvasWidth === canvasWidth &&
-            prevDraw.renderHeight === renderHeight &&
+            prevDraw.layerVersion === layerVersion &&
+            prevDraw.orientation === orientation &&
+            prevDraw.canvasWidth === width &&
+            prevDraw.canvasHeight === height &&
             prevDraw.contrast === contrast &&
             prevDraw.brightnessOffset === brightnessOffset &&
             prevDraw.resolutionScale === resolutionScale &&
@@ -404,10 +425,10 @@ function SpectrumLane(p: _p) {
         ) {
             const prevSpan = Math.max(1e-6, prevDraw.tR - prevDraw.tL);
             const leftPixelShift = Math.abs(
-                ((tL - prevDraw.tL) / prevSpan) * canvasWidth,
+                ((tL - prevDraw.tL) / prevSpan) * timeExtent,
             );
             const rightPixelShift = Math.abs(
-                ((tR - prevDraw.tR) / prevSpan) * canvasWidth,
+                ((tR - prevDraw.tR) / prevSpan) * timeExtent,
             );
             const zoomShift = Math.abs(tR - tL - prevDraw.span);
 
@@ -420,30 +441,26 @@ function SpectrumLane(p: _p) {
             }
         }
 
-        if (canvasRef.current.width !== canvasWidth) {
-            canvasRef.current.width = canvasWidth;
-        }
-        if (canvasRef.current.height !== renderHeight) {
-            canvasRef.current.height = renderHeight;
-            canvasRef.current.style.height = `${renderHeight}px`;
-        }
+        if (canvas.width !== width) canvas.width = width;
+        if (canvas.height !== height) canvas.height = height;
+        canvas.style.height = `${isVertical ? timelineHeight : crossExtent}px`;
 
         const range = logLUTRangeRef.current;
         if (
-            logLUTRef.current.length !== renderHeight ||
+            logLUTRef.current.length !== crossExtent ||
             !range ||
             range.minFreq !== minFreq ||
             range.maxFreq !== maxFreq ||
-            range.height !== renderHeight
+            range.crossExtent !== crossExtent
         ) {
-            logLUTRef.current = Array.from({ length: renderHeight }, (_, y) => {
-                const norm = (y + 0.5) / renderHeight;
+            logLUTRef.current = Array.from({ length: crossExtent }, (_, y) => {
+                const norm = (y + 0.5) / crossExtent;
                 return minFreq * Math.pow(maxFreq / minFreq, norm);
             });
-            logLUTRangeRef.current = { minFreq, maxFreq, height: renderHeight };
+            logLUTRangeRef.current = { minFreq, maxFreq, crossExtent };
         }
 
-        const imageData = ctx.createImageData(canvasWidth, renderHeight);
+        const imageData = ctx.createImageData(width, height);
         const data = imageData.data;
 
         const safeMaxMagnitude = Math.max(maxMagnitude, 1e-12);
@@ -451,8 +468,11 @@ function SpectrumLane(p: _p) {
         const maxDb = 0;
         const gamma = Math.max(0.35, 1.15 - contrast * 0.6);
 
-        for (let x = 0; x < canvasWidth; x++) {
-            const displayTime = tL + (x / Math.max(1, canvasWidth - 1)) * (tR - tL) - spectrumOffset;
+        for (let x = 0; x < timeExtent; x++) {
+            const displayTime =
+                tL +
+                (x / Math.max(1, timeExtent - 1)) * (tR - tL) -
+                spectrumOffset;
             const framePos = (displayTime * sampleRate) / hopSize;
             if (framePos < 0 || framePos >= frameData.length - 1) continue;
             const frameIdx0 = Math.min(
@@ -466,7 +486,7 @@ function SpectrumLane(p: _p) {
             const spectrum1 = frameData[frameIdx1];
             const spectrumLen = spectrum0.length;
 
-            for (let y = 0; y < renderHeight; y++) {
+            for (let y = 0; y < crossExtent; y++) {
                 const freq = logLUTRef.current[y];
                 const binPos = Math.min(
                     spectrumLen - 1,
@@ -497,8 +517,12 @@ function SpectrumLane(p: _p) {
 
                 const [r, g, b] = colorLUTRef.current[lutIndex];
 
-                const row = renderHeight - y - 1;
-                const idx = (row * canvasWidth + x) * 4;
+                // putImageData ignores transforms: transpose and reverse time
+                // explicitly, keeping high frequencies at the cross-axis start.
+                const crossAxis = crossExtent - y - 1;
+                const pixelX = isVertical ? crossAxis : x;
+                const pixelY = isVertical ? timeExtent - x - 1 : crossAxis;
+                const idx = (pixelY * width + pixelX) * 4;
 
                 data[idx] = r;
                 data[idx + 1] = g;
@@ -514,8 +538,10 @@ function SpectrumLane(p: _p) {
             tR,
             span: tR - tL,
             layerId: selectedLayer.id,
-            canvasWidth,
-            renderHeight,
+            layerVersion,
+            orientation,
+            canvasWidth: width,
+            canvasHeight: height,
             contrast,
             brightnessOffset,
             resolutionScale,
@@ -528,7 +554,10 @@ function SpectrumLane(p: _p) {
         contrast,
         brightnessOffset,
         resolutionScale,
-        canvasWidth,
+        orientation,
+        isVertical,
+        timelineHeight,
+        timeExtent,
         layerVersion,
         p.spectrumState.offset,
     ]);
@@ -538,20 +567,9 @@ function SpectrumLane(p: _p) {
         if (!cursorCanvas) return;
         const mainCanvas = canvasRef.current;
         if (!mainCanvas) return;
-        if (p.isPlaybackFrozen) {
-            if (cursorCanvas.width !== mainCanvas.width) {
-                cursorCanvas.width = mainCanvas.width;
-            }
-            if (cursorCanvas.height !== mainCanvas.height) {
-                cursorCanvas.height = mainCanvas.height;
-            }
-            const ctx = cursorCanvas.getContext("2d");
-            ctx?.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
-            return;
-        }
         const cursorTime = p.cursorTime;
         const w = mainCanvas.width;
-        const h = renderHeightRef.current;
+        const h = mainCanvas.height;
         if (cursorCanvas.width !== w) cursorCanvas.width = w;
         if (cursorCanvas.height !== h) cursorCanvas.height = h;
         const ctx = cursorCanvas.getContext("2d");
@@ -559,39 +577,78 @@ function SpectrumLane(p: _p) {
         ctx.clearRect(0, 0, w, h);
         const [tL, tR] = p.timeRange;
         const span = tR - tL;
-        if (span <= 0) return;
+        if (p.isPlaybackFrozen || !(span > 0)) return;
+        const timeExtent = isVertical ? h : w;
+        const crossExtent = isVertical ? w : h;
         if (cursorTime != null) {
-            const x = ((cursorTime - tL) / span) * w;
-            if (x >= 0 && x <= w) {
+            const timeAxis = ((cursorTime - tL) / span) * timeExtent;
+            if (timeAxis >= 0 && timeAxis <= timeExtent) {
                 ctx.setLineDash([4, 4]);
                 ctx.strokeStyle = "#facc15";
                 ctx.lineWidth = 1;
                 ctx.beginPath();
-                ctx.moveTo(x, 0);
-                ctx.lineTo(x, h);
+                ctx.moveTo(
+                    ...projectTimelinePoint(timeAxis, 0, timeExtent, orientation),
+                );
+                ctx.lineTo(
+                    ...projectTimelinePoint(
+                        timeAxis,
+                        crossExtent,
+                        timeExtent,
+                        orientation,
+                    ),
+                );
                 ctx.stroke();
                 ctx.setLineDash([]);
             }
         }
         if (p.playheadTime != null) {
-            const x = ((p.playheadTime - tL) / span) * w;
-            if (x >= 0 && x <= w) {
+            const timeAxis = ((p.playheadTime - tL) / span) * timeExtent;
+            if (timeAxis >= 0 && timeAxis <= timeExtent) {
                 ctx.strokeStyle = "#22c55e";
                 ctx.lineWidth = 1.5;
                 ctx.beginPath();
-                ctx.moveTo(x, 0);
-                ctx.lineTo(x, h);
+                ctx.moveTo(
+                    ...projectTimelinePoint(timeAxis, 0, timeExtent, orientation),
+                );
+                ctx.lineTo(
+                    ...projectTimelinePoint(
+                        timeAxis,
+                        crossExtent,
+                        timeExtent,
+                        orientation,
+                    ),
+                );
                 ctx.stroke();
             }
         }
-    }, [p.cursorTime, p.playheadTime, p.timeRange, canvasWidth, layerVersion, p.isPlaybackFrozen]);
+    }, [
+        p.cursorTime,
+        p.playheadTime,
+        p.timeRange,
+        canvasWidth,
+        layerVersion,
+        ready,
+        resolutionScale,
+        orientation,
+        isVertical,
+        timelineHeight,
+        p.isPlaybackFrozen,
+    ]);
 
     return (
-        <div style={{ position: "relative", lineHeight: 0 }}>
+        <div
+            style={{
+                position: "relative",
+                lineHeight: 0,
+                width: isVertical ? MAX_CROSS_EXTENT : undefined,
+                height: isVertical ? timelineHeight : undefined,
+            }}
+        >
             <canvas
                 ref={canvasRef}
-                width={canvasWidth}
-                height={CANVAS_HEIGHT}
+                width={isVertical ? MAX_CROSS_EXTENT : canvasWidth}
+                height={isVertical ? timeExtent : CANVAS_HEIGHT}
                 data-lane="true"
                 title={
                     workerDone || ready
@@ -600,18 +657,22 @@ function SpectrumLane(p: _p) {
                 }
                 style={{
                     border: "1px solid var(--editor-border-strong)",
+                    boxSizing: "border-box",
+                    display: "block",
                     width: "100%",
-                    height: "auto",
+                    height: isVertical ? `${timelineHeight}px` : "auto",
                 }}
             />
             <canvas
                 ref={cursorCanvasRef}
-                width={canvasWidth}
-                height={CANVAS_HEIGHT}
+                width={isVertical ? MAX_CROSS_EXTENT : canvasWidth}
+                height={isVertical ? timeExtent : CANVAS_HEIGHT}
                 style={{
                     position: "absolute",
                     top: 0,
                     left: 0,
+                    border: "1px solid transparent",
+                    boxSizing: "border-box",
                     width: "100%",
                     height: "100%",
                     pointerEvents: "none",

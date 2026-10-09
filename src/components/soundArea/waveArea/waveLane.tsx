@@ -1,6 +1,10 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { AudioDataCtx } from "../../audioContext";
 import { WaveLaneState } from "@/interface/audioData";
+import {
+    projectTimelinePoint,
+    type TimelineOrientation,
+} from "../../timelineGeometry";
 
 interface _p {
     timeRange: [number, number];
@@ -10,6 +14,8 @@ interface _p {
     cursorTime?: number | null;
     playheadTime?: number | null;
     isPlaybackFrozen?: boolean;
+    orientation?: TimelineOrientation;
+    timelineHeight?: number;
 }
 
 interface WaveformCache {
@@ -33,16 +39,18 @@ function renderWaveToCanvas(
     rowHeight: number,
     amplitudeMultiplier: number,
     offset: number,
+    orientation: TimelineOrientation,
 ) {
     const canvas = ctx.canvas;
     const width = canvas.width;
     const height = canvas.height;
+    const timeExtent = orientation === "vertical" ? height : width;
     const [t_left, t_right] = timeRange;
 
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, width, height);
 
-    const dt = (t_right - t_left) / Math.max(1, width);
+    const dt = (t_right - t_left) / Math.max(1, timeExtent);
 
     for (let c = 0; c < channelCount; c++) {
         const channel = channelData[c];
@@ -54,8 +62,10 @@ function renderWaveToCanvas(
         ctx.lineWidth = 1;
         ctx.beginPath();
         // 降采样优化：每像素只取极值（包络线）
-        for (let x = 0; x < width; x++) {
-            const t = t_left + (x / Math.max(1, width - 1)) * (t_right - t_left);
+        for (let x = 0; x < timeExtent; x++) {
+            const t =
+                t_left +
+                (x / Math.max(1, timeExtent - 1)) * (t_right - t_left);
             const sampleTime = t - offset;
             const sStart = Math.floor(sampleTime * sampleRate);
             const sEnd = Math.floor((sampleTime + dt) * sampleRate);
@@ -64,8 +74,14 @@ function renderWaveToCanvas(
                 // Outside audio bounds — draw silence
                 const zeroY = centerY - 0 * scale;
                 const xPos = x + 0.5;
-                ctx.moveTo(xPos, zeroY);
-                ctx.lineTo(xPos, zeroY);
+                const point = projectTimelinePoint(
+                    xPos,
+                    zeroY,
+                    timeExtent,
+                    orientation,
+                );
+                ctx.moveTo(...point);
+                ctx.lineTo(...point);
                 continue;
             }
 
@@ -85,16 +101,22 @@ function renderWaveToCanvas(
             const yMax = centerY - max * scale;
             const yMin = centerY - min * scale;
             const xPos = x + 0.5;
-            ctx.moveTo(xPos, yMax);
-            ctx.lineTo(xPos, yMin);
+            ctx.moveTo(
+                ...projectTimelinePoint(xPos, yMax, timeExtent, orientation),
+            );
+            ctx.lineTo(
+                ...projectTimelinePoint(xPos, yMin, timeExtent, orientation),
+            );
         }
         ctx.stroke();
 
         ctx.strokeStyle = "#cccccc";
         ctx.lineWidth = 0.5;
         ctx.beginPath();
-        ctx.moveTo(0, centerY);
-        ctx.lineTo(width, centerY);
+        ctx.moveTo(...projectTimelinePoint(0, centerY, timeExtent, orientation));
+        ctx.lineTo(
+            ...projectTimelinePoint(timeExtent, centerY, timeExtent, orientation),
+        );
         ctx.stroke();
     }
 }
@@ -110,6 +132,15 @@ function renderFrozenBackground(ctx: CanvasRenderingContext2D) {
 
 function WaveLane(p: _p) {
     const CANVAS_PHYSICAL_WIDTH = 1200;
+    const orientation = p.orientation ?? "horizontal";
+    const timelineHeight = p.timelineHeight ?? 640;
+    const isVertical = orientation === "vertical";
+    const canvasWidth = isVertical
+        ? WAVELANE_TOTAL_HEIGHT
+        : CANVAS_PHYSICAL_WIDTH;
+    const canvasHeight = isVertical
+        ? Math.max(1, Math.round(timelineHeight))
+        : WAVELANE_TOTAL_HEIGHT;
 
     const audioDataList = useContext(AudioDataCtx);
     const audioData = audioDataList.find((a) => a.id === p.audioId);
@@ -184,20 +215,10 @@ function WaveLane(p: _p) {
     }, [audioData]);
 
     /**
-     * 初始化 canvas 物理尺寸
-     */
-    useEffect(() => {
-        if (!canvasRef.current) return;
-        if (!waveformCacheRef.current) return;
-        canvasRef.current.width = CANVAS_PHYSICAL_WIDTH;
-        canvasRef.current.height = WAVELANE_TOTAL_HEIGHT;
-    }, [isCacheReady]);
-
-    /**
      * 幅度倍数变化时，触发缓存更新
      */
     useEffect(() => {
-        if (p.isPlaybackFrozen) {
+        if (p.isPlaybackFrozen || !(p.timeRange[1] > p.timeRange[0])) {
             const ctx = canvasRef.current?.getContext("2d");
             if (ctx) {
                 renderFrozenBackground(ctx);
@@ -222,46 +243,90 @@ function WaveLane(p: _p) {
                         waveformCacheRef.current.channelCount,
                     p.waveState.amplitudeMultiplier,
                     offset,
+                    orientation,
                 );
+                const timeExtent = isVertical ? canvasHeight : canvasWidth;
+                const crossExtent = isVertical ? canvasWidth : canvasHeight;
                 if (p.cursorTime != null) {
-                    const canvas = canvasRef.current;
                     const tL = p.timeRange[0];
                     const tR = p.timeRange[1];
                     const span = tR - tL;
                     if (span > 0) {
-                        const x = ((p.cursorTime - tL) / span) * canvas.width;
-                        if (x >= 0 && x <= canvas.width) {
+                        const timeAxis =
+                            ((p.cursorTime - tL) / span) * timeExtent;
+                        if (timeAxis >= 0 && timeAxis <= timeExtent) {
                             ctx.setLineDash([4, 4]);
                             ctx.strokeStyle = "#facc15";
                             ctx.lineWidth = 1;
                             ctx.beginPath();
-                            ctx.moveTo(x, 0);
-                            ctx.lineTo(x, canvas.height);
+                            ctx.moveTo(
+                                ...projectTimelinePoint(
+                                    timeAxis,
+                                    0,
+                                    timeExtent,
+                                    orientation,
+                                ),
+                            );
+                            ctx.lineTo(
+                                ...projectTimelinePoint(
+                                    timeAxis,
+                                    crossExtent,
+                                    timeExtent,
+                                    orientation,
+                                ),
+                            );
                             ctx.stroke();
                             ctx.setLineDash([]);
                         }
                     }
                 }
                 if (p.playheadTime != null) {
-                    const canvas = canvasRef.current;
                     const tL = p.timeRange[0];
                     const tR = p.timeRange[1];
                     const span = tR - tL;
                     if (span > 0) {
-                        const x = ((p.playheadTime - tL) / span) * canvas.width;
-                        if (x >= 0 && x <= canvas.width) {
+                        const timeAxis =
+                            ((p.playheadTime - tL) / span) * timeExtent;
+                        if (timeAxis >= 0 && timeAxis <= timeExtent) {
                             ctx.strokeStyle = "#22c55e";
                             ctx.lineWidth = 1.5;
                             ctx.beginPath();
-                            ctx.moveTo(x, 0);
-                            ctx.lineTo(x, canvas.height);
+                            ctx.moveTo(
+                                ...projectTimelinePoint(
+                                    timeAxis,
+                                    0,
+                                    timeExtent,
+                                    orientation,
+                                ),
+                            );
+                            ctx.lineTo(
+                                ...projectTimelinePoint(
+                                    timeAxis,
+                                    crossExtent,
+                                    timeExtent,
+                                    orientation,
+                                ),
+                            );
                             ctx.stroke();
                         }
                     }
                 }
             }
         }
-    }, [isCacheReady, p.waveState.amplitudeMultiplier, p.waveState.offset, p.timeRange, p.cursorTime, p.playheadTime, p.isPlaybackFrozen]);
+    }, [
+        isCacheReady,
+        p.waveState.amplitudeMultiplier,
+        p.waveState.offset,
+        p.waveState.isFolded,
+        p.timeRange,
+        p.cursorTime,
+        p.playheadTime,
+        p.isPlaybackFrozen,
+        orientation,
+        isVertical,
+        canvasWidth,
+        canvasHeight,
+    ]);
 
     /**
      * 时间范围/缓存就绪时实时重绘（仅使用缓存，不涉及计算）
@@ -269,18 +334,21 @@ function WaveLane(p: _p) {
     // 移除冗余的 isRenderReady 相关 effect
 
     return (
-        <div>
+        <div style={{ width: isVertical ? WAVELANE_TOTAL_HEIGHT : undefined }}>
             <div className="flex gap-2">
                 {!p.waveState.isFolded && (
                     <canvas
                         ref={canvasRef}
-                        width={CANVAS_PHYSICAL_WIDTH}
-                        height={WAVELANE_TOTAL_HEIGHT}
+                        width={canvasWidth}
+                        height={canvasHeight}
                         data-lane="true"
                         style={{
                             border: "1px solid var(--editor-border-strong)",
-                            width: "100%",
-                            height: `${WAVELANE_TOTAL_HEIGHT}px`,
+                            width: isVertical
+                                ? `${WAVELANE_TOTAL_HEIGHT}px`
+                                : "100%",
+                            height: `${isVertical ? timelineHeight : WAVELANE_TOTAL_HEIGHT}px`,
+                            flexShrink: 0,
                         }}
                     />
                 )}

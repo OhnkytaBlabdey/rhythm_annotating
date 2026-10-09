@@ -1,6 +1,12 @@
 .noteLaneRoot {
     width: 100%;
+    min-width: 0;
     padding: 2px 0;
+}
+
+.noteLaneRoot[data-orientation="vertical"] {
+    flex: 0 0 auto;
+    padding: 0;
 }
 
 .noteLaneCanvasWrap {
@@ -45,7 +51,6 @@
 .annotationOverlay {
     position: absolute;
     z-index: 10;
-    min-width: 60px;
     height: 18px;
     background: transparent;
     border: none;
@@ -53,6 +58,7 @@
 }
 
 .annotationInput {
+    box-sizing: border-box;
     border: none;
     outline: none;
     font-size: 10px;
