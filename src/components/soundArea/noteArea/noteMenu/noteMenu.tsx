@@ -68,6 +68,7 @@ interface _p {
     onUndo: () => void;
     onRedo: () => void;
     onClearLane: () => void;
+    onDeleteLane: () => void;
     onImportText: (text: string) => string | null;
     exportText: string;
     malodyExportText: string;
@@ -493,6 +494,12 @@ export default function NoteMenu(p: _p) {
                     }}
                 >
                     <Image src="/assets/icons/editNoteLane.svg" alt="编辑" width={16} height={16} />
+                </ActionButton>
+                <ActionButton
+                    title="删除当前轨道"
+                    onClick={p.onDeleteLane}
+                >
+                    <Image src="/assets/icons/deleteNoteLane.svg" alt="删除当前轨道" width={16} height={16} />
                 </ActionButton>
             </div>
 

@@ -1142,21 +1142,17 @@ export default function SoundLane(prop: _prop) {
                                 制谱器
                             </button>
                         </div>
-                        <button
-                            type="button"
-                            className={styles.deleteNoteLaneButton}
-                            disabled={!resolvedActiveLaneId}
-                            onClick={() => {
-                                if (resolvedActiveLaneId) deleteNoteLane(resolvedActiveLaneId);
-                            }}
-                        >
-                            删除当前轨道
-                        </button>
                         {noteLanes.length === 0 && (
                             <p className={styles.emptyNoteLane}>暂无记谱，点击新建记谱</p>
                         )}
                         {activeNoteMenuProps && !allVisibleNoteLanesFolded && (
-                            <NoteMenu key={`${resolvedActiveLaneId}:${!!activeNoteMenuProps.sirius}`} {...activeNoteMenuProps} />
+                            <NoteMenu
+                                key={`${resolvedActiveLaneId}:${!!activeNoteMenuProps.sirius}`}
+                                {...activeNoteMenuProps}
+                                onDeleteLane={() => {
+                                    if (resolvedActiveLaneId) deleteNoteLane(resolvedActiveLaneId);
+                                }}
+                            />
                         )}
                     </div>
                     <div className={`flex-1 min-w-0 flex flex-col gap-1 ${styles.noteCanvases}`}>

@@ -29,31 +29,9 @@
     background: var(--editor-accent-strong);
 }
 
-.noteEditorToggle:focus-visible,
-.deleteNoteLaneButton:focus-visible {
+.noteEditorToggle:focus-visible {
     outline: 2px solid #0f766e;
     outline-offset: 2px;
-}
-
-.deleteNoteLaneButton {
-    width: 100%;
-    margin-bottom: 6px;
-    padding: 4px 6px;
-    border: 1px solid var(--editor-border);
-    border-radius: 6px;
-    background: var(--editor-surface-strong);
-    color: var(--editor-danger);
-    font-size: 11px;
-    cursor: pointer;
-}
-
-.deleteNoteLaneButton:hover:not(:disabled) {
-    border-color: var(--editor-danger);
-}
-
-.deleteNoteLaneButton:disabled {
-    opacity: 0.45;
-    cursor: default;
 }
 
 .emptyNoteLane {
