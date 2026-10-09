@@ -4,42 +4,33 @@
     flex-direction: column;
 }
 
-.addSiriusButton {
+.noteEditorToggle {
     padding: 2px 5px;
     border: 1px solid var(--editor-border);
     border-radius: 6px;
-    background: rgba(15, 118, 110, 0.1);
+    background: var(--editor-surface-strong);
     color: var(--foreground);
     font-size: 11px;
     white-space: nowrap;
     cursor: pointer;
 }
 
-.addSiriusButton:hover {
+.noteEditorToggle:hover {
     background: rgba(15, 118, 110, 0.2);
 }
 
-.chartSelector {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    margin: 6px 0;
-    font-size: 11px;
+.noteEditorToggle[aria-pressed="true"] {
+    border-color: var(--editor-accent);
+    background: var(--editor-accent);
+    color: #f8fafc;
 }
 
-.chartSelector select {
-    width: 100%;
-    min-width: 0;
-    padding: 4px;
-    border: 1px solid var(--editor-border);
-    border-radius: 6px;
-    background: var(--editor-surface-strong);
-    color: inherit;
+.noteEditorToggle[aria-pressed="true"]:hover {
+    background: var(--editor-accent-strong);
 }
 
-.addSiriusButton:focus-visible,
-.deleteNoteLaneButton:focus-visible,
-.chartSelector select:focus-visible {
+.noteEditorToggle:focus-visible,
+.deleteNoteLaneButton:focus-visible {
     outline: 2px solid #0f766e;
     outline-offset: 2px;
 }

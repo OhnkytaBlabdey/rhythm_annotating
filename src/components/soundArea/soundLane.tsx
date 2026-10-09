@@ -88,9 +88,12 @@ function activateNoteLane(state: SoundLaneState, laneId: string, unfold = false)
     const shouldUnfold = unfold && lane.isFolded;
     const noteEditorKind = lane.chartKind ?? "rhythm";
     if (state.activeNoteLaneId === laneId && state.noteEditorKind === noteEditorKind && !shouldUnfold) return state;
+    const activeId = resolveActiveNoteLaneId(state.noteLanes, state.activeNoteLaneId);
+    const previousKind = resolveNoteEditorKind(state.noteLanes, activeId, state.noteEditorKind);
     return {
         ...state,
         activeNoteLaneId: laneId,
+        previousNoteLaneId: previousKind !== noteEditorKind ? activeId : state.previousNoteLaneId,
         noteEditorKind,
         noteLanes: shouldUnfold
             ? state.noteLanes.map((item) => item.id === laneId ? { ...item, isFolded: false } : item)
@@ -203,17 +206,6 @@ export default function SoundLane(prop: _prop) {
         }
         return null;
     }, [laneCursorTimeMap, resolvedActiveLaneId, visibleNoteLanes]);
-
-    const chartOptions = useMemo(() => {
-        let rhythmCount = 0;
-        let siriusCount = 0;
-        return noteLanes.map((lane) => ({
-            id: lane.id,
-            label: lane.chartKind === "sirius"
-                ? `制谱器 ${++siriusCount} ·12轨`
-                : `节奏标记 ${++rhythmCount}`,
-        }));
-    }, [noteLanes]);
 
     const renderCursorTime = isPlaybackFrozen ? null : cursorTime;
     const renderPlayheadTime = isPlaybackFrozen ? null : prop.playheadTime;
@@ -329,6 +321,7 @@ export default function SoundLane(prop: _prop) {
                 ...prev,
                 noteLanes: remaining,
                 activeNoteLaneId: nextId,
+                previousNoteLaneId: prev.previousNoteLaneId === laneId ? null : prev.previousNoteLaneId,
                 noteEditorKind: resolveNoteEditorKind(remaining, nextId,
                     resolveNoteEditorKind(prev.noteLanes, currentId, prev.noteEditorKind)),
             };
@@ -377,12 +370,14 @@ export default function SoundLane(prop: _prop) {
             prop.setSoundLaneState(prop.index, (prev) => {
                 if (reuseExisting) {
                     const activeId = resolveActiveNoteLaneId(prev.noteLanes, prev.activeNoteLaneId);
-                    const existing = prev.noteLanes.find((lane) => lane.id === activeId && lane.chartKind === "sirius")
-                        ?? prev.noteLanes.find((lane) => lane.chartKind === "sirius");
+                    const candidates = prev.noteLanes.filter((lane) => (lane.chartKind ?? "rhythm") === kind);
+                    const existing = candidates.find((lane) => lane.id === activeId)
+                        ?? candidates.find((lane) => lane.id === prev.previousNoteLaneId)
+                        ?? candidates[0];
                     if (existing) return activateNoteLane(prev, existing.id, true);
                 }
                 if (prev.noteLanes.some((lane) => lane.id === nextLane.id)) return prev;
-                return { ...prev, noteLanes: [...prev.noteLanes, nextLane], activeNoteLaneId: nextLane.id, noteEditorKind: kind };
+                return activateNoteLane({ ...prev, noteLanes: [...prev.noteLanes, nextLane] }, nextLane.id);
             });
             setLaneEditStateMap((prev) => ({
                 ...prev,
@@ -396,18 +391,19 @@ export default function SoundLane(prop: _prop) {
         }
     }, [noteLanes, prop, resolvedActiveLaneId, setLaneError]);
 
-    const handleOpenSirius = useCallback(() => {
-        const existing = noteLanes.find((lane) => lane.id === resolvedActiveLaneId && lane.chartKind === "sirius")
-            ?? noteLanes.find((lane) => lane.chartKind === "sirius");
+    const handleToggleNoteEditor = useCallback(() => {
+        const kind = noteEditorKind === "sirius" ? "rhythm" : "sirius";
+        const candidates = noteLanes.filter((lane) => (lane.chartKind ?? "rhythm") === kind);
+        const existing = candidates.find((lane) => lane.id === prop.refSoundLaneState.previousNoteLaneId)
+            ?? candidates[0];
         if (existing) {
             selectNoteLane(existing.id, true);
-            prop.onRequestVertical?.();
+            if (kind === "sirius") prop.onRequestVertical?.();
         } else {
-            // Recheck inside the pure commit too, so queued/replayed opens
-            // from the same render can only create the first Sirius chart.
-            handleAddNoteLane("sirius", true);
+            // Recheck in the updater so queued creations reuse the same chart.
+            handleAddNoteLane(kind, true);
         }
-    }, [noteLanes, resolvedActiveLaneId, selectNoteLane, prop, handleAddNoteLane]);
+    }, [noteLanes, noteEditorKind, selectNoteLane, prop, handleAddNoteLane]);
 
     const handleToggleNoteFold = useCallback(() => {
         const visibleIds = new Set(visibleNoteLanes.map((lane) => lane.id));
@@ -1137,29 +1133,15 @@ export default function SoundLane(prop: _prop) {
                             </button>
                             <button
                                 type="button"
-                                className={styles.addSiriusButton}
-                                onClick={handleOpenSirius}
+                                className={styles.noteEditorToggle}
+                                onClick={handleToggleNoteEditor}
                                 onMouseDown={(e) => e.stopPropagation()}
-                                title="打开已有制谱器，没有时新建"
+                                aria-pressed={noteEditorKind === "sirius"}
+                                title={noteEditorKind === "sirius" ? "返回节奏记谱" : "切换到制谱器"}
                             >
                                 制谱器
                             </button>
                         </div>
-                        <label className={styles.chartSelector}>
-                            <span>当前谱面</span>
-                            <select
-                                value={resolvedActiveLaneId ?? ""}
-                                disabled={noteLanes.length === 0}
-                                onChange={(event) => {
-                                    selectNoteLane(event.target.value, true);
-                                }}
-                            >
-                                {noteLanes.length === 0 && <option value="">暂无记谱</option>}
-                                {chartOptions.map(({ id, label }) => (
-                                    <option key={id} value={id}>{label}</option>
-                                ))}
-                            </select>
-                        </label>
                         <button
                             type="button"
                             className={styles.deleteNoteLaneButton}

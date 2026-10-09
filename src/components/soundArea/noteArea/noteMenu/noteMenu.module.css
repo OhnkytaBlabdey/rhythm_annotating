@@ -208,13 +208,6 @@
     margin-top: 8px;
 }
 
-.sirius-title {
-    color: var(--editor-accent-strong);
-    font-size: 12px;
-    font-weight: 700;
-    padding: 4px 2px;
-}
-
 .help-text {
     margin: 2px 0 4px;
     padding: 0 2px;
@@ -222,16 +215,6 @@
     line-height: 1.5;
     color: var(--editor-muted);
     overflow-wrap: anywhere;
-}
-
-.browse-notice {
-    margin: 2px 0 5px;
-    padding: 5px;
-    font-size: 10px;
-    line-height: 1.5;
-    color: #075e59;
-    border: 1px solid rgba(15, 118, 110, 0.22);
-    background: rgba(240, 253, 250, 0.96);
 }
 
 .sirius-controls,

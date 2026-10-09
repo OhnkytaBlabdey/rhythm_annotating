@@ -240,19 +240,6 @@ export default function NoteMenu(p: _p) {
 
     return (
         <div className={cls("menu")}>
-            {p.sirius && (
-                <>
-                    <div className={cls("sirius-title")}>制谱器 ·12轨</div>
-                    <p className={cls("help-text")}>
-                        选类型后点击放置；长条依次点起点、终点。切换选中模式可修改属性或导入 JSON。
-                    </p>
-                    {readOnly && (
-                        <p className={cls("browse-notice")}>
-                            浏览只读：修改谱面、BPM、导出偏移及导入需先切换模式。
-                        </p>
-                    )}
-                </>
-            )}
             {/* Offset */}
             <div className={cls("section-label")}>图形偏移</div>
             <div className={cls("bpm-row")}>

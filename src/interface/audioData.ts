@@ -23,6 +23,8 @@ export interface SoundLaneState {
     noteLanes: NoteLaneData[];
     /** Active chart belongs to this project, including across reload/import. */
     activeNoteLaneId?: string | null;
+    /** Last selected chart in the other editor, restored when toggling back. */
+    previousNoteLaneId?: string | null;
     /** Last editor kind, retained when the user deletes the final chart. */
     noteEditorKind?: "rhythm" | "sirius";
     noteLaneOffset: number;    // 记谱图形偏移(秒)，仅canvas像素位移
@@ -173,6 +175,8 @@ export function normalizeSoundLaneState(raw: SoundLaneState): SoundLaneState {
         },
         noteLanes,
         activeNoteLaneId: resolveActiveNoteLaneId(noteLanes, raw.activeNoteLaneId),
+        previousNoteLaneId: noteLanes.some((lane) => lane.id === raw.previousNoteLaneId)
+            ? raw.previousNoteLaneId : null,
         noteEditorKind: resolveNoteEditorKind(noteLanes, raw.activeNoteLaneId, raw.noteEditorKind),
 
     };
