@@ -507,31 +507,20 @@ function pickImportCandidate(raw: unknown): {
         return null;
     }
 
-    if (isRecord(raw.lane)) {
-        return {
-            chartData: raw.lane.chartData,
-            defaultBpm: raw.lane.defaultBpm,
-            division: raw.lane.division,
-            startTime: raw.lane.startTime,
-            endTime: raw.lane.endTime,
-            dataVersion: raw.lane.dataVersion,
-            isFolded: raw.lane.isFolded,
-            chartKind: raw.lane.chartKind,
-            wdsOffset: raw.lane.wdsOffset,
-        };
-    }
+    const source = normalizeStoredNoteLane(isRecord(raw.lane) ? raw.lane : raw);
+    if (!isRecord(source)) return null;
 
     return {
-        chartData: raw.chartData,
+        chartData: source.chartData,
         defaultBpm:
-            raw.defaultBpm !== undefined ? raw.defaultBpm : raw.currentBpm,
-        division: raw.division,
-        startTime: raw.startTime,
-        endTime: raw.endTime,
-        dataVersion: raw.dataVersion,
-        isFolded: raw.isFolded,
-        chartKind: raw.chartKind,
-        wdsOffset: raw.wdsOffset,
+            source.defaultBpm !== undefined ? source.defaultBpm : source.currentBpm,
+        division: source.division,
+        startTime: source.startTime,
+        endTime: source.endTime,
+        dataVersion: source.dataVersion,
+        isFolded: source.isFolded,
+        chartKind: source.chartKind,
+        wdsOffset: source.wdsOffset,
     };
 }
 
@@ -592,7 +581,12 @@ export function parseImportedNoteLaneText(
         };
     }
 
-    const candidate = pickImportCandidate(parsed);
+    let candidate: ReturnType<typeof pickImportCandidate>;
+    try {
+        candidate = pickImportCandidate(parsed);
+    } catch (error) {
+        return { error: error instanceof Error ? error.message : "谱面存储字段读取失败" };
+    }
     if (!candidate) {
         return {
             error: "仅支持内部 NoteLane JSON 或 chartData JSON",
@@ -1370,6 +1364,58 @@ function editWdsBeat(data: ChartSegment[], cut: number, deleting: boolean, defau
 
 // ---- migration ----
 
+/** Stored chart-maker notes used the lane's discriminator as their property key
+ * and `${chartKind}Offset` for the export offset. Normalize that layout before
+ * validation. The stored discriminator is data, never a runtime alias.
+ * Keep IDs, fractions, records and values verbatim; unsupported content still
+ * fails validation, leaving the persisted source protected by the load guard. */
+function normalizeStoredNoteLane(raw: unknown): unknown {
+    // Repair the unapproved marker briefly written during the naming correction.
+    // This changes no chart contents and restores the pre-existing storage marker.
+    if (isRecord(raw) && raw.chartKind === "wds" && raw.dataVersion === 5) {
+        return { ...raw, dataVersion: 4 };
+    }
+    if (!isRecord(raw) || raw.dataVersion !== 4 ||
+        typeof raw.chartKind !== "string" || !raw.chartKind ||
+        raw.chartKind === "rhythm" || raw.chartKind === "wds") return raw;
+
+    const propertyKey = raw.chartKind;
+    const offsetKey = `${propertyKey}Offset`;
+    if (raw.wdsOffset !== undefined) throw new Error("存储的谱面包含冲突的导出偏移字段");
+    if (!Array.isArray(raw.chartData)) throw new Error("存储的谱面缺少 chartData 数组");
+    const chartData = raw.chartData.map((segment) => {
+        if (!isRecord(segment)) throw new Error("存储的节拍段结构非法");
+        const upgradeMeasures = (value: unknown) => {
+            if (!Array.isArray(value)) throw new Error("存储的节拍段缺少 measures/beats 数组");
+            return value.map((measure) => {
+                if (!isRecord(measure) || !Array.isArray(measure.notes)) throw new Error("存储的节拍 notes 结构非法");
+                return { ...measure, notes: measure.notes.map((note) => {
+                    if (!isRecord(note)) throw new Error("存储的 Note 必须是对象");
+                    if (note.type === NOTE_BOUNDARY_START || note.type === NOTE_BOUNDARY_END) {
+                        if (note[propertyKey] !== undefined) throw new Error("存储的边界标记不能包含音符属性");
+                        return { ...note };
+                    }
+                    if (note.wds !== undefined) throw new Error("存储的 Note 包含冲突的音符属性字段");
+                    const { [propertyKey]: properties, ...rest } = note;
+                    if (!isRecord(properties)) throw new Error("存储的 Note 缺少与谱面格式对应的音符属性");
+                    const { gimmick, scratchLength, ...other } = properties;
+                    if (other.gimmickType !== undefined || other.gimmickValue !== undefined) {
+                        throw new Error("存储的 Note 包含冲突的 gimmick 字段");
+                    }
+                    return { ...rest, wds: { ...other, gimmickType: gimmick, gimmickValue: scratchLength } };
+                }) };
+            });
+        };
+        return { ...segment,
+            ...(segment.measures !== undefined ? { measures: upgradeMeasures(segment.measures) }
+                : { measures: upgradeMeasures(segment.beats) }),
+            ...(segment.beats !== undefined ? { beats: upgradeMeasures(segment.beats) } : {}),
+        };
+    });
+    const { [offsetKey]: offset, ...metadata } = raw;
+    return { ...metadata, chartKind: "wds", wdsOffset: offset ?? 0, chartData };
+}
+
 function addBoundaryNoteToChartData(
     chartData: ChartSegment[],
     time: number,
@@ -1438,9 +1484,11 @@ function addBoundaryNoteToChartData(
 export function migrateNoteLaneData(lane: NoteLaneData): NoteLaneData {
     // Normalize old or hand-edited lanes before interpreting derived times.
     // Segment.time is never source data; rebuild it from BPM and list order.
-    if (!isRecord(lane)) throw new Error("NoteLane 必须是对象");
-    const metadataError = validateLaneMetadata(lane);
+    const candidate = normalizeStoredNoteLane(lane);
+    if (!isRecord(candidate)) throw new Error("NoteLane 必须是对象");
+    const metadataError = validateLaneMetadata(candidate);
     if (metadataError) throw new Error(metadataError);
+    lane = candidate as unknown as NoteLaneData;
     const chartData = normalizeChartSegments(lane.chartData, lane.chartKind);
     const normalized: NoteLaneData = {
         ...lane,

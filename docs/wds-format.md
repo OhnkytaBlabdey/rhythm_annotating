@@ -62,3 +62,12 @@ start,end,type,lane,width,gimmickType,gimmickValue
 - `head` / `tail` / `body` 是内部音乐拍分数；导出沿完整 BPM 时间映射换算秒数，
   仅叠加 `wdsOffset`。`body` 锚点不隐式变成判定。
 - TXT 是有损输出；内部 JSON / 项目文件保留 BPM、拍分数、ID 和分组属性。
+
+### 已有快照恢复
+
+应用版本保持 `0.2.0`。恢复和导入先读取已有存储布局，再验证当前模型。原有布局把音符属性放在
+`note[chartKind]` 下，把导出偏移放在 `lane[chartKind + "Offset"]` 下；
+读取时将这些存储字段规范化为 `wds`、`wdsOffset` 和当前 gimmick 字段。
+转换不修改输入快照，保留音符 ID、拍分数、BPM、标注、头记录和判定设置；
+验证通过并恢复成功后，自动保存才写入规范化的数据。未知格式和无效内容仍会报错，
+原快照继续由恢复保护机制保留。
