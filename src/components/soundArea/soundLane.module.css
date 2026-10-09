@@ -149,7 +149,7 @@
     padding: 0;
 }
 
-.vertical .noteCanvases > [data-chart-kind="sirius"] {
+.vertical .noteCanvases > [data-chart-kind="wds"] {
     flex: 0 0 432px;
     width: 432px;
 }

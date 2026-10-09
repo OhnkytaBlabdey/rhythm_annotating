@@ -217,7 +217,7 @@
     overflow-wrap: anywhere;
 }
 
-.sirius-controls,
+.wds-controls,
 .property-fields {
     display: flex;
     flex-direction: column;
@@ -225,7 +225,7 @@
     min-width: 0;
 }
 
-.sirius-controls {
+.wds-controls {
     margin: 5px 0;
 }
 

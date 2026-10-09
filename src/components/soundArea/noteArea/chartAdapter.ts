@@ -11,11 +11,11 @@ import {
     NOTE_BOUNDARY_END,
 } from "./chartTypes";
 import {
-    getSiriusTailSpan,
-    isSiriusHoldType,
-    isSiriusNoteType,
-    isSiriusScratchType,
-} from "./siriusTypes";
+    getWdsScratchSpan,
+    isWdsHoldType,
+    isWdsNoteType,
+    isWdsScratchType,
+} from "./wdsTypes";
 
 let _idCounter = 0;
 export function generateNoteId(): string {
@@ -76,7 +76,7 @@ function gcd(a: number, b: number): number {
 }
 
 /** Legacy rhythm fractions historically truncate finite numerator/denominator.
- * Sirius validation and arithmetic use normalizeSiriusFraction instead. */
+ * WDS validation and arithmetic use normalizeWdsFraction instead. */
 export function normalizeFraction(
     input: Fraction | undefined,
 ): Fraction | null {
@@ -100,7 +100,7 @@ export function normalizeFraction(
     };
 }
 
-function normalizeSiriusFraction(input: Fraction | undefined): Fraction | null {
+function normalizeWdsFraction(input: Fraction | undefined): Fraction | null {
     if (!input || !Number.isSafeInteger(input.a) || !Number.isSafeInteger(input.b)) return null;
     return normalizeFraction(input);
 }
@@ -150,7 +150,7 @@ function rangesOverlap(
 }
 
 function validateMeasureNotes(notes: ChartNote[]): string | null {
-    notes = notes.filter((note) => !note.sirius);
+    notes = notes.filter((note) => !note.wds);
     const occupiedHead = new Set<string>();
 
     const lnRanges: Array<{ id: string; head: Fraction; tail: Fraction }> = [];
@@ -276,7 +276,7 @@ function collectAbsoluteNotes(chartData: ChartSegment[]): AbsoluteNote[] {
             const measureStart = segment.time + m * beatDuration;
             const measure = segment.measures[m];
             for (const note of measure.notes) {
-                if (isNoteBoundary(note) || note.sirius) continue;
+                if (isNoteBoundary(note) || note.wds) continue;
                 const abs = toAbsoluteNote(note, measureStart, beatDuration);
                 if (abs) {
                     out.push(abs);
@@ -365,10 +365,10 @@ export function validateChartData(chartData: ChartSegment[]): string | null {
             for (const note of measure.notes) {
                 if (!note.id || ids.has(note.id)) return "Note 缺少 id 或 id 重复";
                 ids.add(note.id);
-                if (!note.sirius) continue;
+                if (!note.wds) continue;
                 const key = [beat, fractionKey(note.head), fractionKey(note.tail),
-                    note.type, note.sirius.lane, note.sirius.width].join(":");
-                if (records.has(key)) return "存在重复的 Sirius note（类型、时刻与范围相同）";
+                    note.type, note.wds.lane, note.wds.width].join(":");
+                if (records.has(key)) return "存在重复的 WDS note（类型、时刻与范围相同）";
                 records.add(key);
             }
             const msg = validateMeasureNotes(measure.notes);
@@ -400,19 +400,19 @@ export function validateNoteLaneData(lane: NoteLaneData): string | null {
     for (const segment of lane.chartData) {
         for (const measure of segment.measures) {
             for (const note of measure.notes) {
-                if (lane.chartKind === "sirius") {
-                    const siriusError = validateNoteShape(note, "sirius");
-                    if (siriusError) return siriusError;
+                if (lane.chartKind === "wds") {
+                    const wdsError = validateNoteShape(note, "wds");
+                    if (wdsError) return wdsError;
                 }
                 if (isNoteBoundary(note)) {
-                    if (lane.chartKind === "sirius") {
-                        const head = normalizeSiriusFraction(note.head)!;
-                        if (head.a < 0 || head.a >= head.b) return "Sirius 边界 head 必须在所属拍的 [0,1) 内";
+                    if (lane.chartKind === "wds") {
+                        const head = normalizeWdsFraction(note.head)!;
+                        if (head.a < 0 || head.a >= head.b) return "WDS 边界 head 必须在所属拍的 [0,1) 内";
                     }
                     continue;
                 }
-                if ((lane.chartKind === "sirius") !== !!note.sirius) {
-                    return "Note 类型与 chartKind 不匹配；Sirius 与节奏谱不能混用";
+                if ((lane.chartKind === "wds") !== !!note.wds) {
+                    return "Note 类型与 chartKind 不匹配；WDS 与节奏谱不能混用";
                 }
             }
         }
@@ -425,12 +425,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function validateLaneMetadata(lane: Record<string, unknown>): string | null {
-    if (lane.chartKind !== undefined && lane.chartKind !== "rhythm" && lane.chartKind !== "sirius") {
+    if (lane.chartKind !== undefined && lane.chartKind !== "rhythm" && lane.chartKind !== "wds") {
         return "未知的 chartKind";
     }
-    if (lane.siriusOffset !== undefined && !Number.isFinite(lane.siriusOffset)) return "siriusOffset 必须是有限秒数";
+    if (lane.wdsOffset !== undefined && !Number.isFinite(lane.wdsOffset)) return "wdsOffset 必须是有限秒数";
     if (lane.defaultBpm !== undefined && (typeof lane.defaultBpm !== "number" || !Number.isFinite(lane.defaultBpm) || lane.defaultBpm <= 0 || !Number.isFinite(60 / lane.defaultBpm))) return "defaultBpm 非法";
-    if (lane.division !== undefined && (!Number.isFinite(lane.division) || Number(lane.division) < 1 || (lane.chartKind === "sirius" && !Number.isSafeInteger(lane.division)))) return "division 非法";
+    if (lane.division !== undefined && (!Number.isFinite(lane.division) || Number(lane.division) < 1 || (lane.chartKind === "wds" && !Number.isSafeInteger(lane.division)))) return "division 非法";
     if (lane.dataVersion !== undefined && (!Number.isInteger(lane.dataVersion) || Number(lane.dataVersion) < 1 || Number(lane.dataVersion) > 4)) return "不支持的 dataVersion";
     if (lane.isFolded !== undefined && typeof lane.isFolded !== "boolean") return "isFolded 非法";
     for (const key of ["startTime", "endTime"]) {
@@ -442,45 +442,44 @@ function validateLaneMetadata(lane: Record<string, unknown>): string | null {
 function validateNoteShape(value: unknown, chartKind?: NoteLaneData["chartKind"]): string | null {
     if (!isRecord(value)) return "Note 必须是对象";
     const note = value as unknown as ChartNote;
-    // A legacy numeric type is not a Sirius discriminator. Old rhythm projects
+    // A legacy numeric type is not a WDS discriminator. Old rhythm projects
     // allowed extension types and non-integral fractions; preserve them verbatim.
-    const sirius = chartKind === "sirius" || note.sirius !== undefined;
-    if (!sirius) {
+    const wds = chartKind === "wds" || note.wds !== undefined;
+    if (!wds) {
         if (!Number.isFinite(note.type)) return "Note type 必须是有限数";
         return null;
     }
     if (value.id !== undefined && (typeof value.id !== "string" || !value.id)) return "Note id 非法";
-    if (!Number.isSafeInteger(note.type)) return "Sirius note type 必须是整数";
-    if (!isNoteBoundary(note) && !isSiriusNoteType(note.type)) return `不支持的 Sirius note type: ${note.type}`;
-    const head = normalizeSiriusFraction(note.head);
+    if (!Number.isSafeInteger(note.type)) return "WDS note type 必须是整数";
+    if (!isNoteBoundary(note) && !isWdsNoteType(note.type)) return `不支持的 WDS note type: ${note.type}`;
+    const head = normalizeWdsFraction(note.head);
     if (!head) return "Note 缺少合法 head 分数（整数分子与非零整数分母）";
-    if (note.tail !== undefined && !normalizeSiriusFraction(note.tail)) return "Note tail 分数非法";
-    if (note.body !== undefined && (!Array.isArray(note.body) || note.body.some((f) => !normalizeSiriusFraction(f)))) return "Note body 分数数组非法";
+    if (note.tail !== undefined && !normalizeWdsFraction(note.tail)) return "Note tail 分数非法";
+    if (note.body !== undefined && (!Array.isArray(note.body) || note.body.some((f) => !normalizeWdsFraction(f)))) return "Note body 分数数组非法";
     if (note.annotation !== undefined && typeof note.annotation !== "string") return "Note annotation 非法";
-    if (head.a < 0 || head.a >= head.b) return "Sirius head 必须在所属拍的 [0,1) 内";
+    if (head.a < 0 || head.a >= head.b) return "WDS head 必须在所属拍的 [0,1) 内";
     if (isNoteBoundary(note)) {
-        if (note.sirius !== undefined) return "边界标记不能包含 sirius 属性";
+        if (note.wds !== undefined) return "边界标记不能包含 wds 属性";
         return null;
     }
-    const p = note.sirius;
-    if (!isRecord(p)) return "Sirius note 缺少 sirius 属性";
-    const fields = ["lane", "width", "gimmick", "scratchLength", "holdHeadType", "autoTicks"];
-    if (Object.keys(p).some((key) => !fields.includes(key))) return "未知的 sirius 属性";
-    if (!getSiriusTailSpan(p)) return "Sirius lane/width/scratchLength 必须是合法的 1..12 列范围";
-    if (!["0", "JumpScratch", "OneDirection"].includes(p.gimmick)) return "Sirius gimmick 非法";
-    if (p.holdHeadType !== null && ![80, 81, 82, 83].includes(p.holdHeadType)) return "Sirius holdHeadType 非法";
-    if (typeof p.autoTicks !== "boolean") return "Sirius autoTicks 必须是布尔值";
-    if (!isSiriusScratchType(note.type) && (p.scratchLength !== 0 || p.gimmick !== "0")) return "该 Sirius 类型不支持 scratchLength/gimmick";
-    if (p.gimmick === "JumpScratch" && !isSiriusHoldType(note.type)) return "JumpScratch 仅用于 Scratch Hold";
-    if (!isSiriusHoldType(note.type)) {
-        if (note.tail !== undefined || (note.body?.length ?? 0) > 0 || p.holdHeadType !== null || p.autoTicks) return "Sirius 点 note 不能包含长条属性";
+    const p = note.wds;
+    if (!isRecord(p)) return "WDS note 缺少 wds 属性";
+    const fields = ["lane", "width", "gimmickType", "gimmickValue", "holdHeadType", "autoTicks"];
+    if (Object.keys(p).some((key) => !fields.includes(key))) return "未知的 wds 属性";
+    if (!getWdsScratchSpan(p)) return "WDS lane/width 或 JumpScratch 覆盖范围非法（1..12 列，宽度大于 0）";
+    if (!["0", "1", "JumpScratch", "2", "OneDirection"].includes(p.gimmickType)) return "WDS gimmickType 非法";
+    if (p.holdHeadType !== null && ![80, 81, 82, 83].includes(p.holdHeadType)) return "WDS holdHeadType 非法";
+    if (typeof p.autoTicks !== "boolean") return "WDS autoTicks 必须是布尔值";
+    if (!isWdsScratchType(note.type) && p.gimmickType !== "0") return "该 WDS 类型不支持划动 gimmick";
+    if (!isWdsHoldType(note.type)) {
+        if (note.tail !== undefined || (note.body?.length ?? 0) > 0 || p.holdHeadType !== null || p.autoTicks) return "WDS 点 note 不能包含长条属性";
     } else {
-        const tail = normalizeSiriusFraction(note.tail);
-        if (!tail || compareFractions(head, tail) >= 0) return "Sirius Hold 必须包含晚于 head 的 tail";
+        const tail = normalizeWdsFraction(note.tail);
+        if (!tail || compareFractions(head, tail) >= 0) return "WDS 长条必须包含晚于 head 的 tail";
         let previous = head;
         for (const anchor of note.body ?? []) {
-            const f = normalizeSiriusFraction(anchor)!;
-            if (compareFractions(previous, f) >= 0 || compareFractions(f, tail) >= 0) return "Sirius body 必须递增并严格位于 head/tail 之间";
+            const f = normalizeWdsFraction(anchor)!;
+            if (compareFractions(previous, f) >= 0 || compareFractions(f, tail) >= 0) return "WDS body 必须递增并严格位于 head/tail 之间";
             previous = f;
         }
     }
@@ -496,7 +495,7 @@ function pickImportCandidate(raw: unknown): {
     dataVersion?: unknown;
     isFolded?: unknown;
     chartKind?: unknown;
-    siriusOffset?: unknown;
+    wdsOffset?: unknown;
 } | null {
     if (Array.isArray(raw)) {
         return {
@@ -518,7 +517,7 @@ function pickImportCandidate(raw: unknown): {
             dataVersion: raw.lane.dataVersion,
             isFolded: raw.lane.isFolded,
             chartKind: raw.lane.chartKind,
-            siriusOffset: raw.lane.siriusOffset,
+            wdsOffset: raw.lane.wdsOffset,
         };
     }
 
@@ -532,7 +531,7 @@ function pickImportCandidate(raw: unknown): {
         dataVersion: raw.dataVersion,
         isFolded: raw.isFolded,
         chartKind: raw.chartKind,
-        siriusOffset: raw.siriusOffset,
+        wdsOffset: raw.wdsOffset,
     };
 }
 
@@ -611,7 +610,7 @@ export function parseImportedNoteLaneText(
         const nextLane = migrateNoteLaneData({
             id: currentLane.id,
             chartKind: Array.isArray(parsed) ? currentLane.chartKind : candidate.chartKind as NoteLaneData["chartKind"],
-            siriusOffset: Array.isArray(parsed) ? currentLane.siriusOffset : candidate.siriusOffset as number | undefined,
+            wdsOffset: Array.isArray(parsed) ? currentLane.wdsOffset : candidate.wdsOffset as number | undefined,
             defaultBpm: (candidate.defaultBpm as number | undefined) ?? currentLane.defaultBpm,
             division: (candidate.division as number | undefined) ?? currentLane.division,
             chartData: normalizeChartSegments(candidate.chartData as RawChartSegment[]),
@@ -660,8 +659,8 @@ export function removeTrailingEmptyMeasures(
         ...seg,
         measures: seg.measures.map((m) => ({ notes: [...m.notes] })),
     }));
-    // Empty beats before a Sirius tail still carry tempo. Never compact gaps.
-    if (data.some((seg) => seg.measures.some((m) => m.notes.some((n) => n.sirius)))) {
+    // Empty beats before a WDS tail still carry tempo. Never compact gaps.
+    if (data.some((seg) => seg.measures.some((m) => m.notes.some((n) => n.wds)))) {
         let count = 0;
         let required = 0;
         for (const seg of data) {
@@ -669,7 +668,7 @@ export function removeTrailingEmptyMeasures(
                 for (const note of measure.notes) {
                     required = Math.max(required, count + 1);
                     const tail = normalizeFraction(note.tail);
-                    if (note.sirius && tail) required = Math.max(required, Math.ceil(count + tail.a / tail.b));
+                    if (note.wds && tail) required = Math.max(required, Math.ceil(count + tail.a / tail.b));
                 }
                 count++;
             }
@@ -910,18 +909,18 @@ function rebuildChartSegments(chunks: MeasureChunk[], initialTime: number): Char
     return rebuilt;
 }
 
-/** Pass lane.defaultBpm and lane.chartKind: empty Sirius charts still own an
+/** Pass lane.defaultBpm and lane.chartKind: empty WDS charts still own an
  * explicit tempo map. Existing two/three-argument calls remain compatible. */
 export function insertMeasureAtRef(
     chartData: ChartSegment[],
     ref: ChartMeasureRef | null | undefined,
     defaultBpm = 120,
-    chartKind?: "rhythm" | "sirius",
+    chartKind?: "rhythm" | "wds",
 ): ChartSegment[] | null {
     const located = locateMeasureByRef(chartData, ref);
     if (!located) return null;
-    if (chartKind === "sirius" || hasSiriusNotes(chartData)) {
-        return editSiriusBeat(chartData, located.globalIndex + 1, false, defaultBpm);
+    if (chartKind === "wds" || hasWdsNotes(chartData)) {
+        return editWdsBeat(chartData, located.globalIndex + 1, false, defaultBpm);
     }
 
     const chunks: MeasureChunk[] = [];
@@ -955,12 +954,12 @@ export function deleteMeasureAtRef(
     chartData: ChartSegment[],
     ref: ChartMeasureRef | null | undefined,
     defaultBpm = 120,
-    chartKind?: "rhythm" | "sirius",
+    chartKind?: "rhythm" | "wds",
 ): ChartSegment[] | null {
     const located = locateMeasureByRef(chartData, ref);
     if (!located) return null;
-    if (chartKind === "sirius" || hasSiriusNotes(chartData)) {
-        return editSiriusBeat(chartData, located.globalIndex, true, defaultBpm);
+    if (chartKind === "wds" || hasWdsNotes(chartData)) {
+        return editWdsBeat(chartData, located.globalIndex, true, defaultBpm);
     }
 
     const chunks: MeasureChunk[] = [];
@@ -993,7 +992,7 @@ export function deleteMeasureAtRef(
     return removeTrailingEmptyMeasures(rebuilt);
 }
 
-// ---- Sirius musical timeline and immutable mutations ----
+// ---- WDS musical timeline and immutable mutations ----
 
 function assertBpm(bpm: number): void {
     if (!Number.isFinite(bpm) || bpm <= 0 || !Number.isFinite(60 / bpm)) {
@@ -1001,7 +1000,7 @@ function assertBpm(bpm: number): void {
     }
 }
 
-function siriusTempoMap(data: ChartSegment[], defaultBpm: number) {
+function wdsTempoMap(data: ChartSegment[], defaultBpm: number) {
     assertBpm(defaultBpm);
     if (!Array.isArray(data)) throw new Error("chartData 必须是数组");
     let beat = 0;
@@ -1020,9 +1019,9 @@ function siriusTempoMap(data: ChartSegment[], defaultBpm: number) {
 
 /** List-order tempo map; the implicit tail (and negative pre-roll) uses
  * defaultBpm, even when the final stored segment has another tempo. No offsets. */
-export function siriusBeatToTime(data: ChartSegment[], beat: number, defaultBpm: number): number {
+export function wdsBeatToTime(data: ChartSegment[], beat: number, defaultBpm: number): number {
     if (!Number.isFinite(beat)) throw new Error("拍数必须是有限数");
-    const map = siriusTempoMap(data, defaultBpm);
+    const map = wdsTempoMap(data, defaultBpm);
     let time = beat * (60 / defaultBpm);
     if (beat >= 0) {
         const seg = map.segments.find((s) => beat < s.beat + s.count);
@@ -1033,9 +1032,9 @@ export function siriusBeatToTime(data: ChartSegment[], beat: number, defaultBpm:
     return time;
 }
 
-export function siriusTimeToBeat(data: ChartSegment[], time: number, defaultBpm: number): number {
+export function wdsTimeToBeat(data: ChartSegment[], time: number, defaultBpm: number): number {
     if (!Number.isFinite(time)) throw new Error("时间必须是有限数");
-    const map = siriusTempoMap(data, defaultBpm);
+    const map = wdsTempoMap(data, defaultBpm);
     let beat = time / (60 / defaultBpm);
     if (time >= 0) {
         const seg = map.segments.find((s) => time < s.time + s.count * s.duration);
@@ -1046,7 +1045,7 @@ export function siriusTimeToBeat(data: ChartSegment[], time: number, defaultBpm:
     return beat;
 }
 
-export interface CollectedSiriusNote {
+export interface CollectedWdsNote {
     note: ChartNote;
     beat: number;
     tailBeat: number | null;
@@ -1058,25 +1057,25 @@ export interface CollectedSiriusNote {
     endTime: number | null;
 }
 
-function hasSiriusNotes(data: ChartSegment[]): boolean {
-    return data.some((s) => s.measures.some((m) => m.notes.some((n) => !!n.sirius)));
+function hasWdsNotes(data: ChartSegment[]): boolean {
+    return data.some((s) => s.measures.some((m) => m.notes.some((n) => !!n.wds)));
 }
 
-function assertSiriusData(data: ChartSegment[]): void {
-    const structureError = validateImportSegments(data, "sirius");
+function assertWdsData(data: ChartSegment[]): void {
+    const structureError = validateImportSegments(data, "wds");
     if (structureError) throw new Error(structureError);
     const error = validateChartData(data);
     if (error) throw new Error(error);
-    if (data.some((s) => s.measures.some((m) => m.notes.some((n) => !isNoteBoundary(n) && !n.sirius)))) {
-        throw new Error("Sirius 编辑 API 仅适用于 Sirius 谱面");
+    if (data.some((s) => s.measures.some((m) => m.notes.some((n) => !isNoteBoundary(n) && !n.wds)))) {
+        throw new Error("WDS 编辑 API 仅适用于 WDS 谱面");
     }
 }
 
 /** Boundary markers are excluded. Returned notes reference source notes; do not mutate. */
-export function collectSiriusNotes(data: ChartSegment[], defaultBpm: number): CollectedSiriusNote[] {
-    assertSiriusData(data);
+export function collectWdsNotes(data: ChartSegment[], defaultBpm: number): CollectedWdsNote[] {
+    assertWdsData(data);
     assertBpm(defaultBpm);
-    const out: CollectedSiriusNote[] = [];
+    const out: CollectedWdsNote[] = [];
     let measureIndex = 0;
     data.forEach((segment, segmentIndex) => {
         segment.measures.forEach((measure, localMeasureIndex) => {
@@ -1086,14 +1085,14 @@ export function collectSiriusNotes(data: ChartSegment[], defaultBpm: number): Co
                 const tailBeat = note.tail ? measureIndex + fractionValue(note.tail) : null;
                 out.push({
                     note, beat, tailBeat, measureIndex, segmentIndex, localMeasureIndex,
-                    time: siriusBeatToTime(data, beat, defaultBpm),
-                    endTime: tailBeat === null ? null : siriusBeatToTime(data, tailBeat, defaultBpm),
+                    time: wdsBeatToTime(data, beat, defaultBpm),
+                    endTime: tailBeat === null ? null : wdsBeatToTime(data, tailBeat, defaultBpm),
                 });
             }
             measureIndex++;
         });
     });
-    return out.sort((a, b) => a.beat - b.beat || a.note.sirius!.lane - b.note.sirius!.lane || a.note.type - b.note.type);
+    return out.sort((a, b) => a.beat - b.beat || a.note.wds!.lane - b.note.wds!.lane || a.note.type - b.note.type);
 }
 
 function fractionValue(f: Fraction): number {
@@ -1122,11 +1121,11 @@ function beatFraction(value: number): Fraction {
 }
 
 function addBeatFractions(left: Fraction, right: Fraction): Fraction {
-    const a = normalizeSiriusFraction(left);
-    const b = normalizeSiriusFraction(right);
+    const a = normalizeWdsFraction(left);
+    const b = normalizeWdsFraction(right);
     if (!a || !b) throw new Error("拍分数非法");
     const divisor = gcd(a.b, b.b);
-    const result = normalizeSiriusFraction({ a: a.a * (b.b / divisor) + b.a * (a.b / divisor), b: a.b * (b.b / divisor) });
+    const result = normalizeWdsFraction({ a: a.a * (b.b / divisor) + b.a * (a.b / divisor), b: a.b * (b.b / divisor) });
     if (!result) throw new Error("拍分数超出安全整数范围");
     return result;
 }
@@ -1141,7 +1140,7 @@ function cloneNote(note: ChartNote): ChartNote {
         ...(note.head ? { head: { ...note.head } } : {}),
         ...(note.tail ? { tail: { ...note.tail } } : {}),
         ...(note.body ? { body: note.body.map((f) => ({ ...f })) } : {}),
-        ...(note.sirius ? { sirius: { ...note.sirius } } : {}),
+        ...(note.wds ? { wds: { ...note.wds } } : {}),
     };
 }
 
@@ -1149,21 +1148,21 @@ function cloneSegments(data: ChartSegment[]): ChartSegment[] {
     return recomputeSegmentTimes(data.map((s) => ({ ...s, measures: s.measures.map((m) => ({ notes: m.notes.map(cloneNote) })) })));
 }
 
-interface PositionedSiriusNote {
+interface PositionedWdsNote {
     note: ChartNote;
     head: Fraction;
     tail?: Fraction;
     body?: Fraction[];
 }
 
-function siriusPositions(data: ChartSegment[]): PositionedSiriusNote[] {
-    assertSiriusData(data);
-    const out: PositionedSiriusNote[] = [];
+function wdsPositions(data: ChartSegment[]): PositionedWdsNote[] {
+    assertWdsData(data);
+    const out: PositionedWdsNote[] = [];
     let beat = 0;
     for (const seg of data) {
         for (const measure of seg.measures) {
             for (const note of measure.notes) {
-                if (!note.sirius) continue;
+                if (!note.wds) continue;
                 out.push({
                     note: cloneNote(note), head: shiftFraction(note.head!, beat),
                     tail: note.tail ? shiftFraction(note.tail, beat) : undefined,
@@ -1177,10 +1176,10 @@ function siriusPositions(data: ChartSegment[]): PositionedSiriusNote[] {
 }
 
 /** Materialize virtual beats with defaultBpm, never the last segment's tempo. */
-function placeSiriusNote(data: ChartSegment[], position: PositionedSiriusNote, defaultBpm: number): void {
+function placeWdsNote(data: ChartSegment[], position: PositionedWdsNote, defaultBpm: number): void {
     const { note, head, tail, body } = position;
     const owningBeat = Math.floor(fractionValue(head));
-    if (owningBeat < 0) throw new Error("Sirius note 不能移动到第 0 拍之前");
+    if (owningBeat < 0) throw new Error("WDS note 不能移动到第 0 拍之前");
     const required = Math.max(owningBeat + 1, tail ? Math.ceil(fractionValue(tail)) : 0);
     let count = data.reduce((sum, s) => sum + s.measures.length, 0);
     if (required - count > 1_000_000) throw new Error("一次编辑需要创建过多节拍（超过 100 万）");
@@ -1196,82 +1195,82 @@ function placeSiriusNote(data: ChartSegment[], position: PositionedSiriusNote, d
     placed.head = shiftFraction(head, -owningBeat);
     placed.tail = tail ? shiftFraction(tail, -owningBeat) : undefined;
     placed.body = body?.map((f) => shiftFraction(f, -owningBeat));
-    const error = validateNoteShape(placed, "sirius");
+    const error = validateNoteShape(placed, "wds");
     if (error) throw new Error(error);
     const target = locateMeasureByGlobalIndex(data, owningBeat);
-    if (!target) throw new Error("无法定位 Sirius note 所在拍");
+    if (!target) throw new Error("无法定位 WDS note 所在拍");
     target.measure.notes.push(placed);
 }
 
-function finishSiriusMutation(data: ChartSegment[]): ChartSegment[] {
+function finishWdsMutation(data: ChartSegment[]): ChartSegment[] {
     const result = recomputeSegmentTimes(data);
     for (const seg of result) {
         for (const measure of seg.measures) {
-            measure.notes.sort((a, b) => compareFractions(a.head!, b.head!) || (a.sirius?.lane ?? 0) - (b.sirius?.lane ?? 0) || a.type - b.type);
+            measure.notes.sort((a, b) => compareFractions(a.head!, b.head!) || (a.wds?.lane ?? 0) - (b.wds?.lane ?? 0) || a.type - b.type);
         }
     }
-    assertSiriusData(result);
+    assertWdsData(result);
     return result;
 }
 
-/** All Sirius mutations are immutable/atomic and throw Error on invalid input.
+/** All WDS mutations are immutable/atomic and throw Error on invalid input.
  * beat/tailBeat are GLOBAL beats; body offsets are local to floor(beat).
  * A supplied ID is preserved; only an omitted/empty ID is generated. */
-export function insertSiriusNote(data: ChartSegment[], note: ChartNote, beat: number, tailBeat: number | null, defaultBpm: number): ChartSegment[] {
-    assertSiriusData(data);
+export function insertWdsNote(data: ChartSegment[], note: ChartNote, beat: number, tailBeat: number | null, defaultBpm: number): ChartSegment[] {
+    assertWdsData(data);
     assertBpm(defaultBpm);
-    if (!note || !isSiriusNoteType(note.type)) throw new Error("只能插入 Sirius note");
-    if (beat < 0) throw new Error("Sirius note 不能插入到第 0 拍之前");
+    if (!note || !isWdsNoteType(note.type)) throw new Error("只能插入已核实的 WDS note 类型");
+    if (beat < 0) throw new Error("WDS note 不能插入到第 0 拍之前");
     const cloned = cloneSegments(data);
     const next = cloneNote({ ...note, id: note.id || generateNoteId() });
-    placeSiriusNote(cloned, {
+    placeWdsNote(cloned, {
         note: next, head: beatFraction(beat),
         tail: tailBeat === null ? undefined : beatFraction(tailBeat),
         body: next.body?.map((f) => shiftFraction(f, Math.floor(beat))),
     }, defaultBpm);
-    return finishSiriusMutation(cloned);
+    return finishWdsMutation(cloned);
 }
 
-export type SiriusNoteUpdate = Partial<Omit<ChartNote, "id">> | ((note: ChartNote) => ChartNote);
+export type WdsNoteUpdate = Partial<Omit<ChartNote, "id">> | ((note: ChartNote) => ChartNote);
 
-/** Updates local fractions/properties, preserving IDs. Use moveSiriusNotes for
- * cross-beat motion. Property objects (including sirius) are replaced whole. */
-export function updateSiriusNotes(data: ChartSegment[], ids: readonly string[], update: SiriusNoteUpdate, defaultBpm: number): ChartSegment[] {
+/** Updates local fractions/properties, preserving IDs. Use moveWdsNotes for
+ * cross-beat motion. Property objects (including wds) are replaced whole. */
+export function updateWdsNotes(data: ChartSegment[], ids: readonly string[], update: WdsNoteUpdate, defaultBpm: number): ChartSegment[] {
     assertBpm(defaultBpm);
     const selected = new Set(ids);
-    const positions = siriusPositions(data).filter((p) => selected.has(p.note.id));
-    const cloned = removeSiriusNotes(data, ids);
+    const positions = wdsPositions(data).filter((p) => selected.has(p.note.id));
+    const cloned = removeWdsNotes(data, ids);
     for (const position of positions) {
         const owningBeat = Math.floor(fractionValue(position.head));
         const note = typeof update === "function" ? update(cloneNote(position.note)) : { ...position.note, ...update };
-        const error = validateNoteShape(note, "sirius");
+        const error = validateNoteShape(note, "wds");
         if (error) throw new Error(error);
-        if (!note.sirius) throw new Error("更新后必须仍为 Sirius note");
-        placeSiriusNote(cloned, {
+        if (!note.wds) throw new Error("更新后必须仍为 WDS note");
+        placeWdsNote(cloned, {
             note: { ...note, id: position.note.id }, head: shiftFraction(note.head!, owningBeat),
             tail: note.tail ? shiftFraction(note.tail, owningBeat) : undefined,
             body: note.body?.map((f) => shiftFraction(f, owningBeat)),
         }, defaultBpm);
     }
-    return finishSiriusMutation(cloned);
+    return finishWdsMutation(cloned);
 }
 
 /** Removing the last note retains all explicit beats/tempos for subsequent edits. */
-export function removeSiriusNotes(data: ChartSegment[], ids: readonly string[]): ChartSegment[] {
-    assertSiriusData(data);
+export function removeWdsNotes(data: ChartSegment[], ids: readonly string[]): ChartSegment[] {
+    assertWdsData(data);
     const selected = new Set(ids);
     const cloned = cloneSegments(data);
     for (const seg of cloned) {
-        for (const measure of seg.measures) measure.notes = measure.notes.filter((n) => !n.sirius || !selected.has(n.id));
+        for (const measure of seg.measures) measure.notes = measure.notes.filter((n) => !n.wds || !selected.has(n.id));
     }
     return cloned;
 }
 
 /** Clipboard head/tail/body are relative to the earliest selected GLOBAL beat;
  * clipboard heads may exceed one. IDs are regenerated only on paste. */
-export function copySiriusNotes(data: ChartSegment[], ids: readonly string[]): ChartNote[] {
+export function copyWdsNotes(data: ChartSegment[], ids: readonly string[]): ChartNote[] {
     const selected = new Set(ids);
-    const positions = siriusPositions(data).filter((p) => selected.has(p.note.id));
+    const positions = wdsPositions(data).filter((p) => selected.has(p.note.id));
     positions.sort((a, b) => compareFractions(a.head, b.head));
     if (!positions.length) return [];
     const first = positions[0].head;
@@ -1283,61 +1282,62 @@ export function copySiriusNotes(data: ChartSegment[], ids: readonly string[]): C
     }));
 }
 
-function moveSiriusLane(note: ChartNote, laneDelta: number): ChartNote {
+function moveWdsLane(note: ChartNote, laneDelta: number): ChartNote {
     if (!Number.isInteger(laneDelta)) throw new Error("列偏移必须是整数");
-    if (!note.sirius) throw new Error("缺少 Sirius 属性");
-    const sirius = { ...note.sirius, lane: note.sirius.lane + laneDelta };
-    if (!getSiriusTailSpan(sirius)) throw new Error("移动后的音符或 Scratch 尾部超出 1..12 列");
-    return { ...note, sirius };
+    if (!note.wds) throw new Error("缺少 WDS 属性");
+    const wds = { ...note.wds, lane: note.wds.lane + laneDelta };
+    if (!getWdsScratchSpan(wds)) throw new Error("移动后的音符或 Scratch 尾部超出 1..12 列");
+    return { ...note, wds };
 }
 
-export function pasteSiriusNotes(data: ChartSegment[], clipboard: readonly ChartNote[], targetBeat: number, laneDelta: number, defaultBpm: number): ChartSegment[] {
-    assertSiriusData(data);
+export function pasteWdsNotes(data: ChartSegment[], clipboard: readonly ChartNote[], targetBeat: number, laneDelta: number, defaultBpm: number): ChartSegment[] {
+    assertWdsData(data);
     assertBpm(defaultBpm);
     if (targetBeat < 0) throw new Error("粘贴目标不能早于第 0 拍");
     const target = beatFraction(targetBeat);
     const cloned = cloneSegments(data);
     for (const original of clipboard) {
-        if (!original || !normalizeSiriusFraction(original.head) || fractionValue(original.head!) < 0) throw new Error("Sirius 剪贴板 head 非法");
-        const note = moveSiriusLane(cloneNote(original), laneDelta);
+        if (!original || !normalizeWdsFraction(original.head) || fractionValue(original.head!) < 0) throw new Error("WDS 剪贴板 head 非法");
+        if (!isWdsNoteType(original.type)) throw new Error("剪贴板包含不支持的 WDS 编码");
+        const note = moveWdsLane(cloneNote(original), laneDelta);
         note.id = generateNoteId();
-        placeSiriusNote(cloned, {
+        placeWdsNote(cloned, {
             note, head: addBeatFractions(original.head!, target),
             tail: original.tail ? addBeatFractions(original.tail, target) : undefined,
             body: original.body?.map((f) => addBeatFractions(f, target)),
         }, defaultBpm);
     }
-    return finishSiriusMutation(cloned);
+    return finishWdsMutation(cloned);
 }
 
-export function moveSiriusNotes(data: ChartSegment[], ids: readonly string[], deltaBeat: number, laneDelta: number, defaultBpm: number): ChartSegment[] {
+export function moveWdsNotes(data: ChartSegment[], ids: readonly string[], deltaBeat: number, laneDelta: number, defaultBpm: number): ChartSegment[] {
     assertBpm(defaultBpm);
     const delta = beatFraction(deltaBeat);
     const selected = new Set(ids);
-    const positions = siriusPositions(data).filter((p) => selected.has(p.note.id));
-    const cloned = removeSiriusNotes(data, ids);
+    const positions = wdsPositions(data).filter((p) => selected.has(p.note.id));
+    const cloned = removeWdsNotes(data, ids);
     for (const p of positions) {
-        placeSiriusNote(cloned, {
-            note: moveSiriusLane(p.note, laneDelta), head: addBeatFractions(p.head, delta),
+        placeWdsNote(cloned, {
+            note: moveWdsLane(p.note, laneDelta), head: addBeatFractions(p.head, delta),
             tail: p.tail ? addBeatFractions(p.tail, delta) : undefined,
             body: p.body?.map((f) => addBeatFractions(f, delta)),
         }, defaultBpm);
     }
-    return finishSiriusMutation(cloned);
+    return finishWdsMutation(cloned);
 }
 
 /** Inserting stretches only holds crossing the cut. Deleting clips holds,
  * rebases surviving heads to the cut, and removes collapsed holds/inside points.
  * Body anchors inside the removed beat are removed; surviving head settings stay. */
-function editSiriusBeat(data: ChartSegment[], cut: number, deleting: boolean, defaultBpm: number): ChartSegment[] {
+function editWdsBeat(data: ChartSegment[], cut: number, deleting: boolean, defaultBpm: number): ChartSegment[] {
     assertBpm(defaultBpm);
-    const positions = siriusPositions(data);
+    const positions = wdsPositions(data);
     const chunks: MeasureChunk[] = [];
     let beat = 0;
     for (const seg of data) {
         const measures: ChartMeasure[] = [];
         for (const measure of seg.measures) {
-            if (!deleting || beat !== cut) measures.push({ notes: measure.notes.filter((n) => !n.sirius).map(cloneNote) });
+            if (!deleting || beat !== cut) measures.push({ notes: measure.notes.filter((n) => !n.wds).map(cloneNote) });
             beat++;
             // Inherit the tempo of the beat immediately BEFORE the cut.
             if (!deleting && beat === cut) measures.push({ notes: [] });
@@ -1363,9 +1363,9 @@ function editSiriusBeat(data: ChartSegment[], cut: number, deleting: boolean, de
             p.tail = p.tail ? shiftFraction(p.tail, head >= cut || fractionValue(p.tail) > cut ? 1 : 0) : undefined;
             p.body = p.body?.map((f) => shiftFraction(f, fractionValue(f) >= cut ? 1 : 0));
         }
-        placeSiriusNote(rebuilt, p, defaultBpm);
+        placeWdsNote(rebuilt, p, defaultBpm);
     }
-    return finishSiriusMutation(rebuilt);
+    return finishWdsMutation(rebuilt);
 }
 
 // ---- migration ----
@@ -1445,7 +1445,7 @@ export function migrateNoteLaneData(lane: NoteLaneData): NoteLaneData {
     const normalized: NoteLaneData = {
         ...lane,
         chartData,
-        dataVersion: lane.chartKind === "sirius" ? 4 : (lane.dataVersion ?? 3),
+        dataVersion: lane.chartKind === "wds" ? 4 : (lane.dataVersion ?? 3),
     };
 
     const hasLegacyBoundaryTimes =
@@ -1489,7 +1489,7 @@ export function migrateNoteLaneData(lane: NoteLaneData): NoteLaneData {
 
     delete next.startTime;
     delete next.endTime;
-    next.dataVersion = next.chartKind === "sirius" ? 4 : Math.max(3, next.dataVersion ?? 3);
+    next.dataVersion = next.chartKind === "wds" ? 4 : Math.max(3, next.dataVersion ?? 3);
 
     return next;
 }

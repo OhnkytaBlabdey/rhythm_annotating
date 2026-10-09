@@ -34,7 +34,7 @@
     user-select: none;
 }
 
-.root[data-mode="insert-sirius"] .canvas,
+.root[data-mode="insert-wds"] .canvas,
 .root[data-mode="paste"] .canvas {
     cursor: crosshair;
 }
@@ -66,6 +66,17 @@
     stroke-width: 3px;
     paint-order: stroke;
     font-size: 10px;
+    pointer-events: none;
+}
+
+.scratchArrow {
+    fill: #f4edff;
+    stroke: #7b51fb;
+    stroke-width: 1px;
+    paint-order: stroke;
+    font-size: 16px;
+    font-weight: 700;
+    text-anchor: middle;
     pointer-events: none;
 }
 

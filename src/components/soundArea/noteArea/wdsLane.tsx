@@ -16,31 +16,33 @@ import { useAppSettings } from "@/components/appSettingsContext";
 import type { TimelineOrientation } from "@/components/timelineGeometry";
 import type { ShortcutAction } from "@/lib/shortcuts";
 import {
-    collectSiriusNotes,
-    copySiriusNotes,
+    collectWdsNotes,
+    copyWdsNotes,
     generateNoteId,
-    insertSiriusNote,
-    moveSiriusNotes,
+    insertWdsNote,
+    moveWdsNotes,
     normalizeFraction,
-    pasteSiriusNotes,
-    removeSiriusNotes,
-    siriusBeatToTime,
-    siriusTimeToBeat,
-    updateSiriusNotes,
-    type CollectedSiriusNote,
+    pasteWdsNotes,
+    removeWdsNotes,
+    wdsBeatToTime,
+    wdsTimeToBeat,
+    updateWdsNotes,
+    type CollectedWdsNote,
 } from "./chartAdapter";
 import type { ChartMeasureRef, ChartNote, ChartSegment } from "./chartTypes";
 import type { EditMode, NoteEditState } from "./noteState";
 import {
-    defaultSiriusProperties,
-    getSiriusTailSpan,
-    isSiriusHoldType,
-    SIRIUS_LANE_COUNT,
-    SIRIUS_NOTE_TYPES,
-} from "./siriusTypes";
-import style from "./siriusLane.module.css";
+    defaultWdsProperties,
+    getWdsScratchSpan,
+    getWdsScratchDirection,
+    isWdsHoldType,
+    isWdsScratchType,
+    WDS_LANE_COUNT,
+    WDS_NOTE_TYPES,
+} from "./wdsTypes";
+import style from "./wdsLane.module.css";
 
-export interface SiriusLaneProps {
+export interface WdsLaneProps {
     chartData: ChartSegment[];
     setChartData: (
         next: ChartSegment[],
@@ -74,14 +76,14 @@ export interface SiriusLaneProps {
 
 const GUTTER = 48;
 const COLUMN = 32;
-const WIDTH = GUTTER + SIRIUS_LANE_COUNT * COLUMN;
+const WIDTH = GUTTER + WDS_LANE_COUNT * COLUMN;
 const NOTE_RADIUS = 8;
-const REGISTRY = new Map(SIRIUS_NOTE_TYPES.map((type) => [type.code, type]));
+const REGISTRY = new Map(WDS_NOTE_TYPES.map((type) => [type.code, type]));
 const MODE_SHORTCUTS: { action: ShortcutAction; mode: EditMode; type?: number }[] = [
     { action: "note.mode.browse", mode: "browse" },
-    { action: "note.mode.insertStrong", mode: "insert-sirius", type: 10 },
-    { action: "note.mode.insertWeak", mode: "insert-sirius", type: 20 },
-    { action: "note.mode.insertLn", mode: "insert-sirius", type: 100 },
+    { action: "note.mode.insertStrong", mode: "insert-wds", type: 10 },
+    { action: "note.mode.insertWeak", mode: "insert-wds", type: 20 },
+    { action: "note.mode.insertLn", mode: "insert-wds", type: 100 },
     { action: "note.mode.select", mode: "select" },
     { action: "note.mode.paste", mode: "paste" },
     { action: "note.mode.annotate", mode: "annotate" },
@@ -120,7 +122,7 @@ interface Drag {
 }
 
 interface PaintedNote {
-    record: CollectedSiriusNote;
+    record: CollectedWdsNote;
     x: number;
     width: number;
     headY: number;
@@ -141,25 +143,26 @@ function errorMessage(error: unknown): string {
 }
 
 function describeNote(note: ChartNote): string {
-    const p = note.sirius!;
+    const p = note.wds!;
     const type = REGISTRY.get(note.type);
-    const head = isSiriusHoldType(note.type)
+    const head = isWdsHoldType(note.type)
         ? `，头 ${p.holdHeadType ?? "无"}，自动 Tick ${p.autoTicks ? "开" : "关"}`
         : "";
-    return `${note.type} ${type?.label ?? "Sirius"} · 列 ${p.lane}–${p.lane + p.width - 1}${head}${p.gimmick !== "0" ? `，${p.gimmick} ${p.scratchLength}` : ""}${note.annotation ? ` · ${note.annotation}` : ""}`;
+    return `${note.type} ${type?.label ?? "WDS"} · 列 ${p.lane}–${p.lane + p.width - 1}${head}${p.gimmickType !== "0" ? `，${p.gimmickType} ${p.gimmickValue}` : ""}${note.annotation ? ` · ${note.annotation}` : ""}`;
 }
 
 function paintNote(
-    record: CollectedSiriusNote,
+    record: CollectedWdsNote,
     timeToY: (time: number) => number,
     invalid = false,
 ): PaintedNote {
-    const p = record.note.sirius!;
-    const tail = getSiriusTailSpan(p);
+    const p = record.note.wds!;
+    const tail = getWdsScratchSpan(p);
+    const pointSpan = !isWdsHoldType(record.note.type) && isWdsScratchType(record.note.type) ? tail : null;
     return {
         record,
-        x: GUTTER + (p.lane - 1) * COLUMN + 2,
-        width: p.width * COLUMN - 4,
+        x: GUTTER + ((pointSpan?.lane ?? p.lane) - 1) * COLUMN + 2,
+        width: (pointSpan?.width ?? p.width) * COLUMN - 4,
         headY: timeToY(record.time),
         tailY: record.endTime === null ? null : timeToY(record.endTime),
         tailX: GUTTER + ((tail?.lane ?? p.lane) - 1) * COLUMN + 2,
@@ -184,22 +187,30 @@ function NoteGlyph({
 }) {
     const { record, x, width, headY, tailY, tailX, tailWidth, invalid } = painted;
     const { note } = record;
-    const p = note.sirius!;
+    const p = note.wds!;
     const type = REGISTRY.get(note.type);
     const color = invalid ? "#ef4444" : type?.color ?? "#94a3b8";
+    const hold = isWdsHoldType(note.type);
     const headColor = p.holdHeadType === null ? color : REGISTRY.get(p.holdHeadType)?.color ?? color;
     const stroke = selected ? "#f8fafc" : hovered ? "#cbd5e1" : "#1e293b";
-    const label = width > 95 ? `${note.type} ${type?.label ?? ""}` : String(note.type);
+    const label = hold ? String(p.holdHeadType ?? "")
+        : width > 95 ? `${note.type} ${type?.label ?? ""}` : String(note.type);
+    const sound = note.type === 30 || note.type === 31;
+    const judge = note.type === 900;
+    const headless = hold && p.holdHeadType === null;
     const headVisible = headY >= -NOTE_RADIUS && headY <= viewportHeight + NOTE_RADIUS;
     const tailVisible = tailY !== null && tailY >= -NOTE_RADIUS && tailY <= viewportHeight + NOTE_RADIUS;
     const bodyTop = Math.max(-NOTE_RADIUS, Math.min(headY, tailY ?? headY));
     const bodyBottom = Math.min(viewportHeight + NOTE_RADIUS, Math.max(headY, tailY ?? headY));
-    const direction = p.scratchLength < 0 ? "←" : p.scratchLength > 0 ? "→" : "◆";
+    const scratch = isWdsScratchType(note.type);
+    const scratchDirection = getWdsScratchDirection(p);
+    const direction = scratchDirection === "left" ? "←" : scratchDirection === "right" ? "→" : "↔";
     return (
         <g
             className={style.note}
             data-note-id={preview ? undefined : note.id}
             data-note-type={note.type}
+            data-scratch-direction={scratch ? scratchDirection : undefined}
             data-selected={selected || undefined}
             role={preview ? undefined : "button"}
             tabIndex={preview ? undefined : 0}
@@ -222,38 +233,44 @@ function NoteGlyph({
                     <rect
                         x={tailX} y={tailY - 6} width={tailWidth} height={12} rx={2}
                         fill={color} stroke={stroke} strokeWidth={selected ? 2 : 1}
-                        strokeDasharray={note.type >= 1100 ? "3 2" : undefined}
                     />
                     <text x={tailX + tailWidth / 2} y={tailY + 4} className={style.noteText}>
-                        {p.gimmick === "JumpScratch" || p.scratchLength !== 0 ? direction : "━"}
+                        {scratch ? direction : "━"}
                     </text>
                 </g>
             )}
             {headVisible && (
                 <g data-note-part="head">
-                    {note.type === 900 ? (
+                    {sound ? (
                         <path
-                            d={`M ${x} ${headY} L ${x + width / 2} ${headY - 9} L ${x + width} ${headY} L ${x + width / 2} ${headY + 9} Z`}
+                            d={`M ${x + width / 2} ${headY - 10} l 3 7 l 7 3 l -7 3 l -3 7 l -3 -7 l -7 -3 l 7 -3 Z`}
                             fill={color} stroke={stroke} strokeWidth={selected ? 2 : 1}
                         />
                     ) : (
                         <rect
                             x={x} y={headY - 7} width={width} height={14}
-                            rx={note.type === 30 || note.type === 31 ? 7 : 2}
-                            fill={tailY !== null ? headColor : color}
-                            fillOpacity={tailY !== null && p.holdHeadType === null ? 0.25 : 1}
-                            stroke={stroke} strokeWidth={selected ? 2 : 1}
-                            strokeDasharray={tailY !== null && p.holdHeadType === null ? "3 2" : undefined}
+                            rx={2}
+                            fill={judge || headless ? "transparent" : hold ? headColor : color}
+                            stroke={headless && !selected && !hovered && !preview ? "transparent"
+                                : judge && !selected && !hovered ? color : stroke}
+                            strokeWidth={selected ? 2 : 1}
+                            strokeDasharray={headless ? "3 2" : undefined}
                         />
                     )}
-                    {(note.type === 30 || note.type === 31) && (
-                        <circle cx={x + 4} cy={headY} r={2} fill="#14532d" />
+                    {note.type === 50 && (
+                        <line x1={x + width * 0.25} x2={x + width * 0.75} y1={headY} y2={headY}
+                            stroke="#ffe168" strokeWidth={2} />
                     )}
-                    <text
-                        x={x + width / 2} y={headY + 3.5} className={style.noteText}
-                        textLength={label.length * 5.5 > width - 6 ? width - 6 : undefined}
-                        lengthAdjust="spacingAndGlyphs"
-                    >{label}</text>
+                    {scratch && !hold && (
+                        <text x={x + width / 2} y={headY - 11} className={style.scratchArrow}>{direction}</text>
+                    )}
+                    {!sound && !judge && !headless && !(scratch && !hold) && (
+                        <text
+                            x={x + width / 2} y={headY + 3.5} className={style.noteText}
+                            textLength={label.length * 5.5 > width - 6 ? width - 6 : undefined}
+                            lengthAdjust="spacingAndGlyphs"
+                        >{label}</text>
+                    )}
                     {note.annotation && (
                         <text x={x + 2} y={headY - 12} className={style.annotation}>
                             {note.annotation.length > 48 ? `${note.annotation.slice(0, 48)}…` : note.annotation}
@@ -265,7 +282,7 @@ function NoteGlyph({
     );
 }
 
-export default function SiriusLane({
+export default function WdsLane({
     chartData,
     setChartData,
     timeRange,
@@ -291,7 +308,7 @@ export default function SiriusLane({
     onDeleteMeasure,
     onError,
     onRequestVertical,
-}: SiriusLaneProps) {
+}: WdsLaneProps) {
     const { matchesKeyShortcut } = useAppSettings();
     const rootRef = useRef<HTMLDivElement>(null);
     const svgRef = useRef<SVGSVGElement>(null);
@@ -305,7 +322,7 @@ export default function SiriusLane({
     const [error, setError] = useState<string | null>(null);
     const [clickedBeat, setClickedBeat] = useState<number | null>(null);
     // Ignore a previous tool's draft immediately, before the cleanup effect runs.
-    const pending = editState.mode === "insert-sirius" && pendingDraft?.note.type === editState.siriusType
+    const pending = editState.mode === "insert-wds" && pendingDraft?.note.type === editState.wdsType
         ? pendingDraft : null;
     const isVertical = orientation === "vertical";
     const canEdit = isVertical && !isPlaybackFrozen && editState.mode !== "browse";
@@ -328,9 +345,9 @@ export default function SiriusLane({
     // All read adapters are protected too: invalid imported data is an inline error.
     const collected = useMemo(() => {
         try {
-            return { notes: collectSiriusNotes(chartData, defaultBpm), error: null };
+            return { notes: collectWdsNotes(chartData, defaultBpm), error: null };
         } catch (reason) {
-            return { notes: [] as CollectedSiriusNote[], error: errorMessage(reason) };
+            return { notes: [] as CollectedWdsNote[], error: errorMessage(reason) };
         }
     }, [chartData, defaultBpm]);
 
@@ -367,7 +384,7 @@ export default function SiriusLane({
         }
     }
 
-    // Changing Sirius type is also a tool change, even inside insert-sirius mode.
+    // Changing WDS type is also a tool change, even inside insert-wds mode.
     useEffect(() => {
         let cancelled = false;
         queueMicrotask(() => {
@@ -383,7 +400,7 @@ export default function SiriusLane({
             }
         });
         return () => { cancelled = true; };
-    }, [editState.mode, editState.siriusType, isPlaybackFrozen, orientation, laneId]);
+    }, [editState.mode, editState.wdsType, isPlaybackFrozen, orientation, laneId]);
 
     const snapTime = !isPlaybackFrozen && isVertical ? cursor?.time ?? null : null;
     useEffect(() => {
@@ -397,7 +414,7 @@ export default function SiriusLane({
             return { notes, error: collected.error };
         }
         try {
-            const beatToTime = (beat: number) => siriusBeatToTime(chartData, beat, defaultBpm);
+            const beatToTime = (beat: number) => wdsBeatToTime(chartData, beat, defaultBpm);
             const activeDrag = drag?.moved && drag.base === chartData ? drag : null;
             const movingIds = new Set(activeDrag?.ids);
             for (const source of collected.notes) {
@@ -411,7 +428,7 @@ export default function SiriusLane({
                         time: beatToTime(beat), endTime: tailBeat === null ? null : beatToTime(tailBeat),
                         note: {
                             ...source.note,
-                            sirius: { ...source.note.sirius!, lane: source.note.sirius!.lane + activeDrag.laneDelta },
+                            wds: { ...source.note.wds!, lane: source.note.wds!.lane + activeDrag.laneDelta },
                         },
                     };
                     invalid = beat < 0 || (tailBeat !== null && tailBeat <= beat);
@@ -434,9 +451,9 @@ export default function SiriusLane({
             return { ticks, notes: paintedNotes.notes, selectedBand, error: paintedNotes.error };
         }
         try {
-            const beatToTime = (beat: number) => siriusBeatToTime(chartData, beat, defaultBpm);
-            const low = Math.max(0, Math.floor(siriusTimeToBeat(chartData, rangeStart - graphicalOffset, defaultBpm)));
-            const high = Math.max(0, Math.ceil(siriusTimeToBeat(chartData, rangeEnd - graphicalOffset, defaultBpm)));
+            const beatToTime = (beat: number) => wdsBeatToTime(chartData, beat, defaultBpm);
+            const low = Math.max(0, Math.floor(wdsTimeToBeat(chartData, rangeStart - graphicalOffset, defaultBpm)));
+            const high = Math.max(0, Math.ceil(wdsTimeToBeat(chartData, rangeEnd - graphicalOffset, defaultBpm)));
             if (!Number.isSafeInteger(low) || !Number.isSafeInteger(high)) throw new Error("时间轴拍数超出可表示范围。");
             // Bound SVG work by the viewport, including at very wide zoom levels.
             const majorStride = Math.max(1, Math.ceil((high - low) / Math.max(1, viewHeight / 18)));
@@ -470,8 +487,8 @@ export default function SiriusLane({
         let preview: PaintedNote | null = null;
         if (isPlaybackFrozen || !isVertical || scene.error) return { preview, error: null };
         try {
-            const beatToTime = (beat: number) => siriusBeatToTime(chartData, beat, defaultBpm);
-            const activePending = editState.mode === "insert-sirius" ? pending : null;
+            const beatToTime = (beat: number) => wdsBeatToTime(chartData, beat, defaultBpm);
+            const activePending = editState.mode === "insert-wds" ? pending : null;
             if (activePending) {
                 const tailBeat = cursor?.beat ?? activePending.beat + 1 / subdivision;
                 preview = paintNote({
@@ -479,9 +496,9 @@ export default function SiriusLane({
                     time: beatToTime(activePending.beat), endTime: beatToTime(tailBeat),
                     measureIndex: Math.floor(activePending.beat), segmentIndex: -1, localMeasureIndex: -1,
                 }, timeToY, tailBeat <= activePending.beat);
-            } else if (editState.mode === "insert-sirius" && cursor && cursor.lane >= 1 && cursor.lane <= SIRIUS_LANE_COUNT) {
+            } else if (editState.mode === "insert-wds" && cursor && cursor.lane >= 1 && cursor.lane <= WDS_LANE_COUNT) {
                 preview = paintNote({
-                    note: { id: "preview", type: editState.siriusType, sirius: { ...editState.siriusProperties, lane: cursor.lane } },
+                    note: { id: "preview", type: editState.wdsType, wds: { ...editState.wdsProperties, lane: cursor.lane } },
                     beat: cursor.beat, tailBeat: null, time: cursor.time, endTime: null,
                     measureIndex: Math.floor(cursor.beat), segmentIndex: -1, localMeasureIndex: -1,
                 }, timeToY, cursor.beat < 0);
@@ -491,16 +508,16 @@ export default function SiriusLane({
             return { preview: null, error: errorMessage(reason) };
         }
     }, [chartData, defaultBpm, scene.error, subdivision, timeToY, pending, cursor, editState.mode,
-        editState.siriusType, editState.siriusProperties, isPlaybackFrozen, isVertical]);
+        editState.wdsType, editState.wdsProperties, isPlaybackFrozen, isVertical]);
 
     function pointerAt(clientX: number, clientY: number, divisions = subdivision): Cursor {
         const rect = svgRef.current?.getBoundingClientRect();
-        if (!rect || !rect.width || !rect.height) throw new Error("Sirius 画布尺寸不可用");
+        if (!rect || !rect.width || !rect.height) throw new Error("WDS 画布尺寸不可用");
         const x = (clientX - rect.left) * WIDTH / rect.width;
         const y = (clientY - rect.top) * viewHeight / rect.height;
         const time = rangeStart + (1 - y / viewHeight) * span - graphicalOffset;
-        const beat = Math.round(siriusTimeToBeat(chartData, time, defaultBpm) * divisions) / divisions;
-        return { x, y, beat, time: siriusBeatToTime(chartData, beat, defaultBpm), lane: Math.floor((x - GUTTER) / COLUMN) + 1 };
+        const beat = Math.round(wdsTimeToBeat(chartData, time, defaultBpm) * divisions) / divisions;
+        return { x, y, beat, time: wdsBeatToTime(chartData, beat, defaultBpm), lane: Math.floor((x - GUTTER) / COLUMN) + 1 };
     }
 
     function hitsAt(point: Cursor): NoteHit[] {
@@ -510,11 +527,9 @@ export default function SiriusLane({
             const headDistance = Math.abs(point.y - note.headY);
             const tailDistance = note.tailY === null ? Infinity : Math.abs(point.y - note.tailY);
             const inTailSpan = point.x >= note.tailX && point.x <= note.tailX + note.tailWidth;
-            const diamondHit = note.record.note.type !== 900 ||
-                Math.abs(point.x - note.x - note.width / 2) / (note.width / 2) + headDistance / 9 <= 1;
             if (inTailSpan && tailDistance <= NOTE_RADIUS && (!inHeadSpan || tailDistance < headDistance)) {
                 hits.push({ note, part: "tail", distance: tailDistance });
-            } else if (inHeadSpan && headDistance <= NOTE_RADIUS && diamondHit) {
+            } else if (inHeadSpan && headDistance <= NOTE_RADIUS) {
                 hits.push({ note, part: "head", distance: headDistance });
             } else if (inTailSpan && tailDistance <= NOTE_RADIUS) {
                 hits.push({ note, part: "tail", distance: tailDistance });
@@ -576,7 +591,7 @@ export default function SiriusLane({
                 return;
             }
             commit(
-                () => insertSiriusNote(chartData, pending.note, pending.beat, point.beat, defaultBpm),
+                () => insertWdsNote(chartData, pending.note, pending.beat, point.beat, defaultBpm),
                 () => {
                     setEditState((previous) => ({ ...previous, selectedIds: new Set([pending.note.id]) }));
                     setPending(null);
@@ -585,23 +600,23 @@ export default function SiriusLane({
             return;
         }
         const note: ChartNote = {
-            id: generateNoteId(), type: editState.siriusType,
-            sirius: { ...editState.siriusProperties, lane: point.lane },
+            id: generateNoteId(), type: editState.wdsType,
+            wds: { ...editState.wdsProperties, lane: point.lane },
         };
-        if (!getSiriusTailSpan(note.sirius!)) {
+        if (!getWdsScratchSpan(note.wds!)) {
             reportError("音符宽度或 Scratch 尾部超出 1–12 列；请更换位置或调整属性。");
             return;
         }
-        if (isSiriusHoldType(note.type)) {
+        if (isWdsHoldType(note.type)) {
             try {
                 // Validate the entire captured draft through the adapter before arming it.
-                insertSiriusNote(chartData, note, point.beat, point.beat + 1 / subdivision, defaultBpm);
+                insertWdsNote(chartData, note, point.beat, point.beat + 1 / subdivision, defaultBpm);
                 setPending({ note, beat: point.beat });
                 setError(null);
             } catch (reason) { reportError(reason); }
         } else {
             commit(
-                () => insertSiriusNote(chartData, note, point.beat, null, defaultBpm),
+                () => insertWdsNote(chartData, note, point.beat, null, defaultBpm),
                 () => setEditState((previous) => ({ ...previous, selectedIds: new Set([note.id]) })),
             );
         }
@@ -609,7 +624,7 @@ export default function SiriusLane({
 
     function deleteIds(ids: string[]) {
         if (!ids.length) return;
-        commit(() => removeSiriusNotes(chartData, ids), () => {
+        commit(() => removeWdsNotes(chartData, ids), () => {
             const removed = new Set(ids);
             setEditState((previous) => ({ ...previous, selectedIds: new Set([...previous.selectedIds].filter((id) => !removed.has(id))) }));
             if (hoverId && removed.has(hoverId)) setHoverId(null);
@@ -620,11 +635,11 @@ export default function SiriusLane({
         if (!editState.clipboard.length) return;
         let insertedIds: string[] = [];
         commit(() => {
-            if (editState.clipboard.some((note) => !note.sirius)) throw new Error("剪贴板包含非 Sirius 音符。");
-            const originLane = editState.clipboard.reduce((minimum, note) => Math.min(minimum, note.sirius!.lane), Infinity);
-            const next = pasteSiriusNotes(chartData, editState.clipboard, point.beat, point.lane - originLane, defaultBpm);
+            if (editState.clipboard.some((note) => !note.wds)) throw new Error("剪贴板包含非 WDS 音符。");
+            const originLane = editState.clipboard.reduce((minimum, note) => Math.min(minimum, note.wds!.lane), Infinity);
+            const next = pasteWdsNotes(chartData, editState.clipboard, point.beat, point.lane - originLane, defaultBpm);
             const previousIds = new Set(collected.notes.map(({ note }) => note.id));
-            insertedIds = collectSiriusNotes(next, defaultBpm).filter(({ note }) => !previousIds.has(note.id)).map(({ note }) => note.id);
+            insertedIds = collectWdsNotes(next, defaultBpm).filter(({ note }) => !previousIds.has(note.id)).map(({ note }) => note.id);
             return next;
         }, () => {
             setEditState((previous) => ({ ...previous, selectedIds: new Set(insertedIds) }));
@@ -636,7 +651,7 @@ export default function SiriusLane({
         if (!canEdit) return;
         const annotation = window.prompt("音符标注（留空可清除）", note.annotation ?? "");
         if (annotation === null || annotation === (note.annotation ?? "")) return;
-        commit(() => updateSiriusNotes(chartData, [note.id], { annotation: annotation || undefined }, defaultBpm));
+        commit(() => updateWdsNotes(chartData, [note.id], { annotation: annotation || undefined }, defaultBpm));
     }
 
     function selectNote(hit: NoteHit, additive: boolean) {
@@ -687,7 +702,7 @@ export default function SiriusLane({
             if (!canEdit) return;
             if (editState.mode === "annotate") {
                 if (hit) { selectNote(hit, false); annotate(hit.note.record.note); }
-            } else if (editState.mode === "insert-sirius") {
+            } else if (editState.mode === "insert-wds") {
                 // The second hold click specifies time only, including over the ruler.
                 if (pending || point.x >= GUTTER) insertAt(point);
             } else if (editState.mode === "paste" && point.x >= GUTTER) {
@@ -703,7 +718,7 @@ export default function SiriusLane({
         const dy = clientY - active.startClientY;
         const moved = active.moved || Math.hypot(dx, dy) >= 3;
         if (!moved) return active;
-        const beat = Math.round(siriusTimeToBeat(active.base,
+        const beat = Math.round(wdsTimeToBeat(active.base,
             active.startTime - dy * active.timePerPixel, active.defaultBpm) * active.subdivision) / active.subdivision;
         const lane = Math.floor((active.start.x + dx * active.xPerPixel - GUTTER) / COLUMN) + 1;
         const next = {
@@ -737,8 +752,8 @@ export default function SiriusLane({
             const next = updateDrag(event.clientX, event.clientY);
             if (next?.moved && (next.deltaBeat !== 0 || next.laneDelta !== 0)) {
                 commit(() => next.kind === "move"
-                    ? moveSiriusNotes(next.base, next.ids, next.deltaBeat, next.laneDelta, defaultBpm)
-                    : updateSiriusNotes(next.base, next.ids, (note) => {
+                    ? moveWdsNotes(next.base, next.ids, next.deltaBeat, next.laneDelta, defaultBpm)
+                    : updateWdsNotes(next.base, next.ids, (note) => {
                         if (!note.tail) throw new Error("该音符没有可调整的尾部。");
                         const tail = normalizeFraction({
                             a: note.tail.a * next.subdivision + Math.round(next.deltaBeat * next.subdivision) * note.tail.b,
@@ -754,11 +769,11 @@ export default function SiriusLane({
     }
 
     function keyboardTarget(): Cursor {
-        if (cursor && cursor.lane >= 1 && cursor.lane <= SIRIUS_LANE_COUNT) return cursor;
-        const beat = Math.max(0, clickedBeat ?? Math.round(siriusTimeToBeat(chartData,
+        if (cursor && cursor.lane >= 1 && cursor.lane <= WDS_LANE_COUNT) return cursor;
+        const beat = Math.max(0, clickedBeat ?? Math.round(wdsTimeToBeat(chartData,
             (rangeStart + rangeEnd) / 2 - graphicalOffset, defaultBpm) * subdivision) / subdivision);
-        const time = siriusBeatToTime(chartData, beat, defaultBpm);
-        return { beat, time, lane: editState.siriusProperties.lane, x: GUTTER, y: timeToY(time) };
+        const time = wdsBeatToTime(chartData, beat, defaultBpm);
+        return { beat, time, lane: editState.wdsProperties.lane, x: GUTTER, y: timeToY(time) };
     }
 
     function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -774,12 +789,12 @@ export default function SiriusLane({
             for (const item of MODE_SHORTCUTS) {
                 if (!matchesKeyShortcut(item.action, event.nativeEvent)) continue;
                 consume(); cancelDrag(); setPending(null);
-                const properties = item.type === undefined ? null : defaultSiriusProperties(item.type);
+                const properties = item.type === undefined ? null : defaultWdsProperties(item.type);
                 setEditState((previous) => ({
                     ...previous, mode: item.mode, lnHeadTime: null,
                     ...(properties && item.type !== undefined ? {
-                        siriusType: item.type,
-                        siriusProperties: { ...properties, lane: previous.siriusProperties.lane, width: previous.siriusProperties.width },
+                        wdsType: item.type,
+                        wdsProperties: { ...properties, lane: previous.wdsProperties.lane, width: previous.wdsProperties.width },
                     } : {}),
                 }));
                 return;
@@ -809,7 +824,7 @@ export default function SiriusLane({
             if (matchesKeyShortcut("note.copy", event.nativeEvent)) {
                 consume();
                 if (ids.length) {
-                    const clipboard = copySiriusNotes(chartData, ids);
+                    const clipboard = copyWdsNotes(chartData, ids);
                     setEditState((previous) => ({ ...previous, clipboard }));
                 }
                 return;
@@ -837,8 +852,8 @@ export default function SiriusLane({
                 if (insertMeasure) onInsertMeasure?.(ref ?? undefined);
                 else onDeleteMeasure?.(ref ?? undefined);
             } else if (cut && ids.length) {
-                const clipboard = copySiriusNotes(chartData, ids);
-                commit(() => removeSiriusNotes(chartData, ids), () => {
+                const clipboard = copyWdsNotes(chartData, ids);
+                commit(() => removeWdsNotes(chartData, ids), () => {
                     setEditState((previous) => ({ ...previous, clipboard, selectedIds: new Set() }));
                     setHoverId(null);
                 });
@@ -860,13 +875,13 @@ export default function SiriusLane({
             className={style.root}
             style={{ width: isVertical ? WIDTH : undefined, height: isVertical ? viewHeight : height }}
             data-lane="true"
-            data-chart-kind="sirius"
+            data-chart-kind="wds"
             data-lane-id={laneId}
             data-orientation={orientation}
             data-frozen={isPlaybackFrozen || undefined}
             data-mode={editState.mode}
             role="group"
-            aria-label="Sirius 十二列制谱画布"
+            aria-label="WDS 十二列制谱画布"
             aria-describedby={helpId}
             tabIndex={0}
             onKeyDown={handleKeyDown}
@@ -881,7 +896,7 @@ export default function SiriusLane({
             </span>
             {!isPlaybackFrozen && !isVertical && (
                 <div className={style.horizontalMessage}>
-                    <strong>Sirius · 十二列制谱</strong>
+                    <strong>WDS · 十二列制谱</strong>
                     <span>请切换到纵向时间轴，以编辑列位置、宽度与长条。</span>
                     <button type="button" onClick={onRequestVertical} disabled={!onRequestVertical}>切换纵向制谱</button>
                 </div>
@@ -892,7 +907,7 @@ export default function SiriusLane({
                         ref={svgRef}
                         className={style.canvas}
                         width={WIDTH} height={viewHeight} viewBox={`0 0 ${WIDTH} ${viewHeight}`}
-                        role="group" aria-label="Sirius 音符和节拍网格"
+                        role="group" aria-label="WDS 音符和节拍网格"
                         onPointerDown={handlePointerDown}
                         onPointerMove={handlePointerMove}
                         onPointerUp={handlePointerUp}
@@ -912,7 +927,7 @@ export default function SiriusLane({
                     >
                         <rect width={WIDTH} height={viewHeight} fill="#0f172a" />
                         <rect width={GUTTER} height={viewHeight} fill="#172033" />
-                        {Array.from({ length: SIRIUS_LANE_COUNT }, (_, index) => (
+                        {Array.from({ length: WDS_LANE_COUNT }, (_, index) => (
                             <g key={index} aria-hidden="true">
                                 {index % 2 === 1 && <rect x={GUTTER + index * COLUMN} width={COLUMN} height={viewHeight} fill="#162035" />}
                                 <line x1={GUTTER + index * COLUMN} x2={GUTTER + index * COLUMN} y1={0} y2={viewHeight} stroke={index % 3 === 0 ? "#475569" : "#273449"} />
@@ -944,7 +959,7 @@ export default function SiriusLane({
                         {cursor && (
                             <g pointerEvents="none" aria-hidden="true">
                                 <line x1={0} x2={WIDTH} y1={timeToY(cursor.time)} y2={timeToY(cursor.time)} stroke="#38bdf8" strokeDasharray="4 3" />
-                                {cursor.lane >= 1 && cursor.lane <= SIRIUS_LANE_COUNT && <rect x={GUTTER + (cursor.lane - 1) * COLUMN} y={timeToY(cursor.time) - 10} width={COLUMN} height={20} fill="none" stroke="#38bdf8" />}
+                                {cursor.lane >= 1 && cursor.lane <= WDS_LANE_COUNT && <rect x={GUTTER + (cursor.lane - 1) * COLUMN} y={timeToY(cursor.time) - 10} width={COLUMN} height={20} fill="none" stroke="#38bdf8" />}
                             </g>
                         )}
                         {playheadY !== null && playheadY >= 0 && playheadY <= viewHeight && (
@@ -953,11 +968,11 @@ export default function SiriusLane({
                     </svg>
                     <div className={style.columnLabels} aria-hidden="true">
                         <span>拍 / BPM</span>
-                        {Array.from({ length: SIRIUS_LANE_COUNT }, (_, index) => <span key={index}>{index + 1}</span>)}
+                        {Array.from({ length: WDS_LANE_COUNT }, (_, index) => <span key={index}>{index + 1}</span>)}
                     </div>
                     <div className={style.status} aria-live="polite">
                         <div>
-                            <strong>{editState.mode === "browse" ? "只读浏览" : pending ? "选择长条尾部 · Esc 取消" : "Sirius"}</strong>
+                            <strong>{editState.mode === "browse" ? "只读浏览" : pending ? "选择长条尾部 · Esc 取消" : "WDS"}</strong>
                             <span>1/{subdivision} 拍</span>
                             {selectedBeat !== null && <span>选中第 {selectedBeat + 1} 拍 · {bpmAt(selectedBeat)} BPM</span>}
                             {cursor && <span>光标 {(cursor.beat + 1).toFixed(3)} 拍 · 列 {cursor.lane >= 1 && cursor.lane <= 12 ? cursor.lane : "—"}</span>}

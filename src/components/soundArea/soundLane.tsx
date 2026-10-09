@@ -20,14 +20,14 @@ import {
     resolveNoteEditorKind,
 } from "@/interface/audioData";
 import NoteLane from "./noteArea/noteLane";
-import SiriusLane from "./noteArea/siriusLane";
+import WdsLane from "./noteArea/wdsLane";
 import {
     ChartNote,
     ChartSegment,
     ChartMeasure,
     ChartMeasureRef,
     NoteLaneData,
-    SiriusNoteProperties,
+    WdsNoteProperties,
 } from "./noteArea/chartTypes";
 import {
     defaultNoteEditState,
@@ -44,22 +44,22 @@ import {
     deleteMeasureAtRef,
     locateMeasureByRef,
     stripChartDataTimes,
-    copySiriusNotes,
-    removeSiriusNotes,
-    updateSiriusNotes,
+    copyWdsNotes,
+    removeWdsNotes,
+    updateWdsNotes,
 } from "./noteArea/chartAdapter";
 import {
-    defaultSiriusProperties,
-    SIRIUS_LANE_COUNT,
-} from "./noteArea/siriusTypes";
-import { convertToSirius } from "@/lib/siriusExport";
+    defaultWdsProperties,
+    WDS_LANE_COUNT,
+} from "./noteArea/wdsTypes";
+import { convertToWds } from "@/lib/wdsExport";
 import { convertToMalody } from "@/lib/malodyExport";
 import { convertToSus } from "@/lib/susExport";
 import type { CSSProperties, SetStateAction } from "react";
 import type { TimelineOrientation } from "../timelineGeometry";
 
 const MAX_UNDO = 50;
-const SIRIUS_READONLY_MESSAGE = "制谱器当前为浏览模式，请先切换到编辑模式";
+const WDS_READONLY_MESSAGE = "制谱器当前为浏览模式，请先切换到编辑模式";
 type PlaybackRenderMode = "idle" | "full" | "limited" | "frozen";
 
 interface _prop {
@@ -114,9 +114,9 @@ function laneMetadataJson(lane: NoteLaneData): string {
     return comparableJson({
         ...metadata,
         chartKind: lane.chartKind ?? "rhythm",
-        siriusOffset: lane.siriusOffset ?? 0,
+        wdsOffset: lane.wdsOffset ?? 0,
         isFolded: lane.isFolded ?? false,
-        dataVersion: lane.dataVersion ?? (lane.chartKind === "sirius" ? 4 : 3),
+        dataVersion: lane.dataVersion ?? (lane.chartKind === "wds" ? 4 : 3),
         startTime: lane.startTime ?? null,
         endTime: lane.endTime ?? null,
     });
@@ -126,10 +126,10 @@ function normalizeLaneEditState(
     lane: NoteLaneData,
     state = defaultNoteEditState(lane.defaultBpm),
 ): NoteEditState {
-    if (lane.chartKind === "sirius") {
-        const mode = ["browse", "select", "paste", "annotate", "insert-sirius"].includes(state.mode)
+    if (lane.chartKind === "wds") {
+        const mode = ["browse", "select", "paste", "annotate", "insert-wds"].includes(state.mode)
             ? state.mode
-            : "insert-sirius";
+            : "insert-wds";
         return {
             ...state,
             mode,
@@ -137,7 +137,7 @@ function normalizeLaneEditState(
             lnHeadTime: mode === state.mode ? state.lnHeadTime : null,
         };
     }
-    return state.mode === "insert-sirius"
+    return state.mode === "insert-wds"
         ? { ...state, mode: "insert-strong", lnHeadTime: null }
         : state;
 }
@@ -350,7 +350,7 @@ export default function SoundLane(prop: _prop) {
         });
     }, [noteLanes, prop]);
 
-    const handleAddNoteLane = useCallback((kind: "rhythm" | "sirius", reuseExisting = false) => {
+    const handleAddNoteLane = useCallback((kind: "rhythm" | "wds", reuseExisting = false) => {
         try {
             const nextLane = defaultNoteLaneData(undefined, kind);
             const activeLane = noteLanes.find((lane) => lane.id === resolvedActiveLaneId);
@@ -365,7 +365,7 @@ export default function SoundLane(prop: _prop) {
             if (error) throw new Error(error);
             const nextEditState: NoteEditState = {
                 ...defaultNoteEditState(nextLane.defaultBpm),
-                mode: kind === "sirius" ? "insert-sirius" : "browse",
+                mode: kind === "wds" ? "insert-wds" : "browse",
             };
             prop.setSoundLaneState(prop.index, (prev) => {
                 if (reuseExisting) {
@@ -383,7 +383,7 @@ export default function SoundLane(prop: _prop) {
                 ...prev,
                 [nextLane.id]: nextEditState,
             }));
-            if (kind === "sirius") prop.onRequestVertical?.();
+            if (kind === "wds") prop.onRequestVertical?.();
         } catch (error) {
             if (resolvedActiveLaneId) {
                 setLaneError(resolvedActiveLaneId, error instanceof Error ? error.message : "创建谱面失败");
@@ -392,13 +392,13 @@ export default function SoundLane(prop: _prop) {
     }, [noteLanes, prop, resolvedActiveLaneId, setLaneError]);
 
     const handleToggleNoteEditor = useCallback(() => {
-        const kind = noteEditorKind === "sirius" ? "rhythm" : "sirius";
+        const kind = noteEditorKind === "wds" ? "rhythm" : "wds";
         const candidates = noteLanes.filter((lane) => (lane.chartKind ?? "rhythm") === kind);
         const existing = candidates.find((lane) => lane.id === prop.refSoundLaneState.previousNoteLaneId)
             ?? candidates[0];
         if (existing) {
             selectNoteLane(existing.id, true);
-            if (kind === "sirius") prop.onRequestVertical?.();
+            if (kind === "wds") prop.onRequestVertical?.();
         } else {
             // Recheck in the updater so queued creations reuse the same chart.
             handleAddNoteLane(kind, true);
@@ -518,7 +518,7 @@ export default function SoundLane(prop: _prop) {
     // read-only boundary, including callbacks invoked without a visible button.
     const createLaneActions = useCallback((lane: NoteLaneData) => {
         const editState = normalizeLaneEditState(lane, laneEditStateMap[lane.id]);
-        const isReadOnly = lane.chartKind === "sirius" && editState.mode === "browse";
+        const isReadOnly = lane.chartKind === "wds" && editState.mode === "browse";
         const reportError = (error: unknown): string => {
             const message = error instanceof Error ? error.message : "谱面操作失败";
             setLaneError(lane.id, message);
@@ -526,7 +526,7 @@ export default function SoundLane(prop: _prop) {
         };
         const ensureEditable = () => {
             if (!isReadOnly) return true;
-            setLaneError(lane.id, SIRIUS_READONLY_MESSAGE);
+            setLaneError(lane.id, WDS_READONLY_MESSAGE);
             return false;
         };
         const pushUndo = (before: ChartSegment[]) => {
@@ -556,7 +556,7 @@ export default function SoundLane(prop: _prop) {
             }
         };
         const setLaneMetadata = (
-            changes: Partial<Pick<NoteLaneData, "defaultBpm" | "division" | "siriusOffset">>,
+            changes: Partial<Pick<NoteLaneData, "defaultBpm" | "division" | "wdsOffset">>,
         ) => {
             if (!ensureEditable()) return false;
             try {
@@ -627,7 +627,7 @@ export default function SoundLane(prop: _prop) {
         );
         if (!activeLane) return null;
 
-        const isSirius = activeLane.chartKind === "sirius";
+        const isWds = activeLane.chartKind === "wds";
         const {
             editState, isReadOnly, ensureEditable, reportError, pushUndo,
             setChartData, setLaneMetadata, onUndo, onRedo,
@@ -651,8 +651,8 @@ export default function SoundLane(prop: _prop) {
         const selectedNote = editState.selectedIds.size === 1 && selectedNotes.length === 1
             ? selectedNotes[0]
             : null;
-        const copySelection = () => isSirius
-            ? copySiriusNotes(activeLane.chartData, [...editState.selectedIds])
+        const copySelection = () => isWds
+            ? copyWdsNotes(activeLane.chartData, [...editState.selectedIds])
             : structuredClone(selectedNotes);
         const handleCopy = () => {
             if (!editState.selectedIds.size) return;
@@ -667,8 +667,8 @@ export default function SoundLane(prop: _prop) {
             if (!ensureEditable() || !editState.selectedIds.size) return;
             try {
                 const clipboard = cut ? copySelection() : editState.clipboard;
-                const next = isSirius
-                    ? removeSiriusNotes(activeLane.chartData, [...editState.selectedIds])
+                const next = isWds
+                    ? removeWdsNotes(activeLane.chartData, [...editState.selectedIds])
                     : removeTrailingEmptyMeasures(activeLane.chartData.map((seg) => ({
                         ...seg,
                         measures: seg.measures.map((measure) => ({
@@ -693,7 +693,7 @@ export default function SoundLane(prop: _prop) {
                 chartData: stripChartDataTimes(activeLane.chartData),
             }, null, 2);
             if (text.trim() === currentJson) return null;
-            if (!ensureEditable()) return SIRIUS_READONLY_MESSAGE;
+            if (!ensureEditable()) return WDS_READONLY_MESSAGE;
             try {
                 const result = parseImportedNoteLaneText(text, activeLane);
                 if ("error" in result) throw new Error(result.error);
@@ -714,7 +714,7 @@ export default function SoundLane(prop: _prop) {
                         ...prev,
                         [activeLane.id]: {
                             ...defaultNoteEditState(result.lane.defaultBpm),
-                            mode: result.lane.chartKind === "sirius" ? "insert-sirius" : "browse",
+                            mode: result.lane.chartKind === "wds" ? "insert-wds" : "browse",
                         },
                     }));
                 }
@@ -756,7 +756,7 @@ export default function SoundLane(prop: _prop) {
             currentBpm: activeLane.defaultBpm,
             bpmLocked: isReadOnly,
             setCurrentBpm: (bpm: number) => {
-                const safeBpm = isSirius ? bpm : Math.max(1, Math.floor(bpm));
+                const safeBpm = isWds ? bpm : Math.max(1, Math.floor(bpm));
                 if (!setLaneMetadata({ defaultBpm: safeBpm })) return;
                 setLaneEditState(activeLane.id, (prev) => ({
                     ...prev,
@@ -769,19 +769,19 @@ export default function SoundLane(prop: _prop) {
                 if (!ensureEditable()) return;
                 try {
                     if (!Number.isFinite(bpm) || bpm <= 0) throw new Error("BPM 必须是正有限数");
-                    const safeBpm = isSirius ? bpm : Math.max(1, Math.floor(bpm));
+                    const safeBpm = isWds ? bpm : Math.max(1, Math.floor(bpm));
                     const activeNext = retimeSingleMeasureByBpm(
                         activeLane.chartData, selectedMeasureRef, safeBpm,
                     );
                     if (!activeNext) return;
-                    if (isSirius) {
+                    if (isWds) {
                         setChartData(activeNext);
                         return;
                     }
                     // Preserve rhythm-grid synchronization, without touching
-                    // any independent (potentially read-only) Sirius chart.
+                    // any independent (potentially read-only) WDS chart.
                     const nextLanes = noteLanes.map((lane) => {
-                        if (lane.chartKind === "sirius") return lane;
+                        if (lane.chartKind === "wds") return lane;
                         const next = lane.id === activeLane.id ? activeNext : retimeSingleMeasureByBpm(
                             lane.chartData, selectedMeasureRef, safeBpm,
                         );
@@ -816,7 +816,7 @@ export default function SoundLane(prop: _prop) {
             onRedo,
             onClearLane: () => {
                 if (!ensureEditable()) return;
-                if (isSirius) {
+                if (isWds) {
                     if (!setChartData([])) return;
                 } else {
                     updateLaneData(activeLane.id, (prevLane) => ({
@@ -833,11 +833,11 @@ export default function SoundLane(prop: _prop) {
             },
             onImportText: handleImportText,
             exportText: JSON.stringify(exportTextPayload, null, 2),
-            malodyExportText: isSirius ? "" : convertToMalody(
+            malodyExportText: isWds ? "" : convertToMalody(
                 activeLane,
                 audioData?.file ?? "unknown",
             ),
-            susExportText: isSirius ? "" : convertToSus(
+            susExportText: isWds ? "" : convertToSus(
                 activeLane,
                 audioData?.file ?? "unknown",
             ),
@@ -860,22 +860,22 @@ export default function SoundLane(prop: _prop) {
                 return JSON.stringify(strippedLane, null, 2);
             },
             onEditSave: handleImportText,
-            sirius: isSirius ? {
-                type: editState.siriusType,
-                properties: editState.siriusProperties,
+            wds: isWds ? {
+                type: editState.wdsType,
+                properties: editState.wdsProperties,
                 onTypeChange: (type: number) => {
                     try {
-                        const defaults = defaultSiriusProperties(type);
+                        const defaults = defaultWdsProperties(type);
                         setLaneEditState(activeLane.id, (prev) => {
-                            const lane = Number.isInteger(prev.siriusProperties.lane)
-                                ? Math.max(1, Math.min(SIRIUS_LANE_COUNT, prev.siriusProperties.lane)) : 1;
-                            const width = Number.isInteger(prev.siriusProperties.width)
-                                ? Math.max(1, Math.min(SIRIUS_LANE_COUNT + 1 - lane, prev.siriusProperties.width)) : 1;
+                            const lane = Number.isInteger(prev.wdsProperties.lane)
+                                ? Math.max(1, Math.min(WDS_LANE_COUNT, prev.wdsProperties.lane)) : 1;
+                            const width = Number.isInteger(prev.wdsProperties.width)
+                                ? Math.max(1, Math.min(WDS_LANE_COUNT + 1 - lane, prev.wdsProperties.width)) : 1;
                             return {
                                 ...prev,
-                                mode: "insert-sirius",
-                                siriusType: type,
-                                siriusProperties: { ...defaults, lane, width },
+                                mode: "insert-wds",
+                                wdsType: type,
+                                wdsProperties: { ...defaults, lane, width },
                                 lnHeadTime: null,
                             };
                         });
@@ -883,34 +883,34 @@ export default function SoundLane(prop: _prop) {
                         reportError(error);
                     }
                 },
-                onPropertiesChange: (properties: SiriusNoteProperties) => {
+                onPropertiesChange: (properties: WdsNoteProperties) => {
                     setLaneEditState(activeLane.id, (prev) => ({
-                        ...prev, siriusProperties: { ...properties },
+                        ...prev, wdsProperties: { ...properties },
                     }));
                 },
                 selectedNote,
                 onUpdateSelected: (note: ChartNote) => {
                     if (!ensureEditable()) return;
                     try {
-                        if (!selectedNote || selectedNote.id !== note.id || !selectedNote.sirius) {
-                            throw new Error("请先选中一个 Sirius 音符");
+                        if (!selectedNote || selectedNote.id !== note.id || !selectedNote.wds) {
+                            throw new Error("请先选中一个 WDS 音符");
                         }
                         const merged = {
                             ...selectedNote,
                             ...note,
-                            sirius: { ...selectedNote.sirius, ...note.sirius },
+                            wds: { ...selectedNote.wds, ...note.wds },
                         };
-                        setChartData(updateSiriusNotes(
+                        setChartData(updateWdsNotes(
                             activeLane.chartData, [note.id], merged, activeLane.defaultBpm,
                         ));
                     } catch (error) {
                         reportError(error);
                     }
                 },
-                exportResult: convertToSirius(activeLane),
-                offset: activeLane.siriusOffset ?? 0,
+                exportResult: convertToWds(activeLane),
+                offset: activeLane.wdsOffset ?? 0,
                 setOffset: (seconds: number) => {
-                    setLaneMetadata({ siriusOffset: seconds });
+                    setLaneMetadata({ wdsOffset: seconds });
                 },
             } : undefined,
         };
@@ -1136,8 +1136,8 @@ export default function SoundLane(prop: _prop) {
                                 className={styles.noteEditorToggle}
                                 onClick={handleToggleNoteEditor}
                                 onMouseDown={(e) => e.stopPropagation()}
-                                aria-pressed={noteEditorKind === "sirius"}
-                                title={noteEditorKind === "sirius" ? "返回节奏记谱" : "切换到制谱器"}
+                                aria-pressed={noteEditorKind === "wds"}
+                                title={noteEditorKind === "wds" ? "返回节奏记谱" : "切换到 WDS 制谱器"}
                             >
                                 制谱器
                             </button>
@@ -1147,7 +1147,7 @@ export default function SoundLane(prop: _prop) {
                         )}
                         {activeNoteMenuProps && !allVisibleNoteLanesFolded && (
                             <NoteMenu
-                                key={`${resolvedActiveLaneId}:${!!activeNoteMenuProps.sirius}`}
+                                key={`${resolvedActiveLaneId}:${!!activeNoteMenuProps.wds}`}
                                 {...activeNoteMenuProps}
                                 onDeleteLane={() => {
                                     if (resolvedActiveLaneId) deleteNoteLane(resolvedActiveLaneId);
@@ -1162,7 +1162,7 @@ export default function SoundLane(prop: _prop) {
                                 editState, setChartData, setLaneMetadata,
                                 onUndo, onRedo, onInsertMeasure, onDeleteMeasure,
                             } = createLaneActions(lane);
-                            const LaneCanvas = lane.chartKind === "sirius" ? SiriusLane : NoteLane;
+                            const LaneCanvas = lane.chartKind === "wds" ? WdsLane : NoteLane;
                             const selectedMeasureRef =
                                 laneSelectedMeasureRefMap[lane.id] ?? null;
                             const handleSnapTimeChange =
@@ -1190,7 +1190,7 @@ export default function SoundLane(prop: _prop) {
                                         setBeatSubdivision={(division: number) =>
                                             setLaneMetadata({ division: Math.max(1, Math.floor(division)) })
                                         }
-                                        height={isVertical ? lane.chartKind === "sirius" ? 432 : 220 : 120}
+                                        height={isVertical ? lane.chartKind === "wds" ? 432 : 220 : 120}
                                         editState={editState}
                                         setEditState={(updater: SetStateAction<NoteEditState>) => {
                                             setLaneEditState(lane.id, (prev) =>

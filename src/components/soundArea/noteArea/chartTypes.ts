@@ -1,5 +1,5 @@
-import type { SiriusNoteProperties } from "./siriusTypes";
-export type { SiriusNoteProperties } from "./siriusTypes";
+import type { WdsNoteProperties } from "./wdsTypes";
+export type { WdsNoteProperties } from "./wdsTypes";
 
 export interface Fraction {
     a: number;
@@ -19,9 +19,9 @@ export interface ChartNote {
     body?: Fraction[];
     tail?: Fraction;
     annotation?: string;
-    /** Required for Sirius playable notes. head is local [0, 1); tail/body
+    /** Required for WDS notes. head is local [0, 1); tail/body
      * are musical beat offsets from the same owning beat, across BPM changes. */
-    sirius?: SiriusNoteProperties;
+    wds?: WdsNoteProperties;
 }
 
 export function isNoteBoundary(note: ChartNote): boolean {
@@ -61,9 +61,9 @@ export interface RawChartSegment {
 export interface NoteLaneData {
     id: string;
     /** Omitted on legacy rhythm charts; independent of audio and UI offsets. */
-    chartKind?: "rhythm" | "sirius";
-    /** User-explicit Sirius export time offset in seconds (default 0). */
-    siriusOffset?: number;
+    chartKind?: "rhythm" | "wds";
+    /** User-explicit WDS export time offset in seconds (default 0). */
+    wdsOffset?: number;
     division: number;
     defaultBpm: number;
     chartData: ChartSegment[];
@@ -72,6 +72,6 @@ export interface NoteLaneData {
     /** @deprecated — boundary markers are now stored as boundary notes in chartData */
     endTime?: number | null;
     isFolded?: boolean;
-    /** v2 uses boundary notes; v3 omits derived times; v4 supports Sirius. */
+    /** Internal storage marker; independent of the application release version. */
     dataVersion?: number;
 }

@@ -6,22 +6,22 @@ import { EditMode } from "../noteState";
 import { useAppSettings } from "@/components/appSettingsContext";
 import Image from "@/components/Image";
 import type { ChartNote } from "../chartTypes";
-import type { SiriusNoteProperties } from "../siriusTypes";
-import type { SiriusExportResult } from "@/lib/siriusExport";
-import SiriusNoteControls from "./siriusNoteControls";
+import type { WdsNoteProperties } from "../wdsTypes";
+import type { WdsExportResult } from "@/lib/wdsExport";
+import WdsNoteControls from "./wdsNoteControls";
 
 const cls = classNames.bind(style);
 
-type ExportFormat = "internal" | "malody" | "sus" | "sirius";
+type ExportFormat = "internal" | "malody" | "sus" | "wds";
 
-export interface SiriusMenuProps {
+export interface WdsMenuProps {
     type: number;
-    properties: SiriusNoteProperties;
+    properties: WdsNoteProperties;
     onTypeChange: (type: number) => void;
-    onPropertiesChange: (properties: SiriusNoteProperties) => void;
+    onPropertiesChange: (properties: WdsNoteProperties) => void;
     selectedNote: ChartNote | null;
     onUpdateSelected: (note: ChartNote) => void;
-    exportResult: SiriusExportResult;
+    exportResult: WdsExportResult;
     offset: number;
     setOffset: (seconds: number) => void;
 }
@@ -81,7 +81,7 @@ interface _p {
     onDeleteMeasure: () => void;
     onEditSave: (text: string) => string | null;
     getEditText: () => string;
-    sirius?: SiriusMenuProps;
+    wds?: WdsMenuProps;
 }
 
 interface ModeButtonProps {
@@ -143,13 +143,13 @@ export default function NoteMenu(p: _p) {
     const [editError, setEditError] = React.useState<string | null>(null);
     const [editOriginalText, setEditOriginalText] = React.useState("");
     const [copyStatus, setCopyStatus] = React.useState<{ text: string; message: string } | null>(null);
-    const offset = p.sirius?.offset ?? 0;
+    const offset = p.wds?.offset ?? 0;
     const [offsetDraft, setOffsetDraft] = React.useState({ value: offset, text: String(offset) });
     if (!Object.is(offsetDraft.value, offset)) {
         setOffsetDraft({ value: offset, text: String(offset) });
     }
     const exportPreviewRef = React.useRef<HTMLTextAreaElement>(null);
-    const readOnly = !!p.sirius && p.mode === "browse";
+    const readOnly = !!p.wds && p.mode === "browse";
 
     const mutate = (action: () => void) => {
         if (!readOnly) action();
@@ -167,9 +167,9 @@ export default function NoteMenu(p: _p) {
         setMeasureBpmInput(String(p.currentMeasureBpm));
     }, [p.currentMeasureBpm]);
 
-    const MODES: { mode: EditMode; label: string; title: string }[] = p.sirius ? [
+    const MODES: { mode: EditMode; label: string; title: string }[] = p.wds ? [
         { mode: "browse", label: "浏览", title: "浏览模式（只读）" },
-        { mode: "insert-sirius", label: "绘制", title: "绘制当前 Sirius 类型；长条两次点击起点和终点" },
+        { mode: "insert-wds", label: "绘制", title: "绘制当前 WDS 类型；长条两次点击起点和终点" },
         { mode: "select", label: "选中", title: "选中模式（可编辑及导入 JSON）" },
         { mode: "paste", label: "粘贴", title: `粘贴模式 (${getKeyboardShortcutLabel("note.paste") || "Ctrl+V"} 直接粘贴)` },
         { mode: "annotate", label: "标注", title: "标注模式" },
@@ -197,18 +197,18 @@ export default function NoteMenu(p: _p) {
         annotate: getKeyboardShortcutLabel("note.mode.annotate"),
     };
 
-    const activeExportFormat = p.sirius
-        ? (exportFormat === "internal" ? "internal" : "sirius")
-        : (exportFormat === "sirius" ? "internal" : exportFormat);
-    const offsetInvalid = !!p.sirius && (
+    const activeExportFormat = p.wds
+        ? (exportFormat === "internal" ? "internal" : "wds")
+        : (exportFormat === "wds" ? "internal" : exportFormat);
+    const offsetInvalid = !!p.wds && (
         offsetDraft.text.trim() === "" || !Number.isFinite(Number(offsetDraft.text))
     );
-    const exportError = activeExportFormat === "sirius"
-        ? p.sirius?.exportResult.error ?? (offsetInvalid ? "请输入有限的导出偏移秒数。" : null)
+    const exportError = activeExportFormat === "wds"
+        ? p.wds?.exportResult.error ?? (offsetInvalid ? "请输入有限的导出偏移秒数。" : null)
         : null;
     const currentExportText =
-        activeExportFormat === "sirius"
-            ? (exportError ? "" : p.sirius?.exportResult.text ?? "")
+        activeExportFormat === "wds"
+            ? (exportError ? "" : p.wds?.exportResult.text ?? "")
             : activeExportFormat === "malody"
             ? p.malodyExportText
             : activeExportFormat === "sus"
@@ -220,7 +220,7 @@ export default function NoteMenu(p: _p) {
     );
     const exportExtension = activeExportFormat === "internal" ? "json"
         : activeExportFormat === "malody" ? "mc"
-        : activeExportFormat === "sirius" ? "txt" : "sus";
+        : activeExportFormat === "wds" ? "txt" : "sus";
 
     const copyExport = async () => {
         if (exportError) return;
@@ -280,12 +280,12 @@ export default function NoteMenu(p: _p) {
                 ))}
             </div>
 
-            {p.sirius && (
-                <SiriusNoteControls
-                    sirius={p.sirius}
-                    drawing={p.mode === "insert-sirius"}
+            {p.wds && (
+                <WdsNoteControls
+                    wds={p.wds}
+                    drawing={p.mode === "insert-wds"}
                     readOnly={readOnly}
-                    onDraw={() => p.setMode("insert-sirius")}
+                    onDraw={() => p.setMode("insert-wds")}
                 />
             )}
 
@@ -471,9 +471,9 @@ export default function NoteMenu(p: _p) {
                     <Image src="/assets/icons/importNoteLane.svg" alt="导入" width={16} height={16} />
                 </ActionButton>
                 <ActionButton
-                    title={p.sirius ? "导出 Sirius TXT 或无损内部 JSON" : "导出当前 NoteLane 的 JSON"}
+                    title={p.wds ? "导出 WDS TXT 或无损内部 JSON" : "导出当前 NoteLane 的 JSON"}
                     onClick={() => {
-                        setExportFormat(p.sirius ? "sirius" : "internal");
+                        setExportFormat(p.wds ? "wds" : "internal");
                         setOffsetDraft({ value: offset, text: String(offset) });
                         setCopyStatus(null);
                         setIsExportOpen(true);
@@ -655,12 +655,12 @@ export default function NoteMenu(p: _p) {
                         onMouseDown={stopInteraction}
                     >
                         <div className={cls("modal-title")}>
-                            {p.sirius ? "导出 Sirius 谱面" : "导出 NoteLane"}
+                            {p.wds ? "导出 WDS 谱面" : "导出 NoteLane"}
                         </div>
                         <div className={cls("format-bar")}>
-                            {(p.sirius ? [
+                            {(p.wds ? [
                                 { format: "internal" as const, label: "内部 JSON（无损）" },
-                                { format: "sirius" as const, label: "Sirius TXT" },
+                                { format: "wds" as const, label: "WDS TXT" },
                             ] : [
                                 { format: "internal" as const, label: "内部 JSON" },
                                 { format: "malody" as const, label: "malody" },
@@ -681,13 +681,13 @@ export default function NoteMenu(p: _p) {
                                 </button>
                             ))}
                         </div>
-                        {activeExportFormat === "sirius" && p.sirius && (
+                        {activeExportFormat === "wds" && p.wds && (
                             <>
                                 <div className={cls("export-warning")}>
                                     <strong>不可逆、有损，不能从 TXT 恢复 BPM、拍点及编辑信息；请保留工程/内部 JSON。</strong>
-                                    {p.sirius.exportResult.warnings.length > 0 && (
+                                    {p.wds.exportResult.warnings.length > 0 && (
                                         <ul>
-                                            {p.sirius.exportResult.warnings.map((warning, index) => (
+                                            {p.wds.exportResult.warnings.map((warning, index) => (
                                                 <li key={index}>{warning}</li>
                                             ))}
                                         </ul>
@@ -712,7 +712,7 @@ export default function NoteMenu(p: _p) {
                                             const valid = value.trim() !== "" && Number.isFinite(seconds);
                                             setOffsetDraft({ value: valid ? seconds : offset, text: value });
                                             if (valid) {
-                                                p.sirius?.setOffset(seconds);
+                                                p.wds?.setOffset(seconds);
                                             }
                                         }}
                                     />

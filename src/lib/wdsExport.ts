@@ -1,19 +1,19 @@
-import type { Fraction, NoteLaneData, SiriusNoteProperties } from "@/components/soundArea/noteArea/chartTypes";
+import type { Fraction, NoteLaneData, WdsNoteProperties } from "@/components/soundArea/noteArea/chartTypes";
 import {
-    collectSiriusNotes,
+    collectWdsNotes,
     normalizeFraction,
-    siriusBeatToTime,
+    wdsBeatToTime,
     validateNoteLaneData,
 } from "@/components/soundArea/noteArea/chartAdapter";
-import { isSiriusHoldType } from "@/components/soundArea/noteArea/siriusTypes";
+import { isWdsHoldType } from "@/components/soundArea/noteArea/wdsTypes";
 
-export interface SiriusExportResult {
+export interface WdsExportResult {
     text: string;
     error: string | null;
     warnings: string[];
 }
 
-interface SiriusRow {
+interface WdsRow {
     beat: number;
     beatKey: string;
     endBeat: number | null;
@@ -21,11 +21,11 @@ interface SiriusRow {
     type: number;
     lane: number;
     width: number;
-    gimmick: SiriusNoteProperties["gimmick"];
-    scratchLength: number;
+    gimmickType: WdsNoteProperties["gimmickType"];
+    gimmickValue: number;
 }
 
-const LOSS_WARNING = "Sirius TXT 是不可逆的纯秒数导出：不保留 BPM、拍网格、音符 ID、注释及长条分组设置。请同时保存内部 JSON 或项目文件。";
+const LOSS_WARNING = "WDS TXT 是不可逆的纯秒数导出：不保留 BPM、拍网格、音符 ID、注释及长条分组设置。请同时保存内部 JSON 或项目文件。";
 const MAX_ROWS = 1_000_000;
 
 // Rational identity avoids losing triplet ticks to floating-point rounding,
@@ -46,7 +46,7 @@ function positionKey(beatKey: string, lane: number, width: number): string {
     return `${beatKey}:${lane}:${width}`;
 }
 
-function recordKey(row: SiriusRow): string {
+function recordKey(row: WdsRow): string {
     return `${row.type}:${positionKey(row.beatKey, row.lane, row.width)}:${row.endBeatKey ?? "point"}`;
 }
 
@@ -60,28 +60,29 @@ function autoTickSteps(head: Fraction, tail: Fraction): number {
     return Number(ceiling);
 }
 
-/** Seven-column, headerless CSV, matching levelData.cpp and music/1/5.txt:
- * https://github.com/SonolusHaniwa/sonolus-sirius-engine/blob/59dc8f5417b06138406597c8841d23189c93e6da/levelData.cpp
+/** Seven-column, headerless CSV: start,end,type,lane,width,gimmickType,gimmickValue.
+ * Reference: OhnkytaBlabdey/wdschart-render @ 4e90935,
+ * render_chart_beat_count.py (read_csv, holdNotes, scratchNotes).
  * Boundary markers never crop output. Body anchors are editor-only, not extra
- * ticks. Auto 900s occur at head + n/2 musical beats, strictly inside the hold.
- * Only siriusOffset is applied; callers must check error before downloading. */
-export function convertToSirius(lane: NoteLaneData): SiriusExportResult {
+ * ticks. Optional auto 900s are an explicit editor convenience, not a WDS rule.
+ * Only wdsOffset is applied; callers must check error before downloading. */
+export function convertToWds(lane: NoteLaneData): WdsExportResult {
     const warnings = [LOSS_WARNING];
     try {
-        if (lane?.chartKind !== "sirius") throw new Error("仅 Sirius 谱面可导出 Sirius TXT；不能自动转换强弱拍谱面");
+        if (lane?.chartKind !== "wds") throw new Error("仅 WDS 谱面可导出 WDS TXT；不能自动转换强弱拍谱面");
         const error = validateNoteLaneData(lane);
         if (error) throw new Error(error);
-        const entries = collectSiriusNotes(lane.chartData, lane.defaultBpm);
-        const rows: SiriusRow[] = [];
+        const entries = collectWdsNotes(lane.chartData, lane.defaultBpm);
+        const rows: WdsRow[] = [];
         const records = new Set<string>();
         const explicitJudges = new Set<string>();
-        const addRow = (row: SiriusRow, generated: boolean) => {
+        const addRow = (row: WdsRow, generated: boolean) => {
             const key = recordKey(row);
             if (records.has(key)) {
                 if (generated) return;
-                throw new Error("存在重复的 Sirius 导出记录");
+                throw new Error("存在重复的 WDS 导出记录");
             }
-            if (rows.length >= MAX_ROWS) throw new Error("Sirius 导出记录超过 100 万行，请缩短长条或关闭自动判定节点");
+            if (rows.length >= MAX_ROWS) throw new Error("WDS 导出记录超过 100 万行，请缩短长条或关闭自动判定节点");
             rows.push(row);
             records.add(key);
         };
@@ -89,23 +90,23 @@ export function convertToSirius(lane: NoteLaneData): SiriusExportResult {
         // Register all explicit rows first, so native heads/judges win over
         // generated counterparts regardless of source order.
         for (const { note, beat, tailBeat, measureIndex } of entries) {
-            const p = note.sirius!;
+            const p = note.wds!;
             const beatKey = exactBeatKey(measureIndex, note.head!);
             addRow({ beat, beatKey, endBeat: tailBeat,
                 endBeatKey: note.tail ? exactBeatKey(measureIndex, note.tail) : undefined,
                 type: note.type, lane: p.lane,
-                width: p.width, gimmick: p.gimmick, scratchLength: p.scratchLength }, false);
-            if ([900, 30, 31, 40].includes(note.type)) {
+                width: p.width, gimmickType: p.gimmickType, gimmickValue: p.gimmickValue }, false);
+            if (note.type === 900) {
                 explicitJudges.add(positionKey(beatKey, p.lane, p.width));
             }
         }
         for (const { note, beat, tailBeat, measureIndex } of entries) {
-            if (!isSiriusHoldType(note.type) || tailBeat === null) continue;
-            const p = note.sirius!;
+            if (!isWdsHoldType(note.type) || tailBeat === null) continue;
+            const p = note.wds!;
             if (p.holdHeadType !== null) {
                 addRow({ beat, beatKey: exactBeatKey(measureIndex, note.head!),
                     endBeat: null, type: p.holdHeadType, lane: p.lane,
-                    width: p.width, gimmick: "0", scratchLength: 0 }, true);
+                    width: p.width, gimmickType: "0", gimmickValue: 0 }, true);
             }
             if (!p.autoTicks) continue;
             const steps = autoTickSteps(note.head!, note.tail!);
@@ -114,7 +115,7 @@ export function convertToSirius(lane: NoteLaneData): SiriusExportResult {
                 const beatKey = exactBeatKey(measureIndex, note.head!, index);
                 if (explicitJudges.has(positionKey(beatKey, p.lane, p.width))) continue;
                 addRow({ beat: tickBeat, beatKey, endBeat: null, type: 900, lane: p.lane,
-                    width: p.width, gimmick: "0", scratchLength: 0 }, true);
+                    width: p.width, gimmickType: "0", gimmickValue: 0 }, true);
             }
         }
 
@@ -124,13 +125,16 @@ export function convertToSirius(lane: NoteLaneData): SiriusExportResult {
         if (entries.some(({ note }) => (note.body?.length ?? 0) > 0)) {
             warnings.push("内部 body 锚点不导出；自动判定仅按长条起点每半拍生成，请用独立 900 音符指定额外判定。");
         }
+        if (entries.some(({ note }) => note.wds?.autoTicks)) {
+            warnings.push("已启用编辑器辅助生成：按长条起点每半拍添加 900 记录。这是显式选项，并非由 WDS 格式自动推导的判定规则。");
+        }
         rows.sort((a, b) => a.beat - b.beat || a.lane - b.lane || a.type - b.type ||
             a.width - b.width || (a.endBeat ?? -1) - (b.endBeat ?? -1) ||
-            (a.gimmick < b.gimmick ? -1 : a.gimmick > b.gimmick ? 1 : 0) || a.scratchLength - b.scratchLength);
-        const offset = lane.siriusOffset ?? 0;
+            (a.gimmickType < b.gimmickType ? -1 : a.gimmickType > b.gimmickType ? 1 : 0) || a.gimmickValue - b.gimmickValue);
+        const offset = lane.wdsOffset ?? 0;
         const seconds = (beat: number): string => {
-            const time = siriusBeatToTime(lane.chartData, beat, lane.defaultBpm) + offset;
-            if (!Number.isFinite(time) || Math.abs(time) >= 1e21) throw new Error("Sirius 导出时间超出范围");
+            const time = wdsBeatToTime(lane.chartData, beat, lane.defaultBpm) + offset;
+            if (!Number.isFinite(time) || Math.abs(time) >= 1e21) throw new Error("WDS 导出时间超出范围");
             const fixed = time.toFixed(9);
             return fixed === "-0.000000000" ? "0.000000000" : fixed;
         };
@@ -139,13 +143,13 @@ export function convertToSirius(lane: NoteLaneData): SiriusExportResult {
             const start = seconds(row.beat);
             const end = row.endBeat === null ? "-1" : seconds(row.endBeat);
             if (row.endBeat !== null && Number(end) <= Number(start)) throw new Error("长条时长低于导出精度，无法生成有效区间");
-            const record = [start, end, row.type, row.lane, row.width, row.gimmick, row.scratchLength].join(",");
+            const record = [start, end, row.type, row.lane, row.width, row.gimmickType, row.gimmickValue].join(",");
             if (serializedRecords.has(record)) throw new Error("不同音符的时间间隔低于导出精度，无法区分记录");
             serializedRecords.add(record);
             return record;
         }).join("\n");
         return { text, error: null, warnings };
     } catch (error) {
-        return { text: "", error: error instanceof Error ? error.message : "Sirius 导出失败", warnings };
+        return { text: "", error: error instanceof Error ? error.message : "WDS 导出失败", warnings };
     }
 }

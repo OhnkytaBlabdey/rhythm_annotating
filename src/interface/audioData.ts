@@ -26,7 +26,7 @@ export interface SoundLaneState {
     /** Last selected chart in the other editor, restored when toggling back. */
     previousNoteLaneId?: string | null;
     /** Last editor kind, retained when the user deletes the final chart. */
-    noteEditorKind?: "rhythm" | "sirius";
+    noteEditorKind?: "rhythm" | "wds";
     noteLaneOffset: number;    // 记谱图形偏移(秒)，仅canvas像素位移
     waveLane: WaveLaneState;
     spectrumLane: SpectrumLaneState;
@@ -42,19 +42,19 @@ export function resolveActiveNoteLaneId(
     if (typeof selectedId === "string" && noteLanes.some((lane) => lane.id === selectedId)) {
         return selectedId;
     }
-    // Old projects have no selection: reopen the first existing Sirius chart
+    // Old projects have no selection: reopen the first existing WDS chart
     // in stored order, otherwise the first rhythm chart. Never create an ID.
-    return noteLanes.find((lane) => lane.chartKind === "sirius")?.id ?? noteLanes[0]?.id ?? null;
+    return noteLanes.find((lane) => lane.chartKind === "wds")?.id ?? noteLanes[0]?.id ?? null;
 }
 
 export function resolveNoteEditorKind(
     noteLanes: NoteLaneData[],
     selectedId?: string | null,
-    fallback?: "rhythm" | "sirius",
-): "rhythm" | "sirius" {
+    fallback?: "rhythm" | "wds",
+): "rhythm" | "wds" {
     const activeId = resolveActiveNoteLaneId(noteLanes, selectedId);
     const active = noteLanes.find((lane) => lane.id === activeId);
-    return active ? active.chartKind ?? "rhythm" : fallback === "sirius" ? "sirius" : "rhythm";
+    return active ? active.chartKind ?? "rhythm" : fallback === "wds" ? "wds" : "rhythm";
 }
 
 /**
@@ -113,7 +113,7 @@ export function defaultNoteLaneState(): NoteLaneState {
 
 export function defaultNoteLaneData(
     defaultBpm?: number,
-    chartKind: "rhythm" | "sirius" = "rhythm",
+    chartKind: "rhythm" | "wds" = "rhythm",
 ): NoteLaneData {
     const lane = defaultNoteLaneState();
     const bpm = defaultBpm ?? lane.defaultBpm;
@@ -123,8 +123,8 @@ export function defaultNoteLaneData(
         division: lane.division,
         chartData: [],
         isFolded: false,
-        dataVersion: chartKind === "sirius" ? 4 : 3,
-        ...(chartKind === "sirius" ? { chartKind, siriusOffset: 0 } : {}),
+        dataVersion: chartKind === "wds" ? 4 : 3,
+        ...(chartKind === "wds" ? { chartKind, wdsOffset: 0 } : {}),
     };
 }
 

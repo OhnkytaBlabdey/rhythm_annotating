@@ -35,9 +35,9 @@ import {
     registerPersistSlice,
 } from "@/lib/persistence/sliceRegistry";
 import {
-    collectSiriusNotes,
-    siriusBeatToTime,
-    siriusTimeToBeat,
+    collectWdsNotes,
+    wdsBeatToTime,
+    wdsTimeToBeat,
 } from "./soundArea/noteArea/chartAdapter";
 
 
@@ -470,7 +470,7 @@ export default function WorkArea() {
                     autosaveBlockedRef.current = false;
                 } catch (error) {
                     // Failed imports leave the current project and recovery
-                    // lock intact, including malformed Sirius migrations.
+                    // lock intact, including malformed WDS migrations.
                     setProjectImportError(`导入项目失败：${error instanceof Error ? error.message : "未知错误"}`);
                 }
             };
@@ -498,10 +498,10 @@ export default function WorkArea() {
         for (const soundLane of objProject.soundLaneStates) {
             const graphicalOffset = soundLane.noteLaneOffset ?? 0;
             for (const lane of soundLane.noteLanes) {
-                if (lane.chartKind !== "sirius") continue;
+                if (lane.chartKind !== "wds") continue;
                 try {
-                    const notes = collectSiriusNotes(lane.chartData, lane.defaultBpm);
-                    const audioEndBeat = siriusTimeToBeat(
+                    const notes = collectWdsNotes(lane.chartData, lane.defaultBpm);
+                    const audioEndBeat = wdsTimeToBeat(
                         lane.chartData, Math.max(0, audioDuration - graphicalOffset), lane.defaultBpm,
                     );
                     let lastBeat = Math.max(
@@ -511,7 +511,7 @@ export default function WorkArea() {
                     for (const note of notes) {
                         lastBeat = Math.max(lastBeat, note.beat, note.tailBeat ?? note.beat);
                     }
-                    const chartEnd = siriusBeatToTime(
+                    const chartEnd = wdsBeatToTime(
                         lane.chartData, Math.ceil(lastBeat) + CHART_TRAILING_BEATS, lane.defaultBpm,
                     ) + graphicalOffset;
                     if (Number.isFinite(chartEnd)) end = Math.max(end, chartEnd);
@@ -521,7 +521,7 @@ export default function WorkArea() {
                 }
             }
         }
-        // siriusOffset is export-only and intentionally does not enter the view.
+        // wdsOffset is export-only and intentionally does not enter the view.
         return end;
     }, [audioDuration, objProject.soundLaneStates]);
 
