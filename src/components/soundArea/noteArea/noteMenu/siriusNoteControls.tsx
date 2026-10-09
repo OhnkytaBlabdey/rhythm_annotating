@@ -68,22 +68,36 @@ function PropertyFields({
     const hold = isSiriusHoldType(type);
     const scratch = isSiriusScratchType(type);
     const span = getSiriusTailSpan(properties);
+    // Drawing always takes its lane from the pointer. Validate possible starting
+    // lanes instead of reporting coverage at the unused insertion-default lane.
+    const startLanes = defaults ? Array.from({ length: SIRIUS_LANE_COUNT }, (_, index) => index + 1)
+        .filter((lane) => getSiriusTailSpan({ ...properties, lane }) !== null) : [];
+    const validRange = defaults ? startLanes.length > 0 : span !== null;
+    const rangeText = defaults
+        ? (validRange
+            ? `可放置的起始轨道：${startLanes[0]}${startLanes.length > 1 ? `–${startLanes[startLanes.length - 1]}` : ""}`
+            : "当前宽度无法放入 12 轨，请检查音符宽度及尾部宽度。")
+        : (span
+            ? `${scratch ? "尾部" : "本体"}覆盖：${span.lane}–${span.lane + span.width - 1} 轨（宽 ${span.width}）`
+            : "范围未完成或超出 1–12 轨，请检查轨道、宽度及尾部宽度。");
     const change = (patch: Partial<SiriusNoteProperties>) => {
         onChange({ ...properties, ...patch });
     };
 
     return (
         <>
-            <div className={cls("property-grid")}>
-                <label className={cls("control-field")}>
-                    {defaults ? "预览轨道" : "起始轨道"}
-                    <NumberField
-                        min={1}
-                        max={SIRIUS_LANE_COUNT}
-                        value={properties.lane}
-                        onChange={(lane) => change({ lane })}
-                    />
-                </label>
+            <div className={cls(!defaults && "property-grid")}>
+                {!defaults && (
+                    <label className={cls("control-field")}>
+                        起始轨道
+                        <NumberField
+                            min={1}
+                            max={SIRIUS_LANE_COUNT}
+                            value={properties.lane}
+                            onChange={(lane) => change({ lane })}
+                        />
+                    </label>
+                )}
                 <label className={cls("control-field")}>
                     宽度（轨）
                     <NumberField
@@ -96,7 +110,7 @@ function PropertyFields({
             </div>
             {defaults && (
                 <p className={cls("help-text")}>
-                    轨道 1–12；落点由指针决定，预览轨道仅用于默认值与尾部预览。
+                    宽度为音符占用的连续轨道数；在画布上点击确定起始轨道。
                 </p>
             )}
             {scratch && (
@@ -129,10 +143,8 @@ function PropertyFields({
                     </p>
                 </>
             )}
-            <p className={cls("span-preview", !span && "invalid-preview")} aria-live="polite">
-                {span
-                    ? `${scratch ? "尾部" : "本体"}覆盖：${span.lane}–${span.lane + span.width - 1} 轨（宽 ${span.width}）`
-                    : "范围未完成或超出 1–12 轨，请检查轨道、宽度及尾部宽度。"}
+            <p className={cls("span-preview", !validRange && "invalid-preview")} aria-live="polite">
+                {rangeText}
             </p>
             {hold && (
                 <>
@@ -311,25 +323,35 @@ export default function SiriusNoteControls({
                     {SIRIUS_NOTE_TYPES.filter(({ code }) => isStandaloneHead(code)).map(typeButton)}
                 </div>
             </details>
-            <div className={cls("section-label")}>
-                绘制默认值 · {sirius.type}
-            </div>
-            <PropertyFields
-                type={sirius.type}
-                properties={sirius.properties}
-                onChange={sirius.onPropertiesChange}
-                defaults
-            />
-            <div className={cls("section-label", "selected-heading")}>选中音符</div>
-            {selectedNote?.sirius ? (
-                <SelectedNoteForm
-                    key={`${JSON.stringify(selectedNote)}:${readOnly}`}
-                    note={{ ...selectedNote, sirius: selectedNote.sirius }}
-                    readOnly={readOnly}
-                    onUpdate={sirius.onUpdateSelected}
-                />
+            {drawing ? (
+                <>
+                    <div className={cls("section-label")}>新音符属性 · {sirius.type}</div>
+                    <p className={cls("help-text")}>
+                        在绘制前设置，作用于接下来新建的音符。长条依次点击起点和终点。
+                    </p>
+                    <PropertyFields
+                        type={sirius.type}
+                        properties={sirius.properties}
+                        onChange={sirius.onPropertiesChange}
+                        defaults
+                    />
+                </>
             ) : (
-                <p className={cls("help-text")}>选择单个 Sirius 音符以查看或编辑属性。</p>
+                <>
+                    <div className={cls("section-label", "selected-heading")}>选中音符属性</div>
+                    {selectedNote?.sirius ? (
+                        <SelectedNoteForm
+                            key={`${JSON.stringify(selectedNote)}:${readOnly}`}
+                            note={{ ...selectedNote, sirius: selectedNote.sirius }}
+                            readOnly={readOnly}
+                            onUpdate={sirius.onUpdateSelected}
+                        />
+                    ) : (
+                        <p className={cls("help-text")}>
+                            切换到「选中」模式，再点击画布上的一个音符，即可修改其轨道、宽度等属性。
+                        </p>
+                    )}
+                </>
             )}
         </section>
     );
