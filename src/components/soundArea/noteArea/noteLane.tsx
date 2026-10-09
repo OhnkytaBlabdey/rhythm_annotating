@@ -199,6 +199,7 @@ export default function NoteLane({
     selectedMeasureRef,
     onSelectMeasure,
     onActivate,
+    laneId,
     graphicalOffset = 0,
     onInsertMeasure,
     onDeleteMeasure,
@@ -2111,6 +2112,10 @@ export default function NoteLane({
                 style={{ height: screenHeight }}
                 ref={wrapperRef}
                 data-lane="true"
+                data-chart-kind="rhythm"
+                data-lane-id={laneId}
+                data-orientation={orientation}
+                data-frozen={isPlaybackFrozen || undefined}
             >
                 <canvas
                     ref={canvasRef}
@@ -2121,6 +2126,7 @@ export default function NoteLane({
                     onMouseLeave={handleMouseUp}
                     onContextMenu={handleContextMenu}
                     onKeyDown={handleKeyDown}
+                    onFocus={() => onActivate?.()}
                     tabIndex={0}
                 />
                 {!isPlaybackFrozen && renderValidationError && (

@@ -10,6 +10,7 @@ import type { WdsNoteProperties } from "../wdsTypes";
 import type { WdsExportResult } from "@/lib/wdsExport";
 import type { WdsChartExportResult } from "@/lib/wdsChartExport";
 import WdsNoteControls from "./wdsNoteControls";
+import { useDialogFocus } from "@/components/useDialogFocus";
 
 const cls = classNames.bind(style);
 
@@ -52,6 +53,7 @@ function downloadTextFile(text: string, fileName: string, type: string) {
 interface _p {
     mode: EditMode;
     setMode: (m: EditMode) => void;
+    onFocusCanvas: (fallback?: HTMLElement | null) => void;
     canUndo: boolean;
     canRedo: boolean;
     hasSelection: boolean;
@@ -156,10 +158,30 @@ export default function NoteMenu(p: _p) {
         setOffsetDraft({ value: offset, text: String(offset) });
     }
     const exportPreviewRef = React.useRef<HTMLTextAreaElement>(null);
+    const modalTriggerRef = React.useRef<HTMLElement | null>(null);
     const readOnly = !!p.wds && p.mode === "browse";
 
+    const closeModal = () => {
+        setIsImportOpen(false);
+        setIsExportOpen(false);
+        setIsEditOpen(false);
+        setImportError(null);
+        setEditError(null);
+        p.onFocusCanvas(modalTriggerRef.current);
+    };
+    const { dialogRef, onDialogKeyDownCapture, onDialogKeyDown } = useDialogFocus(
+        isImportOpen || isExportOpen || isEditOpen, closeModal,
+    );
+    const rememberModalTrigger = () => {
+        modalTriggerRef.current = document.activeElement instanceof HTMLElement
+            ? document.activeElement : null;
+    };
+
     const mutate = (action: () => void) => {
-        if (!readOnly) action();
+        if (!readOnly) {
+            action();
+            p.onFocusCanvas();
+        }
     };
 
     const stopInteraction = (event: React.SyntheticEvent) => {
@@ -176,7 +198,7 @@ export default function NoteMenu(p: _p) {
 
     const MODES: { mode: EditMode; label: string; title: string }[] = p.wds ? [
         { mode: "browse", label: "浏览", title: "浏览模式（只读）" },
-        { mode: "insert-wds", label: "绘制", title: "绘制当前 WDS 类型；长条两次点击起点和终点" },
+        { mode: "insert-wds", label: "编辑", title: "WDS 编辑模式" },
         { mode: "select", label: "选中", title: "选中模式（可编辑及导入 JSON）" },
         { mode: "paste", label: "粘贴", title: `粘贴模式 (${getKeyboardShortcutLabel("note.paste") || "Ctrl+V"} 直接粘贴)` },
         { mode: "annotate", label: "标注", title: "标注模式" },
@@ -197,6 +219,7 @@ export default function NoteMenu(p: _p) {
         "insert-strong": getKeyboardShortcutLabel("note.mode.insertStrong"),
         "insert-weak": getKeyboardShortcutLabel("note.mode.insertWeak"),
         "insert-ln": getKeyboardShortcutLabel("note.mode.insertLn"),
+        "insert-wds": getKeyboardShortcutLabel("note.mode.insertWds"),
         select: getKeyboardShortcutLabel("note.mode.select"),
         paste: getKeyboardShortcutLabel("note.mode.paste"),
         "insert-start": getKeyboardShortcutLabel("note.mode.insertStart"),
@@ -329,7 +352,7 @@ export default function NoteMenu(p: _p) {
                     label="复制"
                     title={`复制选中 Note (${getKeyboardShortcutLabel("note.copy") || "Ctrl+C"})`}
                     disabled={!p.hasSelection}
-                    onClick={p.onCopy}
+                    onClick={() => { p.onCopy(); p.onFocusCanvas(); }}
                 />
                 <ActionButton
                     label="剪切"
@@ -490,6 +513,7 @@ export default function NoteMenu(p: _p) {
                     disabled={readOnly}
                     onClick={() => {
                         if (readOnly) return;
+                        rememberModalTrigger();
                         setImportError(null);
                         setImportText("");
                         setIsImportOpen(true);
@@ -500,6 +524,7 @@ export default function NoteMenu(p: _p) {
                 <ActionButton
                     title={p.wds ? "导出 WDS TXT、WDSCHART 或无损内部 JSON" : "导出当前 NoteLane 的 JSON"}
                     onClick={() => {
+                        rememberModalTrigger();
                         setExportFormat(p.wds ? "wds" : "internal");
                         setOffsetDraft({ value: offset, text: String(offset) });
                         setCopyStatus(null);
@@ -513,6 +538,7 @@ export default function NoteMenu(p: _p) {
                     disabled={readOnly}
                     onClick={() => {
                         if (readOnly) return;
+                        rememberModalTrigger();
                         const text = p.getEditText();
                         setEditOriginalText(text);
                         setEditText(text);
@@ -535,11 +561,18 @@ export default function NoteMenu(p: _p) {
             {isEditOpen && (
                 <div
                     className={cls("modal-backdrop")}
-                    onClick={() => { setIsEditOpen(false); setEditError(null); }}
-                    onMouseDown={() => { setIsEditOpen(false); setEditError(null); }}
+                    onClick={closeModal}
+                    onMouseDown={(event) => event.preventDefault()}
                 >
                     <div
                         className={cls("modal")}
+                        ref={dialogRef}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="编辑 NoteLane JSON"
+                        tabIndex={-1}
+                        onKeyDownCapture={onDialogKeyDownCapture}
+                        onKeyDown={onDialogKeyDown}
                         onClick={stopInteraction}
                         onMouseDown={stopInteraction}
                     >
@@ -573,7 +606,7 @@ export default function NoteMenu(p: _p) {
                                     if (readOnly) return;
                                     const err = p.onEditSave(editText);
                                     if (err) setEditError(err);
-                                    else setIsEditOpen(false);
+                                    else closeModal();
                                 }}
                             >
                                 保存
@@ -593,7 +626,7 @@ export default function NoteMenu(p: _p) {
                                 type="button"
                                 className={cls("button")}
                                 onMouseDown={stopInteraction}
-                                onClick={() => { setIsEditOpen(false); setEditError(null); }}
+                                onClick={closeModal}
                             >
                                 取消
                             </button>
@@ -605,11 +638,18 @@ export default function NoteMenu(p: _p) {
             {isImportOpen && (
                 <div
                     className={cls("modal-backdrop")}
-                    onClick={() => setIsImportOpen(false)}
-                    onMouseDown={() => setIsImportOpen(false)}
+                    onClick={closeModal}
+                    onMouseDown={(event) => event.preventDefault()}
                 >
                     <div
                         className={cls("modal")}
+                        ref={dialogRef}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="导入 NoteLane JSON"
+                        tabIndex={-1}
+                        onKeyDownCapture={onDialogKeyDownCapture}
+                        onKeyDown={onDialogKeyDown}
                         onClick={stopInteraction}
                         onMouseDown={stopInteraction}
                     >
@@ -647,9 +687,8 @@ export default function NoteMenu(p: _p) {
                                         setImportError(error);
                                         return;
                                     }
-                                    setIsImportOpen(false);
+                                    closeModal();
                                     setImportText("");
-                                    setImportError(null);
                                 }}
                             >
                                 覆盖当前 Lane
@@ -658,10 +697,7 @@ export default function NoteMenu(p: _p) {
                                 type="button"
                                 className={cls("button")}
                                 onMouseDown={stopInteraction}
-                                onClick={() => {
-                                    setIsImportOpen(false);
-                                    setImportError(null);
-                                }}
+                                onClick={closeModal}
                             >
                                 取消
                             </button>
@@ -673,11 +709,18 @@ export default function NoteMenu(p: _p) {
             {isExportOpen && (
                 <div
                     className={cls("modal-backdrop")}
-                    onClick={() => setIsExportOpen(false)}
-                    onMouseDown={() => setIsExportOpen(false)}
+                    onClick={closeModal}
+                    onMouseDown={(event) => event.preventDefault()}
                 >
                     <div
                         className={cls("modal")}
+                        ref={dialogRef}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label={p.wds ? "导出 WDS 谱面" : "导出 NoteLane"}
+                        tabIndex={-1}
+                        onKeyDownCapture={onDialogKeyDownCapture}
+                        onKeyDown={onDialogKeyDown}
                         onClick={stopInteraction}
                         onMouseDown={stopInteraction}
                     >
@@ -816,7 +859,7 @@ export default function NoteMenu(p: _p) {
                                 type="button"
                                 className={cls("button")}
                                 onMouseDown={stopInteraction}
-                                onClick={() => setIsExportOpen(false)}
+                                onClick={closeModal}
                             >
                                 关闭
                             </button>

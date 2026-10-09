@@ -158,13 +158,15 @@ function SelectedNoteForm({ note, readOnly, onUpdate }: {
     const compatibleTypes = WDS_NOTE_TYPES.filter((entry) => (entry.kind === "hold") === hold);
     return (
         <>
-            <p className={cls("help-text")}>
-                {readOnly ? "浏览只读：可查看属性；切换选中模式后编辑。" : "修改保留在表单中，点击应用一次保存全部字段。"}
-            </p>
+            {!readOnly && (
+                <p className={cls("help-text")}>
+                    修改保留在表单中，点击应用一次保存全部字段。
+                </p>
+            )}
             <fieldset className={cls("property-fields")} disabled={readOnly}>
-                <label className={cls("control-field")}>
-                    记录编码（仅限同类{hold ? "长条" : "点音符"}）
+                <div className={cls("control-field")}>
                     <select className={cls("control-input")} value={type}
+                        aria-label={hold ? "长条音符类型" : "点音符类型"}
                         onChange={(event) => {
                             const nextType = Number(event.target.value);
                             setType(nextType);
@@ -178,7 +180,7 @@ function SelectedNoteForm({ note, readOnly, onUpdate }: {
                             <option key={code} value={code}>{code} · {label}</option>
                         ))}
                     </select>
-                </label>
+                </div>
                 <PropertyFields type={type} properties={properties} onChange={setProperties} />
                 <label className={cls("control-field")}>
                     标注

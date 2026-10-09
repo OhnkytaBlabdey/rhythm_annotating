@@ -856,6 +856,7 @@ export default function WorkArea() {
                         <div className="editor-toolbar-card">
                             <WorkMenu
                                 key={"menu"}
+                                editorScopeRef={workAreaRef}
                                 setSoundLaneStates={setSoundLaneStates}
                                 refSoundLaneStates={objProject.soundLaneStates}
                                 refTimeMultiplier={objProject.timeMultiplier}

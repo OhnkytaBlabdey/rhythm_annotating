@@ -14,6 +14,7 @@ import {
     getShortcutConflictActions,
 } from "@/lib/shortcuts";
 import { useAppSettings } from "@/components/appSettingsContext";
+import { useDialogFocus } from "../useDialogFocus";
 
 interface ShortcutSettingsModalProps {
     onClose: () => void;
@@ -28,6 +29,8 @@ export default function ShortcutSettingsModal({
         null,
     );
     const [saveError, setSaveError] = useState<string | null>(null);
+    const { dialogRef, onDialogKeyDownCapture, onDialogKeyDown } =
+        useDialogFocus(true, onClose);
 
     useEffect(() => {
         if (!captureAction) {
@@ -42,17 +45,20 @@ export default function ShortcutSettingsModal({
         }
 
         const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape" && !event.isComposing && event.keyCode !== 229) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                setCaptureAction(null);
+                return;
+            }
             if (definition.inputType !== "keyboard") {
                 return;
             }
 
             event.preventDefault();
-            event.stopPropagation();
+            event.stopImmediatePropagation();
 
-            if (event.key === "Escape") {
-                setCaptureAction(null);
-                return;
-            }
+            if (event.isComposing || event.keyCode === 229) return;
 
             const nextCombo = createShortcutComboFromKeyboardEvent(event);
             if (!nextCombo) {
@@ -131,15 +137,19 @@ export default function ShortcutSettingsModal({
         <div
             className={style.backdrop}
             onClick={onClose}
-            onMouseDown={onClose}
+            onMouseDown={(event) => event.preventDefault()}
         >
             <div
                 className={style.modal}
+                ref={dialogRef}
+                tabIndex={-1}
                 role="dialog"
                 aria-modal="true"
                 aria-label="快捷键设置"
                 onClick={(event) => event.stopPropagation()}
                 onMouseDown={(event) => event.stopPropagation()}
+                onKeyDownCapture={onDialogKeyDownCapture}
+                onKeyDown={onDialogKeyDown}
             >
                 <div className={style.header}>
                     <div>

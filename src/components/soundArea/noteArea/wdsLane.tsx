@@ -90,6 +90,7 @@ const MODE_SHORTCUTS: { action: ShortcutAction; mode: EditMode; type?: number }[
     { action: "note.mode.insertStrong", mode: "insert-wds", type: 10 },
     { action: "note.mode.insertWeak", mode: "insert-wds", type: 20 },
     { action: "note.mode.insertLn", mode: "insert-wds", type: 100 },
+    { action: "note.mode.insertWds", mode: "insert-wds" },
     { action: "note.mode.select", mode: "select" },
     { action: "note.mode.paste", mode: "paste" },
     { action: "note.mode.annotate", mode: "annotate" },

@@ -8,8 +8,10 @@ import ResetEditor from "./resetEditor";
 import ShortcutSettingsModal from "./shortcutSettingsModal";
 import type { TimelineOrientation } from "../timelineGeometry";
 import styles from "./workMenu.module.css";
+import { focusEditorLane, getFocusedEditorLane, isVisibleFocusTarget } from "../editorFocus";
 
 interface _prop {
+    editorScopeRef: React.RefObject<HTMLDivElement | null>;
     refSoundLaneStates: SoundLaneState[];
     setSoundLaneStates: (a: SoundLaneState[]) => void;
     refTimeMultiplier: number;
@@ -34,6 +36,71 @@ interface _prop {
 
 function WorkMenu(prop: _prop) {
     const [isShortcutModalOpen, setIsShortcutModalOpen] = React.useState(false);
+    const shortcutButtonRef = React.useRef<HTMLButtonElement>(null);
+    const lastFocusedLaneRef = React.useRef<HTMLElement | null>(null);
+    const pendingRestoreRef = React.useRef<{
+        lane: HTMLElement | null;
+        fallback: HTMLButtonElement | null;
+        active: Element | null;
+    } | null>(null);
+    const restoreCleanupRef = React.useRef<(() => void) | null>(null);
+    const cancelRestore = React.useCallback(() => {
+        pendingRestoreRef.current = null;
+        restoreCleanupRef.current?.();
+        restoreCleanupRef.current = null;
+    }, []);
+
+    React.useEffect(() => {
+        const scope = prop.editorScopeRef.current;
+        if (!scope) return;
+        const rememberLane = (event: FocusEvent) => {
+            const lane = getFocusedEditorLane(event.target);
+            if (lane && scope.contains(lane)) lastFocusedLaneRef.current = lane;
+        };
+        const lane = getFocusedEditorLane(document.activeElement);
+        if (lane && scope.contains(lane)) lastFocusedLaneRef.current = lane;
+        scope.addEventListener("focusin", rememberLane);
+        return () => scope.removeEventListener("focusin", rememberLane);
+    }, [prop.editorScopeRef]);
+
+    React.useLayoutEffect(() => {
+        const pending = pendingRestoreRef.current;
+        if (!pending || isShortcutModalOpen) return;
+        pendingRestoreRef.current = null;
+        // A new dialog or an intentional focus move takes precedence over restoration.
+        const onFocusIn = () => cancelRestore();
+        document.addEventListener("focusin", onFocusIn);
+        const frame = requestAnimationFrame(() => {
+            cancelRestore();
+            const active = document.activeElement;
+            if (active !== document.body && active !== pending.active && active !== null) return;
+            if (Array.from(document.querySelectorAll<HTMLElement>("[role='dialog'], dialog[open]"))
+                .some(isVisibleFocusTarget)) return;
+            if (!focusEditorLane(pending.lane, prop.editorScopeRef.current) &&
+                isVisibleFocusTarget(pending.fallback) && !pending.fallback.disabled) {
+                pending.fallback.focus({ preventScroll: true });
+            }
+        });
+        restoreCleanupRef.current = () => {
+            cancelAnimationFrame(frame);
+            document.removeEventListener("focusin", onFocusIn);
+        };
+    });
+
+    React.useLayoutEffect(() => cancelRestore, [cancelRestore]);
+
+    const requestRestore = (fallback: HTMLButtonElement | null) => {
+        cancelRestore();
+        pendingRestoreRef.current = {
+            lane: lastFocusedLaneRef.current,
+            fallback,
+            active: document.activeElement,
+        };
+    };
+    const closeShortcutModal = () => {
+        requestRestore(shortcutButtonRef.current);
+        setIsShortcutModalOpen(false);
+    };
     const isVertical = prop.orientation === "vertical";
     const orientationLabel = isVertical ? "纵向" : "横向";
     const nextOrientationLabel = isVertical ? "横向" : "纵向";
@@ -155,7 +222,12 @@ function WorkMenu(prop: _prop) {
                         <button
                             type="button"
                             className="editor-toolbar-button"
-                            onClick={() => setIsShortcutModalOpen(true)}
+                            ref={shortcutButtonRef}
+                            onClick={() => {
+                                cancelRestore();
+                                setIsShortcutModalOpen(true);
+                            }}
+                            onKeyDown={(event) => event.stopPropagation()}
                         >
                             <span>快捷键</span>
                         </button>
@@ -163,9 +235,10 @@ function WorkMenu(prop: _prop) {
                             type="button"
                             className={`editor-toolbar-button ${styles.orientationToggle}`}
                             aria-label={`时间轴：${orientationLabel}，点击切换为${nextOrientationLabel}`}
-                            onClick={() =>
-                                prop.onOrientationChange(isVertical ? "horizontal" : "vertical")
-                            }
+                            onClick={(event) => {
+                                requestRestore(event.currentTarget);
+                                prop.onOrientationChange(isVertical ? "horizontal" : "vertical");
+                            }}
                             onKeyDown={(event) => event.stopPropagation()}
                             title={`点击切换为${nextOrientationLabel}时间轴；纵向模式下 Shift+滚轮横向浏览音频`}
                         >
@@ -176,7 +249,7 @@ function WorkMenu(prop: _prop) {
             </div>
             {isShortcutModalOpen && (
                 <ShortcutSettingsModal
-                    onClose={() => setIsShortcutModalOpen(false)}
+                    onClose={closeShortcutModal}
                 />
             )}
         </div>

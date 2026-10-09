@@ -7,6 +7,7 @@ export type ShortcutAction =
     | "note.mode.insertStrong"
     | "note.mode.insertWeak"
     | "note.mode.insertLn"
+    | "note.mode.insertWds"
     | "note.mode.select"
     | "note.mode.paste"
     | "note.mode.insertStart"
@@ -130,6 +131,14 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
         description: "切换到长条 note 输入模式",
         section: "记谱输入",
         defaultCombo: "3",
+        inputType: "keyboard",
+    },
+    {
+        action: "note.mode.insertWds",
+        label: "制谱器编辑模式",
+        description: "切换到 WDS 编辑模式，保留当前音符类型和属性",
+        section: "记谱输入",
+        defaultCombo: "",
         inputType: "keyboard",
     },
     {

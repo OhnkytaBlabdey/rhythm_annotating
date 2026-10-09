@@ -58,6 +58,7 @@ import { convertToMalody } from "@/lib/malodyExport";
 import { convertToSus } from "@/lib/susExport";
 import type { CSSProperties, SetStateAction } from "react";
 import type { TimelineOrientation } from "../timelineGeometry";
+import { focusEditorLane, isVisibleFocusTarget } from "../editorFocus";
 
 const MAX_UNDO = 50;
 const WDS_READONLY_MESSAGE = "制谱器当前为浏览模式，请先切换到编辑模式";
@@ -148,9 +149,40 @@ export default function SoundLane(prop: _prop) {
     const isVertical = orientation === "vertical";
     const [timelineHeight, setTimelineHeight] = useState(640);
     const editingRegionRef = useRef<HTMLDivElement | null>(null);
+    const focusFrameRef = useRef<number | null>(null);
     const audioDataList = useContext(AudioDataCtx);
     const audioData = audioDataList.find((a) => a.id === prop.audioId);
     const isPlaybackFrozen = prop.playbackRenderMode === "frozen";
+
+    const cancelPendingNoteFocus = useCallback(() => {
+        if (focusFrameRef.current !== null) cancelAnimationFrame(focusFrameRef.current);
+        focusFrameRef.current = null;
+    }, []);
+
+    // Explicit toolbar operations return focus after their DOM changes commit.
+    // Pointer/focus activation of a canvas itself must not refocus its SVG notes.
+    const requestNoteFocus = useCallback((laneId?: string, fallback: HTMLElement | null = null) => {
+        cancelPendingNoteFocus();
+        const previousFocus = document.activeElement;
+        focusFrameRef.current = requestAnimationFrame(() => {
+            focusFrameRef.current = null;
+            const active = document.activeElement;
+            if (active !== previousFocus && active !== document.body && active !== null) return;
+            if (Array.from(document.querySelectorAll<HTMLElement>("[role='dialog'], dialog[open]"))
+                .some(isVisibleFocusTarget)) return;
+            const region = editingRegionRef.current;
+            const lane = region?.querySelector<HTMLElement>(
+                '[data-active="true"] [data-lane="true"][data-chart-kind]',
+            ) ?? null;
+            const target = laneId && lane?.dataset.laneId !== laneId ? null : lane;
+            if (!focusEditorLane(target, region) && isVisibleFocusTarget(fallback) &&
+                !fallback.matches(":disabled")) {
+                fallback.focus({ preventScroll: true });
+            }
+        });
+    }, [cancelPendingNoteFocus]);
+
+    useEffect(() => cancelPendingNoteFocus, [cancelPendingNoteFocus]);
 
     useEffect(() => {
         const region = editingRegionRef.current;
@@ -187,8 +219,9 @@ export default function SoundLane(prop: _prop) {
     const resolvedActiveLaneId = resolveActiveNoteLaneId(noteLanes, prop.refSoundLaneState.activeNoteLaneId);
     const noteEditorKind = resolveNoteEditorKind(noteLanes, resolvedActiveLaneId, prop.refSoundLaneState.noteEditorKind);
     const selectNoteLane = useCallback((laneId: string, unfold = false) => {
+        cancelPendingNoteFocus();
         prop.setSoundLaneState(prop.index, (prev) => activateNoteLane(prev, laneId, unfold));
-    }, [prop]);
+    }, [prop, cancelPendingNoteFocus]);
 
     const visibleNoteLanes = useMemo(
         () => noteLanes.filter((lane) => (lane.chartKind ?? "rhythm") === noteEditorKind),
@@ -309,6 +342,7 @@ export default function SoundLane(prop: _prop) {
     );
 
     const deleteNoteLane = useCallback((laneId: string) => {
+        cancelPendingNoteFocus();
         if (!noteLanes.some((lane) => lane.id === laneId)) return;
         prop.setSoundLaneState(prop.index, (prev) => {
             const removed = prev.noteLanes.find((lane) => lane.id === laneId);
@@ -349,9 +383,10 @@ export default function SoundLane(prop: _prop) {
             delete next[laneId];
             return next;
         });
-    }, [noteLanes, prop]);
+    }, [noteLanes, prop, cancelPendingNoteFocus]);
 
     const handleAddNoteLane = useCallback((kind: "rhythm" | "wds", reuseExisting = false) => {
+        cancelPendingNoteFocus();
         try {
             const nextLane = defaultNoteLaneData(undefined, kind);
             const activeLane = noteLanes.find((lane) => lane.id === resolvedActiveLaneId);
@@ -385,12 +420,15 @@ export default function SoundLane(prop: _prop) {
                 [nextLane.id]: nextEditState,
             }));
             if (kind === "wds") prop.onRequestVertical?.();
+            // Reuse is resolved from queued project state, not necessarily nextLane.
+            // Delete/fold/selection actions cancel this request before it can retarget.
+            requestNoteFocus(reuseExisting ? undefined : nextLane.id);
         } catch (error) {
             if (resolvedActiveLaneId) {
                 setLaneError(resolvedActiveLaneId, error instanceof Error ? error.message : "创建谱面失败");
             }
         }
-    }, [noteLanes, prop, resolvedActiveLaneId, setLaneError]);
+    }, [noteLanes, prop, resolvedActiveLaneId, setLaneError, requestNoteFocus, cancelPendingNoteFocus]);
 
     const handleToggleNoteEditor = useCallback(() => {
         const kind = noteEditorKind === "wds" ? "rhythm" : "wds";
@@ -400,13 +438,15 @@ export default function SoundLane(prop: _prop) {
         if (existing) {
             selectNoteLane(existing.id, true);
             if (kind === "wds") prop.onRequestVertical?.();
+            requestNoteFocus(existing.id);
         } else {
             // Recheck in the updater so queued creations reuse the same chart.
             handleAddNoteLane(kind, true);
         }
-    }, [noteLanes, noteEditorKind, selectNoteLane, prop, handleAddNoteLane]);
+    }, [noteLanes, noteEditorKind, selectNoteLane, prop, handleAddNoteLane, requestNoteFocus]);
 
     const handleToggleNoteFold = useCallback(() => {
+        cancelPendingNoteFocus();
         const visibleIds = new Set(visibleNoteLanes.map((lane) => lane.id));
         if (!visibleIds.size) return;
         prop.setSoundLaneState(prop.index, (prev) => ({
@@ -415,7 +455,8 @@ export default function SoundLane(prop: _prop) {
                 ? { ...lane, isFolded: !allVisibleNoteLanesFolded }
                 : lane),
         }));
-    }, [visibleNoteLanes, allVisibleNoteLanesFolded, prop]);
+        if (allVisibleNoteLanesFolded && resolvedActiveLaneId) requestNoteFocus(resolvedActiveLaneId);
+    }, [visibleNoteLanes, allVisibleNoteLanesFolded, resolvedActiveLaneId, prop, requestNoteFocus, cancelPendingNoteFocus]);
 
     /** Deep-clone chartData for undo snapshot */
     const cloneChart = useCallback(
@@ -744,12 +785,15 @@ export default function SoundLane(prop: _prop) {
 
         return {
             mode: editState.mode,
-            setMode: (m: EditMode) =>
+            setMode: (m: EditMode) => {
                 setLaneEditState(activeLane.id, (prev) => ({
                     ...prev,
                     mode: m,
                     lnHeadTime: null,
-                })),
+                }));
+                requestNoteFocus(activeLane.id);
+            },
+            onFocusCanvas: (fallback?: HTMLElement | null) => requestNoteFocus(activeLane.id, fallback),
             canUndo: !isReadOnly && editState.undoStack.length > 0,
             canRedo: !isReadOnly && editState.redoStack.length > 0,
             hasSelection: editState.selectedIds.size > 0,
@@ -901,9 +945,10 @@ export default function SoundLane(prop: _prop) {
                             ...note,
                             wds: { ...selectedNote.wds, ...note.wds },
                         };
-                        setChartData(updateWdsNotes(
+                        if (!setChartData(updateWdsNotes(
                             activeLane.chartData, [note.id], merged, activeLane.defaultBpm,
-                        ));
+                        ))) return;
+                        requestNoteFocus(activeLane.id);
                     } catch (error) {
                         reportError(error);
                     }
@@ -925,6 +970,7 @@ export default function SoundLane(prop: _prop) {
         locateMeasure,
         retimeSingleMeasureByBpm,
         setLaneEditState,
+        requestNoteFocus,
         updateLaneData,
         clearLaneError,
         audioData,
@@ -1214,7 +1260,11 @@ export default function SoundLane(prop: _prop) {
                                         onInsertMeasure={onInsertMeasure}
                                         onDeleteMeasure={onDeleteMeasure}
                                         onError={(message: string) => setLaneError(lane.id, message)}
-                                        onRequestVertical={() => prop.onRequestVertical?.()}
+                                        onRequestVertical={() => {
+                                            selectNoteLane(lane.id);
+                                            prop.onRequestVertical?.();
+                                            requestNoteFocus(lane.id);
+                                        }}
                                     />
                                 </div>
                             );
