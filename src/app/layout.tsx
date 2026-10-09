@@ -13,9 +13,30 @@ import Providers from "@/components/providers";
 //   subsets: ["latin"],
 // });
 
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+
 export const metadata: Metadata = {
     title: "Explicitize - A rhythm annotating tool",
     description: "A local-first rhythm annotation editor with waveform, spectrum, and chart editing",
+    icons: {
+        icon: [
+            {
+                url: `${basePath}/favicon.ico`,
+                type: "image/x-icon",
+                sizes: "16x16 32x32 48x48 64x64 128x128 256x256",
+            },
+            {
+                url: `${basePath}/icon.png`,
+                type: "image/png",
+                sizes: "512x512",
+            },
+        ],
+        apple: {
+            url: `${basePath}/apple-icon.png`,
+            type: "image/png",
+            sizes: "180x180",
+        },
+    },
 };
 
 export default function RootLayout({

@@ -5,6 +5,7 @@ const basePath = isDesktopBuild ? "" : "/rhythm_annotating";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  devIndicators: false,
   output: "export",
   basePath: basePath || undefined,
   env: {
