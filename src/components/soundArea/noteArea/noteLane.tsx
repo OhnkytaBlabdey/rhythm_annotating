@@ -1815,6 +1815,7 @@ export default function NoteLane({
 
     const handleContextMenu = useCallback(
         (e: MouseEvent<HTMLCanvasElement>) => {
+            e.preventDefault();
             if (isPlaybackFrozen) {
                 return;
             }
@@ -1822,7 +1823,6 @@ export default function NoteLane({
                 return;
             }
             if (editState.mode === "browse") return;
-            e.preventDefault();
             const { note } = updatePointer(e.clientX, e.clientY);
             if (note) {
                 deleteById(new Set<string>([note.id]));

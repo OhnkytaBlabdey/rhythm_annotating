@@ -746,6 +746,18 @@ export default function WorkArea() {
         };
     }, [isTimelineWheel]);
 
+    useEffect(() => {
+        const onContextMenu = (event: MouseEvent) => {
+            if (isEditableTarget(event.target)) return;
+            event.preventDefault();
+        };
+
+        document.addEventListener("contextmenu", onContextMenu, true);
+        return () => {
+            document.removeEventListener("contextmenu", onContextMenu, true);
+        };
+    }, [isEditableTarget]);
+
     const handleLaneWheel = useCallback(
         (event: LaneWheelEvent) => {
             if (navigationDuration <= 0) return;
