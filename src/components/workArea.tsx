@@ -729,7 +729,6 @@ export default function WorkArea() {
 
         const onAltKey = (event: KeyboardEvent) => {
             if (event.key !== "Alt") return;
-            if (isEditableTarget(event.target)) return;
             event.preventDefault();
         };
 
@@ -745,7 +744,7 @@ export default function WorkArea() {
             window.removeEventListener("keydown", onAltKey, true);
             window.removeEventListener("keyup", onAltKey, true);
         };
-    }, [isEditableTarget, isTimelineWheel]);
+    }, [isTimelineWheel]);
 
     const handleLaneWheel = useCallback(
         (event: LaneWheelEvent) => {
