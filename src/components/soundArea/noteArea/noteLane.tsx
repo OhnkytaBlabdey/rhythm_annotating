@@ -677,7 +677,11 @@ export default function NoteLane({
                 existingMeasures,
                 tick.globalMeasureIndex,
             );
-            const measureIndex = targetGlobalIndex - existingMeasures;
+            // A virtual measure is offset from the end of the segment being
+            // reused, not from the start of the chart, so add that segment's
+            // own measure count. A freshly appended segment has zero measures.
+            const measureIndex =
+                segment.measures.length + (targetGlobalIndex - existingMeasures);
             while (segment.measures.length <= measureIndex) {
                 segment.measures.push({ notes: [] });
             }
