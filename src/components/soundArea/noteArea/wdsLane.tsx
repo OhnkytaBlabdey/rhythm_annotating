@@ -8,7 +8,6 @@ import {
     useRef,
     useState,
     type Dispatch,
-    type KeyboardEvent,
     type PointerEvent,
     type SetStateAction,
 } from "react";
@@ -47,6 +46,7 @@ import {
     WDS_NOTE_TYPES,
 } from "./wdsTypes";
 import style from "./wdsLane.module.css";
+import { registerNoteKeyHandler } from "@/lib/noteKeyRouter";
 
 export interface WdsLaneProps {
     chartData: ChartSegment[];
@@ -251,10 +251,7 @@ function NoteGlyph({
             data-scratch-direction={directed ? scratchDirection : undefined}
             data-jump-scratch={jump || undefined}
             data-selected={selected || undefined}
-            role={preview ? undefined : "button"}
-            tabIndex={preview ? undefined : 0}
             aria-label={preview ? undefined : describeNote(note)}
-            aria-pressed={preview ? undefined : selected}
             aria-hidden={preview || undefined}
             opacity={preview ? 0.65 : 1}
             pointerEvents={preview ? "none" : undefined}
@@ -363,7 +360,6 @@ export default function WdsLane({
     onRequestVertical,
 }: WdsLaneProps) {
     const { matchesKeyShortcut } = useAppSettings();
-    const rootRef = useRef<HTMLDivElement>(null);
     const svgRef = useRef<SVGSVGElement>(null);
     const dragRef = useRef<Drag | null>(null);
     const cycleRef = useRef({ key: "", index: -1 });
@@ -747,7 +743,6 @@ export default function WdsLane({
     function handlePointerDown(event: PointerEvent<SVGSVGElement>) {
         if (event.button !== 0 || isPlaybackFrozen || scene.error) return;
         event.preventDefault();
-        rootRef.current?.focus({ preventScroll: true });
         try {
             const point = pointerAt(event.clientX, event.clientY);
             const rect = event.currentTarget.getBoundingClientRect();
@@ -867,9 +862,9 @@ export default function WdsLane({
         return { beat, time, lane: editState.wdsProperties.lane, x: GUTTER, y: timeToY(time) };
     }
 
-    function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-        if (event.target instanceof Element && event.target.closest("input, textarea, select, button, [contenteditable]:not([contenteditable='false'])")) return;
-        if (event.nativeEvent.isComposing || isPlaybackFrozen || !isVertical) return;
+    function handleKeyDown(event: KeyboardEvent) {
+        if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])")) return;
+        if (event.isComposing || isPlaybackFrozen || !isVertical) return;
         const consume = () => { event.preventDefault(); event.stopPropagation(); };
         try {
             if (event.key === "Escape") {
@@ -878,7 +873,7 @@ export default function WdsLane({
                 return;
             }
             for (const item of MODE_SHORTCUTS) {
-                if (!matchesKeyShortcut(item.action, event.nativeEvent)) continue;
+                if (!matchesKeyShortcut(item.action, event)) continue;
                 consume(); cancelDrag(); setPending(null);
                 const properties = item.type === undefined ? null : defaultWdsProperties(item.type);
                 setEditState((previous) => ({
@@ -890,29 +885,18 @@ export default function WdsLane({
                 }));
                 return;
             }
-            const focusedId = event.target instanceof Element ? event.target.closest("[data-note-id]")?.getAttribute("data-note-id") : null;
-            if (focusedId && (event.key === "Enter" || event.key === " ")) {
-                consume();
-                const note = collected.notes.find((record) => record.note.id === focusedId);
-                if (note) {
-                    selectBeat(note.beat);
-                    setEditState((previous) => ({ ...previous, selectedIds: new Set([focusedId]) }));
-                    if (editState.mode === "annotate") annotate(note.note);
-                }
-                return;
-            }
             if ((event.ctrlKey || event.metaKey) && event.code === "KeyA") {
                 consume();
                 setEditState((previous) => ({ ...previous, selectedIds: new Set(collected.notes.map(({ note }) => note.id)) }));
                 return;
             }
-            if (matchesKeyShortcut("note.division.increment", event.nativeEvent) || matchesKeyShortcut("note.division.decrement", event.nativeEvent)) {
+            if (matchesKeyShortcut("note.division.increment", event) || matchesKeyShortcut("note.division.decrement", event)) {
                 consume(); cancelDrag();
-                setBeatSubdivision(Math.min(64, Math.max(1, subdivision + (matchesKeyShortcut("note.division.increment", event.nativeEvent) ? 1 : -1))));
+                setBeatSubdivision(Math.min(64, Math.max(1, subdivision + (matchesKeyShortcut("note.division.increment", event) ? 1 : -1))));
                 return;
             }
             const ids = editState.selectedIds.size ? [...editState.selectedIds] : hoverId ? [hoverId] : [];
-            if (matchesKeyShortcut("note.copy", event.nativeEvent)) {
+            if (matchesKeyShortcut("note.copy", event)) {
                 consume();
                 if (ids.length) {
                     const clipboard = copyWdsNotes(chartData, ids);
@@ -920,11 +904,11 @@ export default function WdsLane({
                 }
                 return;
             }
-            const cut = matchesKeyShortcut("note.cut", event.nativeEvent);
-            const paste = matchesKeyShortcut("note.paste", event.nativeEvent);
-            const remove = matchesKeyShortcut("note.delete", event.nativeEvent);
-            const insertMeasure = matchesKeyShortcut("note.measure.insert", event.nativeEvent);
-            const deleteMeasure = matchesKeyShortcut("note.measure.delete", event.nativeEvent);
+            const cut = matchesKeyShortcut("note.cut", event);
+            const paste = matchesKeyShortcut("note.paste", event);
+            const remove = matchesKeyShortcut("note.delete", event);
+            const insertMeasure = matchesKeyShortcut("note.measure.insert", event);
+            const deleteMeasure = matchesKeyShortcut("note.measure.delete", event);
             const undo = (event.ctrlKey || event.metaKey) && (event.code === "KeyZ" || event.key.toLowerCase() === "z");
             const redo = (event.ctrlKey || event.metaKey) && (event.code === "KeyY" || event.key.toLowerCase() === "y");
             if (!(cut || paste || remove || insertMeasure || deleteMeasure || undo || redo)) return;
@@ -953,6 +937,8 @@ export default function WdsLane({
         } catch (reason) { reportError(reason); }
     }
 
+    useEffect(() => registerNoteKeyHandler(laneId, handleKeyDown));
+
     const selectedBeat = selectedMeasureRef?.globalIndex ?? clickedBeat;
     const focusedNote = scene.notes.find(({ record }) => record.note.id === hoverId)?.record ??
         scene.notes.find(({ record }) => editState.selectedIds.has(record.note.id))?.record;
@@ -962,7 +948,6 @@ export default function WdsLane({
 
     return (
         <div
-            ref={rootRef}
             className={style.root}
             style={{ width: isVertical ? WIDTH : undefined, height: isVertical ? viewHeight : height }}
             data-lane="true"
@@ -974,9 +959,6 @@ export default function WdsLane({
             role="group"
             aria-label="WDS 十二列制谱画布"
             aria-describedby={helpId}
-            tabIndex={0}
-            onKeyDown={handleKeyDown}
-            onFocusCapture={() => onActivate?.()}
             onPointerDownCapture={() => onActivate?.()}
             onClick={(event) => event.stopPropagation()}
         >
@@ -984,7 +966,7 @@ export default function WdsLane({
                 时间向上增加。1 Tap，2 Critical，3 Hold，4 选择，5 粘贴，8 标注，B 只读浏览。
                 Shift 或 Ctrl 点击多选，Alt 点击轮换重叠音符。拖动长条尾部调整长度。Esc 取消。
                 长条不包含头键，起点可独立放键。悬停时显示左右宽度柄；尾巴的宽度柄编辑 JumpScratch 属性。
-                Tab 聚焦音符，Enter 选择。音频结束后仍可编辑。
+                音频结束后仍可编辑。
             </span>
             {!isPlaybackFrozen && !isVertical && (
                 <div className={style.horizontalMessage}>

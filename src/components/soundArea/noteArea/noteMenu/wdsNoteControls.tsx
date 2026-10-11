@@ -35,6 +35,10 @@ function NumberField({ value, onChange, ...inputProps }:
     return (
         <input {...inputProps} type="number" step={1} value={draft.text}
             className={cls("control-input")}
+            onKeyDown={(event) => {
+                inputProps.onKeyDown?.(event);
+                if (event.key === "Enter") event.currentTarget.blur();
+            }}
             onChange={(event) => {
                 const text = event.target.value;
                 const next = text.trim() === "" ? Number.NaN : Number(text);
@@ -226,7 +230,6 @@ export default function WdsNoteControls({ wds, drawing, readOnly, onDraw }: {
         <section className={cls("wds-controls")} aria-label="WDS 音符控件"
             onMouseDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
-            onKeyDown={(event) => event.stopPropagation()}
             onKeyUp={(event) => event.stopPropagation()}
             onWheel={(event) => event.stopPropagation()}>
             <div className={cls("section-label")}>WDS 绘制类型</div>

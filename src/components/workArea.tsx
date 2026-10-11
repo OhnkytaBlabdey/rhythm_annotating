@@ -8,8 +8,10 @@ import {
     SoundLaneState,
     SoundLaneStateUpdate,
     defaultSoundLaneState,
+    resolveActiveNoteLaneId,
     AudioData,
 } from "@/interface/audioData";
+import { dispatchNoteKey } from "@/lib/noteKeyRouter";
 import { AudioDataCtx } from "./audioContext";
 import {
     SpectrumViewSettings,
@@ -79,7 +81,7 @@ export default function WorkArea() {
         timeMultiplier: timeView.timeMultiplier,
     }));
     const [audioDataList, setAudioDataList] = useState<AudioData[]>([]);
-    const [, setActiveSoundLaneId] = useState<string | null>(null);
+    const [activeSoundLaneId, setActiveSoundLaneId] = useState<string | null>(null);
     const [hasHydratedProject, setHasHydratedProject] = useState(false);
     const [hydrationError, setHydrationError] = useState<string | null>(null);
     const [isRecoveringProject, setIsRecoveringProject] = useState(false);
@@ -89,7 +91,6 @@ export default function WorkArea() {
     const [limitedPlaybackTime, setLimitedPlaybackTime] = useState(
         () => objProject.currentTime,
     );
-    const workAreaRef = useRef<HTMLDivElement | null>(null);
     const editorLaneCardRef = useRef<HTMLDivElement | null>(null);
     const wheelUpdateGuardRef = useRef(false);
     const matchesShortcutRef = useRef(matchesShortcut);
@@ -758,6 +759,39 @@ export default function WorkArea() {
         };
     }, [isEditableTarget]);
 
+    useEffect(() => {
+        const onNoteKeyDown = (event: KeyboardEvent) => {
+            if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
+            if (isEditableTarget(event.target)) return;
+            if (event.target instanceof Element && event.target.closest('[role="dialog"]')) return;
+            const entry = sortedLaneEntries.find((item) => item.audio.id === activeSoundLaneId) ??
+                sortedLaneEntries[0];
+            const state = entry?.state;
+            if (!state) return;
+            const laneId = resolveActiveNoteLaneId(state.noteLanes, state.activeNoteLaneId);
+            if (!laneId) return;
+            dispatchNoteKey(laneId, event);
+        };
+        window.addEventListener("keydown", onNoteKeyDown);
+        return () => window.removeEventListener("keydown", onNoteKeyDown);
+    }, [activeSoundLaneId, sortedLaneEntries, isEditableTarget]);
+
+    useEffect(() => {
+        const onMenuMouseDown = (event: MouseEvent) => {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+            const active = document.activeElement;
+            if (active instanceof HTMLElement && isEditableTarget(active) && !active.contains(target)) {
+                active.blur();
+            }
+            if (isEditableTarget(target)) return;
+            if (!target.closest('button, [role="button"], a[href], summary')) return;
+            event.preventDefault();
+        };
+        document.addEventListener("mousedown", onMenuMouseDown, true);
+        return () => document.removeEventListener("mousedown", onMenuMouseDown, true);
+    }, [isEditableTarget]);
+
     const handleLaneWheel = useCallback(
         (event: LaneWheelEvent) => {
             if (navigationDuration <= 0) return;
@@ -860,14 +894,13 @@ export default function WorkArea() {
 
     return (
         <AudioDataCtx.Provider value={audioDataList}>
-            <div className="WorkArea" ref={workAreaRef}>
+            <div className="WorkArea">
                 <div className="editor-shell flex flex-col">
                     {/* Menu */}
                     <div className="relative z-50 flex shrink-0">
                         <div className="editor-toolbar-card">
                             <WorkMenu
                                 key={"menu"}
-                                editorScopeRef={workAreaRef}
                                 setSoundLaneStates={setSoundLaneStates}
                                 refSoundLaneStates={objProject.soundLaneStates}
                                 refTimeMultiplier={objProject.timeMultiplier}
@@ -919,7 +952,6 @@ export default function WorkArea() {
                             ref={editorLaneCardRef}
                             role={isVertical ? "region" : undefined}
                             aria-label={isVertical ? "音频编辑区，可横向滚动" : undefined}
-                            tabIndex={isVertical ? 0 : undefined}
                         >
                             <div className={isVertical ? styles.verticalLaneList : "flex flex-col gap-2"}>
                                 {sortedLaneEntries.map((entry) => {

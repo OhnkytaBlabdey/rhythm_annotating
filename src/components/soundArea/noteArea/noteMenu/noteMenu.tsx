@@ -53,7 +53,6 @@ function downloadTextFile(text: string, fileName: string, type: string) {
 interface _p {
     mode: EditMode;
     setMode: (m: EditMode) => void;
-    onFocusCanvas: (fallback?: HTMLElement | null) => void;
     canUndo: boolean;
     canRedo: boolean;
     hasSelection: boolean;
@@ -158,7 +157,6 @@ export default function NoteMenu(p: _p) {
         setOffsetDraft({ value: offset, text: String(offset) });
     }
     const exportPreviewRef = React.useRef<HTMLTextAreaElement>(null);
-    const modalTriggerRef = React.useRef<HTMLElement | null>(null);
     const readOnly = !!p.wds && p.mode === "browse";
 
     const closeModal = () => {
@@ -167,21 +165,13 @@ export default function NoteMenu(p: _p) {
         setIsEditOpen(false);
         setImportError(null);
         setEditError(null);
-        p.onFocusCanvas(modalTriggerRef.current);
     };
     const { dialogRef, onDialogKeyDownCapture, onDialogKeyDown } = useDialogFocus(
         isImportOpen || isExportOpen || isEditOpen, closeModal,
     );
-    const rememberModalTrigger = () => {
-        modalTriggerRef.current = document.activeElement instanceof HTMLElement
-            ? document.activeElement : null;
-    };
 
     const mutate = (action: () => void) => {
-        if (!readOnly) {
-            action();
-            p.onFocusCanvas();
-        }
+        if (!readOnly) action();
     };
 
     const stopInteraction = (event: React.SyntheticEvent) => {
@@ -300,7 +290,10 @@ export default function NoteMenu(p: _p) {
                     value={Math.round(p.noteLaneOffset * 1000)}
                     onMouseDown={stopInteraction}
                     onClick={stopInteraction}
-                    onKeyDown={stopInteraction}
+                    onKeyDown={(event) => {
+                        stopInteraction(event);
+                        if (event.key === "Enter") event.currentTarget.blur();
+                    }}
                     onWheel={(e) => e.stopPropagation()}
                     onChange={(e) => {
                         const v = Number(e.target.value);
@@ -352,7 +345,7 @@ export default function NoteMenu(p: _p) {
                     label="复制"
                     title={`复制选中 Note (${getKeyboardShortcutLabel("note.copy") || "Ctrl+C"})`}
                     disabled={!p.hasSelection}
-                    onClick={() => { p.onCopy(); p.onFocusCanvas(); }}
+                    onClick={p.onCopy}
                 />
                 <ActionButton
                     label="剪切"
@@ -390,7 +383,10 @@ export default function NoteMenu(p: _p) {
                     value={p.division}
                     onMouseDown={stopInteraction}
                     onClick={stopInteraction}
-                    onKeyDown={stopInteraction}
+                    onKeyDown={(event) => {
+                        stopInteraction(event);
+                        if (event.key === "Enter") event.currentTarget.blur();
+                    }}
                     onWheel={(e) => e.stopPropagation()}
                     onChange={(e) => {
                         const v = Number(e.target.value);
@@ -424,7 +420,10 @@ export default function NoteMenu(p: _p) {
                     disabled={readOnly || (p.bpmLocked ?? false)}
                     onMouseDown={stopInteraction}
                     onClick={stopInteraction}
-                    onKeyDown={stopInteraction}
+                    onKeyDown={(event) => {
+                        stopInteraction(event);
+                        if (event.key === "Enter") event.currentTarget.blur();
+                    }}
                     onWheel={(e) => e.stopPropagation()}
                     onChange={(e) => {
                         const v = Number(e.target.value);
@@ -447,7 +446,10 @@ export default function NoteMenu(p: _p) {
                     disabled={readOnly || !p.canEditCurrentMeasureBpm}
                     onMouseDown={stopInteraction}
                     onClick={stopInteraction}
-                    onKeyDown={stopInteraction}
+                    onKeyDown={(event) => {
+                        stopInteraction(event);
+                        if (event.key === "Enter") event.currentTarget.blur();
+                    }}
                     onWheel={(e) => e.stopPropagation()}
                     onChange={(e) => {
                         const nextValue = e.target.value;
@@ -513,7 +515,6 @@ export default function NoteMenu(p: _p) {
                     disabled={readOnly}
                     onClick={() => {
                         if (readOnly) return;
-                        rememberModalTrigger();
                         setImportError(null);
                         setImportText("");
                         setIsImportOpen(true);
@@ -524,7 +525,6 @@ export default function NoteMenu(p: _p) {
                 <ActionButton
                     title={p.wds ? "导出 WDS TXT、WDSCHART 或无损内部 JSON" : "导出当前 NoteLane 的 JSON"}
                     onClick={() => {
-                        rememberModalTrigger();
                         setExportFormat(p.wds ? "wds" : "internal");
                         setOffsetDraft({ value: offset, text: String(offset) });
                         setCopyStatus(null);
@@ -538,7 +538,6 @@ export default function NoteMenu(p: _p) {
                     disabled={readOnly}
                     onClick={() => {
                         if (readOnly) return;
-                        rememberModalTrigger();
                         const text = p.getEditText();
                         setEditOriginalText(text);
                         setEditText(text);
@@ -773,7 +772,10 @@ export default function NoteMenu(p: _p) {
                                         value={offsetDraft.text}
                                         disabled={readOnly}
                                         aria-invalid={offsetInvalid}
-                                        onKeyDown={stopInteraction}
+                                        onKeyDown={(event) => {
+                                            stopInteraction(event);
+                                            if (event.key === "Enter") event.currentTarget.blur();
+                                        }}
                                         onWheel={stopInteraction}
                                         onChange={(event) => {
                                             if (readOnly) return;

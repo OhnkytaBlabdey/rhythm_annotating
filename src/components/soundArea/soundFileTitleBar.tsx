@@ -28,7 +28,10 @@ export default function SoundFileTitleBar(prop: _prop) {
                     value={Math.round(prop.offset * 1000)}
                     onMouseDown={stopInteraction}
                     onClick={stopInteraction}
-                    onKeyDown={stopInteraction}
+                    onKeyDown={(e) => {
+                        stopInteraction(e);
+                        if (e.key === "Enter") e.currentTarget.blur();
+                    }}
                     onWheel={(e) => e.stopPropagation()}
                     onChange={(e) => {
                         const v = Number(e.target.value);

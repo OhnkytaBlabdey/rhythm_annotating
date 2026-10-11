@@ -7,7 +7,6 @@ import {
     useRef,
     useState,
     type Dispatch,
-    type KeyboardEvent,
     type MouseEvent,
     type SetStateAction,
 } from "react";
@@ -28,6 +27,7 @@ import {
     unprojectTimelinePoint,
     type TimelineOrientation,
 } from "@/components/timelineGeometry";
+import { registerNoteKeyHandler } from "@/lib/noteKeyRouter";
 
 interface NoteLaneProps {
     chartData: ChartSegment[];
@@ -1578,7 +1578,6 @@ export default function NoteLane({
             }
             if (e.button !== 0) return;
             onActivate?.();
-            canvasRef.current?.focus();
             const { time, tick, note } = updatePointer(e.clientX, e.clientY);
             if (time === null || tick === null) return;
 
@@ -1832,7 +1831,7 @@ export default function NoteLane({
     );
 
     const handleKeyDown = useCallback(
-        (e: KeyboardEvent<HTMLCanvasElement>) => {
+        (e: KeyboardEvent) => {
             if (isPlaybackFrozen) {
                 return;
             }
@@ -1863,7 +1862,7 @@ export default function NoteLane({
             ];
 
             for (const item of modeActions) {
-                if (!matchesKeyShortcut(item.action, e.nativeEvent)) {
+                if (!matchesKeyShortcut(item.action, e)) {
                     continue;
                 }
 
@@ -1877,7 +1876,7 @@ export default function NoteLane({
             }
 
             if (
-                matchesKeyShortcut("note.division.increment", e.nativeEvent)
+                matchesKeyShortcut("note.division.increment", e)
             ) {
                 e.preventDefault();
                 setBeatSubdivision(Math.min(64, safeSubdivision + 1));
@@ -1885,14 +1884,14 @@ export default function NoteLane({
             }
 
             if (
-                matchesKeyShortcut("note.division.decrement", e.nativeEvent)
+                matchesKeyShortcut("note.division.decrement", e)
             ) {
                 e.preventDefault();
                 setBeatSubdivision(Math.max(1, safeSubdivision - 1));
                 return;
             }
 
-            if (matchesKeyShortcut("note.measure.insert", e.nativeEvent)) {
+            if (matchesKeyShortcut("note.measure.insert", e)) {
                 e.preventDefault();
                 const tick = snapTickRef.current;
                 onInsertMeasure?.(
@@ -1906,7 +1905,7 @@ export default function NoteLane({
                 );
                 return;
             }
-            if (matchesKeyShortcut("note.measure.delete", e.nativeEvent)) {
+            if (matchesKeyShortcut("note.measure.delete", e)) {
                 e.preventDefault();
                 const tick = snapTickRef.current;
                 onDeleteMeasure?.(
@@ -1931,7 +1930,7 @@ export default function NoteLane({
                 onRedo();
                 return;
             }
-            if (matchesKeyShortcut("note.copy", e.nativeEvent)) {
+            if (matchesKeyShortcut("note.copy", e)) {
                 e.preventDefault();
                 if (editState.selectedIds.size > 0) {
                     setEditState((prev) => {
@@ -1967,7 +1966,7 @@ export default function NoteLane({
                 }
                 return;
             }
-            if (matchesKeyShortcut("note.cut", e.nativeEvent)) {
+            if (matchesKeyShortcut("note.cut", e)) {
                 e.preventDefault();
                 if (editState.selectedIds.size > 0) {
                     const ids = new Set(editState.selectedIds);
@@ -2006,7 +2005,7 @@ export default function NoteLane({
                 }
                 return;
             }
-            if (matchesKeyShortcut("note.paste", e.nativeEvent)) {
+            if (matchesKeyShortcut("note.paste", e)) {
                 e.preventDefault();
                 const clipboard = editState.clipboard;
                 if (clipboard.length === 0) return;
@@ -2057,7 +2056,7 @@ export default function NoteLane({
                 commitChart(target.chart, true);
                 return;
             }
-            if (matchesKeyShortcut("note.delete", e.nativeEvent)) {
+            if (matchesKeyShortcut("note.delete", e)) {
                 e.preventDefault();
                 if (editState.selectedIds.size > 0) {
                     deleteById(new Set(editState.selectedIds));
@@ -2092,6 +2091,8 @@ export default function NoteLane({
         ],
     );
 
+    useEffect(() => registerNoteKeyHandler(laneId, handleKeyDown), [laneId, handleKeyDown]);
+
     useEffect(() => {
         onSnapTimeChange?.(
             !isPlaybackFrozen && snapTime !== null
@@ -2125,9 +2126,6 @@ export default function NoteLane({
                     onMouseUp={handleMouseUp}
                     onMouseLeave={handleMouseUp}
                     onContextMenu={handleContextMenu}
-                    onKeyDown={handleKeyDown}
-                    onFocus={() => onActivate?.()}
-                    tabIndex={0}
                 />
                 {!isPlaybackFrozen && renderValidationError && (
                     <div className={style.noteLaneOverlay}>

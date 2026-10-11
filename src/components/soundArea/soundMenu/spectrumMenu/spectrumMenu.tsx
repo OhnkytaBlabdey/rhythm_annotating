@@ -74,7 +74,10 @@ function SpectrumMenu(p: _p) {
                     value={Math.round((p.spectrumState.offset ?? 0) * 1000)}
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === "Enter") e.currentTarget.blur();
+                    }}
                     onWheel={(e) => e.stopPropagation()}
                     onChange={(e) => {
                         const v = Number(e.target.value);

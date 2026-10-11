@@ -49,6 +49,9 @@ function AdjustBPM(p: _p) {
                     className="bpm-input"
                     placeholder={p.refBPM.toFixed(3).toString()}
                     defaultValue={p.refBPM}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter") e.currentTarget.blur();
+                    }}
                     style={{
                         maxWidth: "20%",
                     }}
